@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mente-compartida": {
+      "command": "python3",
+      "args": [
+        "/home/metrx/Agentes/Mente_general/tools/mcp_server.py",
+        "--root",
+        "/home/metrx/Agentes/Mente_general"
+      ]
+    }
+  }
+}
