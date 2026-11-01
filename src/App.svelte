@@ -1,50 +1,30 @@
 <script lang="ts">
-  let title = $state('SymbioLab 2.0');
-  let status = $state('Listo para inicializar estación 3D');
+  import HUD from '$lib/ui/HUD.svelte';
+  import LabScene from '$lib/lab3d/LabScene.svelte';
+  import AccessibleControls from '$lib/ui/AccessibleControls.svelte';
+  import TutorModal from '$lib/ui/TutorModal.svelte';
+  import NotebookDrawer from '$lib/ui/NotebookDrawer.svelte';
+  import CameraCalibrationModal from '$lib/ui/CameraCalibrationModal.svelte';
+  import HomeExperimentsBookModal from '$lib/ui/HomeExperimentsBookModal.svelte';
 </script>
 
-<main class="container">
-  <header>
-    <h1>{title}</h1>
-    <p class="subtitle">Laboratorio Científico Inmersivo, Gestual y Offline</p>
-  </header>
-  <div class="card">
-    <p class="status"><strong>Estado:</strong> {status}</p>
-  </div>
-</main>
+<main class="relative w-screen h-screen overflow-hidden bg-[#080c14] flex flex-col">
+  <!-- HUD de Instrumentación Científica -->
+  <HUD />
 
-<style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    background-color: #0f172a;
-    color: #f8fafc;
-  }
-  .container {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 2rem 1rem;
-    text-align: center;
-  }
-  h1 {
-    font-size: 2.25rem;
-    margin-bottom: 0.5rem;
-    color: #38bdf8;
-  }
-  .subtitle {
-    font-size: 1.125rem;
-    color: #94a3b8;
-    margin-top: 0;
-  }
-  .card {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-top: 2rem;
-  }
-  .status {
-    color: #e2e8f0;
-  }
-</style>
+  <!-- Estación de Laboratorio 3D en Primera Persona (Three.js WebGL2) -->
+  <div class="flex-1 w-full h-full relative z-0">
+    <LabScene />
+  </div>
+
+  <!-- Dosificador de Precisión (Esquina inferior derecha) -->
+  <div class="absolute bottom-5 right-5 z-20 pointer-events-auto">
+    <AccessibleControls />
+  </div>
+
+  <!-- Modales y Libro Interactivo de Experimentos Caseros -->
+  <HomeExperimentsBookModal />
+  <TutorModal />
+  <NotebookDrawer />
+  <CameraCalibrationModal />
+</main>
