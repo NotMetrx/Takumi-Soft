@@ -1,62 +1,138 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { labStore } from '$lib/interaction/lab_store.svelte';
+  import { HandCamera } from '$lib/input/hand_camera';
+  import { HandGestures, type HandSample } from '$lib/input/hand_gestures';
   import { Video, MousePointer, Shield, X, AlertTriangle, Hand } from '@lucide/svelte';
 
-  let isRequesting = $state<boolean>(false);
-  let errorMessage = $state<string>('');
-  let videoEl = $state<HTMLVideoElement | null>(null);
-  let activeStream = $state<MediaStream | null>(null);
-
-  async function requestCamera() {
-    isRequesting = true;
-    errorMessage = '';
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Tu navegador o dispositivo no soporta acceso a cámara web.');
-      }
-      if (activeStream) {
-        activeStream.getTracks().forEach((t) => t.stop());
-      }
-      activeStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 320, height: 240, facingMode: 'user' }
-      });
-
-      labStore.inputMode = 'gesture';
-      labStore.isCameraActive = true;
-      labStore.isCameraModalOpen = false;
-    } catch (err: any) {
-      errorMessage = err.message || 'Permiso de cámara denegado o cámara no disponible.';
-    } finally {
-      isRequesting = false;
-    }
-  }
-
-  $effect(() => {
-    if (videoEl && activeStream && labStore.isCameraActive) {
-      videoEl.srcObject = activeStream;
-    }
-  });
+  let isRequesting = $state(false);
+  let errorMessage = $state('');
+  let videoEl = $state<HTMLVideoElement>(null!);
+  let cameraSession: HandCamera | null = null;
+  const gestures = new HandGestures();
+  let phase = $state<'open' | 'closed' | 'ready'>('open');
+  let sampling = $state(false);
+  let paused = $state(false);
+  let sampleStart = 0;
+  let samples: HandSample[] = [];
+  let openSample: HandSample | null = null;
+  let lostSince: number | null = null;
 
   function stopCameraAndSwitchToMouse() {
-    if (activeStream) {
-      activeStream.getTracks().forEach((t) => t.stop());
-      activeStream = null;
-    }
+    cameraSession?.stop();
+    cameraSession = null;
+    if (videoEl) videoEl.srcObject = null;
+    gestures.reset();
+    labStore.gestureInput = null;
+    labStore.gestureStatus = 'Cámara apagada';
     labStore.inputMode = 'mouse';
     labStore.isCameraActive = false;
     labStore.isCameraModalOpen = false;
+    isRequesting = false;
+    sampling = false;
+    samples = [];
+    openSample = null;
   }
 
-  onDestroy(() => {
-    if (activeStream) {
-      activeStream.getTracks().forEach((t) => t.stop());
+  function cameraError(message: string) {
+    stopCameraAndSwitchToMouse();
+    errorMessage = message;
+    labStore.isCameraModalOpen = true;
+  }
+
+  function onSample(sample: HandSample | null, now: number) {
+    if (!sample) {
+      lostSince ??= now;
+      if (sampling) { sampling = false; samples = []; }
+      if (now - lostSince >= 1500 && phase === 'ready') paused = true;
+      labStore.gestureStatus = paused ? 'Seguimiento pausado. Abre la mano y pulsa Retomar.' : 'Muestra una mano completa con buena luz';
+    } else lostSince = null;
+    if (phase !== 'ready') {
+      labStore.gestureInput = null;
+      if (sample && sampling) {
+        samples.push(sample);
+        if (now - sampleStart >= 1000 && samples.length >= 8) {
+          const median = (key: keyof HandSample) => samples.map(s => s[key]).sort((a, b) => a - b)[Math.floor(samples.length / 2)];
+          const measured = { x: median('x'), y: median('y'), pinch: median('pinch'), angle: median('angle') };
+          if (phase === 'open') { openSample = measured; phase = 'closed'; }
+          else if (openSample && gestures.calibrate(openSample, measured)) {
+            phase = 'ready';
+            labStore.gestureStatus = 'Calibración lista. Abre la mano antes de agarrar.';
+          } else {
+            phase = 'open';
+            labStore.gestureStatus = 'No se distinguió la pinza. Repite con la mano abierta y después junta índice y pulgar.';
+          }
+          sampling = false;
+          samples = [];
+        }
+      }
+      return;
     }
+    if (paused) { labStore.gestureInput = null; return; }
+    const state = gestures.update(sample, now);
+    labStore.gestureInput = state;
+    if (sample) labStore.gestureStatus = state.pinched ? 'Pinza detectada' : 'Señala un matraz y junta índice y pulgar';
+  }
+
+  async function requestCamera() {
+    if (isRequesting) return;
+    stopCameraAndSwitchToMouse();
+    isRequesting = true;
+    errorMessage = '';
+    phase = 'open';
+    paused = false;
+    lostSince = null;
+    openSample = null;
+    labStore.gestureStatus = 'Preparando cámara y seguimiento local…';
+    const session = new HandCamera();
+    cameraSession = session;
+    try {
+      await tick();
+      await session.start(videoEl, onSample, cameraError);
+      if (cameraSession !== session) return;
+      labStore.inputMode = 'gesture';
+      labStore.isCameraActive = true;
+      labStore.isCameraModalOpen = false;
+      labStore.gestureStatus = 'Calibra primero la mano abierta y después la pinza';
+    } catch (error) {
+      if (cameraSession === session) cameraError(error instanceof Error ? error.message : 'No se pudo iniciar la cámara.');
+    } finally {
+      if (cameraSession === session) isRequesting = false;
+    }
+  }
+
+  function calibrate() {
+    gestures.reset();
+    labStore.gestureInput = null;
+    samples = [];
+    sampleStart = performance.now();
+    sampling = true;
+  }
+
+  onMount(() => {
+    const pause = () => {
+      if (labStore.isCameraActive) {
+        paused = true;
+        gestures.reset();
+        labStore.gestureInput = null;
+        labStore.gestureStatus = 'Seguimiento pausado. Abre la mano y pulsa Retomar.';
+      }
+    };
+    const visibility = () => { if (document.hidden) pause(); };
+    window.addEventListener('blur', pause);
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('pagehide', stopCameraAndSwitchToMouse);
+    return () => {
+      window.removeEventListener('blur', pause);
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('pagehide', stopCameraAndSwitchToMouse);
+    };
   });
+  onDestroy(stopCameraAndSwitchToMouse);
 </script>
 
 <!-- Ventana Picture-in-Picture de SymbioTouch cuando la cámara está activa -->
-{#if labStore.isCameraActive && activeStream}
+{#if labStore.isCameraActive || isRequesting}
   <div class="fixed bottom-16 left-6 z-30 lab-panel p-2.5 w-60 flex flex-col gap-2 border border-amber-500/40">
     <div class="flex items-center justify-between text-[11px] font-bold">
       <span class="text-amber-300 flex items-center gap-1.5">
@@ -79,21 +155,19 @@
         muted
         class="w-full h-full object-cover -scale-x-100"
       ></video>
-      <div class="absolute bottom-1.5 left-1.5 right-1.5 bg-slate-950/80 backdrop-blur-xs px-2 py-1 rounded text-[10px] text-slate-200 flex items-center justify-between">
-        <span>Gesto Pinza + Giro</span>
-        <button
-          type="button"
-          onclick={() => {
-            if (labStore.selectedReagentId) {
-              labStore.triggerAnimatedPour(labStore.selectedReagentId, 10, 'gesture');
-            }
-          }}
-          class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-1.5 py-0.5 rounded cursor-pointer"
-        >
-          Simular Pinza (+10mL)
-        </button>
-      </div>
     </div>
+    <p class="text-[11px] text-slate-200" role="status">{labStore.gestureStatus}</p>
+    {#if !isRequesting && phase !== 'ready'}
+      <p class="text-[11px] text-amber-200">{phase === 'open' ? '1. Mantén la palma vertical y los dedos abiertos.' : '2. Junta índice y pulgar sin girar la mano.'}</p>
+      <button type="button" onclick={calibrate} disabled={sampling} class="lab-btn bg-amber-500 text-slate-950 rounded-lg p-2 text-xs font-bold disabled:opacity-50">
+        {sampling ? 'Mantén el gesto un segundo…' : phase === 'open' ? 'Calibrar mano abierta' : 'Calibrar pinza'}
+      </button>
+    {:else if paused}
+      <button type="button" onclick={() => { paused = false; gestures.reset(); lostSince = null; }} class="lab-btn bg-amber-500 text-slate-950 rounded-lg p-2 text-xs font-bold">Retomar con la mano abierta</button>
+    {:else if phase === 'ready'}
+      <p class="text-[11px] text-slate-300">Abre para señalar. Pinza para agarrar y mover. Sobre el vaso, gira la mano para verter. Abre para soltar.</p>
+      <button type="button" onclick={() => { phase = 'open'; gestures.reset(); labStore.gestureInput = null; }} class="text-xs text-amber-300 underline">Recalibrar</button>
+    {/if}
   </div>
 {/if}
 
@@ -117,7 +191,8 @@
         </div>
         <button
           type="button"
-          onclick={() => (labStore.isCameraModalOpen = false)}
+          aria-label="Cerrar configuración de cámara"
+          onclick={() => { if (isRequesting) stopCameraAndSwitchToMouse(); else labStore.isCameraModalOpen = false; }}
           class="lab-btn p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
         >
           <X class="w-5 h-5" />
@@ -127,7 +202,7 @@
       <div class="bg-emerald-950/50 border border-emerald-500/30 p-3 rounded-xl flex items-start gap-2.5 text-xs text-emerald-200">
         <Shield class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
         <div>
-          <strong class="font-bold block text-emerald-300">Privacidad Local Garantizada</strong>
+          <strong class="font-bold block text-emerald-300">Procesamiento local</strong>
           <span>El seguimiento se procesa localmente en tu navegador. Ningún fotograma de video se almacena ni se envía por red.</span>
         </div>
       </div>

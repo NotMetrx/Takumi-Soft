@@ -122,7 +122,7 @@ npm test
 ## 🔒 Privacidad y Ética Científica
 
 - **Cero Retención Biométrica:** La cámara web solo se activa bajo consentimiento explícito del estudiante. Ningún frame ni dato facial/manual se almacena en disco o se envía por internet.
-- **Funcionamiento 100% Desconectado:** Diseñado para escuelas rurales y aulas sin conectividad. Todo el software, modelos 3D y modelos de IA corren en el dispositivo local.
+- **Recursos de visión locales:** MediaPipe, WASM y el modelo de manos se sirven desde la aplicación. La instalación y reapertura sin conexión todavía requieren implementar y verificar el precache.
 - **Honestidad Pedagógica:** El simulador indica claramente sus supuestos físicos y modelos didácticos ideales, sin presentar cálculos de juguete como mediciones analíticas industriales.
 
 ---
@@ -130,3 +130,11 @@ npm test
 ## 📄 Licencia
 
 Desarrollado por **Takumi-Soft** para el certamen educativo **Hack4Edu 2026**.
+
+## Seguimiento real de manos
+
+Consulta [la revisión del SDD y la integración MediaPipe](docs/mediapipe.md) para calibrar, conocer las pruebas realizadas y los pendientes de hardware y funcionamiento offline.
+
+## Laboratorio de exploración
+
+La entrada principal ahora permite elegir 18 sustancias, dosificar en la escena y observar equilibrio acuoso, CO₂, precipitados y avisos de incompatibilidad. El botón MVP conserva el prototipo inicial. Consulta [alcance, modelos y límites de Exploración](docs/exploracion-implementacion.md).

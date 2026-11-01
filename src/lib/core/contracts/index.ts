@@ -43,6 +43,7 @@ export interface ChemistryResult {
 }
 
 export interface Reagent {
+  chemicalId?: string;
   reagentId: string;
   kind: 'strong_acid' | 'strong_base' | 'water';
   name: string;

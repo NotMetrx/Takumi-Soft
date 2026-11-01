@@ -3,9 +3,13 @@
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+  import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
   import { Timer } from 'three/addons/misc/Timer.js';
+  import { flaskFluid, pourRate, streamHitsBeaker } from './fluid';
+  import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import { labStore } from '$lib/interaction/lab_store.svelte';
 
+  let { resetViewRevision = 0 }: { resetViewRevision?: number } = $props();
   let container: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
   let scene: THREE.Scene;
@@ -38,6 +42,8 @@
     targetPos: THREE.Vector3;
     targetRotZ: number;
     colorHex: number;
+    fluidHeight: number;
+    fluidKey: string;
   }
 
   let flasks: Record<'hcl' | 'naoh', FlaskRig>;
@@ -52,16 +58,19 @@
 
   // Estado de interacción 3D directa
   let draggedFlaskId = $state<'hcl' | 'naoh' | null>(null);
+  let handCursor = $state<{ x: number; y: number; pinched: boolean } | null>(null);
   let hoveredFlaskId = $state<'hcl' | 'naoh' | null>(null);
   let isOverPourZone = $state<boolean>(false);
-  let pourHoldTimer = 0;
+  let flowAccumulator = 0;
+  let dragSource: 'mouse' | 'touch' = 'mouse';
 
   // Animación disparada por botón o gesto
   let animState: {
     active: boolean;
     flaskId: 'hcl' | 'naoh';
     elapsed: number;
-    duration: number;
+    remainingMl: number;
+    requestId: number;
   } | null = null;
   let lastHandledAnimId = 0;
 
@@ -76,22 +85,22 @@
   let currentFillRatio = 50 / 250;
   let targetFillRatio = 50 / 250;
 
-  function drawPhMeterScreen(pH: number, tempC: number, bandName: string, hexColor: string, volMl: number) {
+  function drawPhMeterScreen(pH: number | null, tempC: number | null, bandName: string, hexColor: string, volMl: number) {
     if (!phScreenCtx || !phScreenCanvas) return;
     const ctx = phScreenCtx;
     const w = phScreenCanvas.width;
     const h = phScreenCanvas.height;
 
-    ctx.fillStyle = '#070b14';
+    ctx.fillStyle = '#10242b';
     ctx.fillRect(0, 0, w, h);
 
     ctx.strokeStyle = hexColor;
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 2;
     ctx.strokeRect(8, 8, w - 16, h - 16);
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = 'bold 22px "JetBrains Mono", monospace';
-    ctx.fillText('SYMBIO pH-200 PRO', 26, 44);
+    ctx.fillText('SYMBIO  /  pH-METRO VIRTUAL', 26, 44);
 
     ctx.fillStyle = hexColor;
     ctx.beginPath();
@@ -100,19 +109,19 @@
 
     ctx.fillStyle = '#f8fafc';
     ctx.font = 'bold 86px "JetBrains Mono", monospace';
-    ctx.fillText(pH.toFixed(2), 26, 138);
+    ctx.fillText(pH?.toFixed(2) ?? '—', 26, 138);
 
     ctx.fillStyle = hexColor;
     ctx.font = 'bold 28px "Outfit", sans-serif';
     ctx.fillText('pH', 295, 100);
 
     ctx.fillStyle = hexColor;
-    ctx.font = 'bold 24px "Outfit", sans-serif';
+    ctx.font = 'bold 22px sans-serif';
     ctx.fillText(bandName.toUpperCase(), 26, 182);
 
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = '#b0c8cc';
     ctx.font = '500 20px "JetBrains Mono", monospace';
-    ctx.fillText(`T: ${tempC.toFixed(1)}°C   VOL: ${volMl.toFixed(0)} mL`, 26, 222);
+    ctx.fillText(`T: ${(tempC?.toFixed(1) ?? '—')}°C   VOL: ${volMl.toFixed(0)} mL`, 26, 222);
 
     if (phScreenTexture) {
       phScreenTexture.needsUpdate = true;
@@ -120,7 +129,12 @@
   }
 
   $effect(() => {
-    if (result) {
+    if (labStore.isExplorationMode) {
+      const r = explorationStore.result;
+      const hex = explorationStore.indicator || r.coverage !== 'quantitative' ? r.color : '#b6d6e2';
+      targetLiquidColor.set(hex);
+      drawPhMeterScreen(r.pH, r.temperatureC, r.pH === null ? 'SIN MODELO DE pH' : 'pH REF. 25 C', hex, totalVolume);
+    } else if (result) {
       targetLiquidColor.set(result.indicatorBand.colorHex);
       drawPhMeterScreen(
         result.pH,
@@ -133,7 +147,7 @@
   });
 
   $effect(() => {
-    targetFillRatio = Math.max(0.08, Math.min(0.95, totalVolume / 250));
+    targetFillRatio = Math.max(0, Math.min(1, totalVolume / labStore.beaker.capacityMl));
   });
 
   $effect(() => {
@@ -145,7 +159,8 @@
           active: true,
           flaskId: fid,
           elapsed: 0,
-          duration: 1.45
+          remainingMl: activePourAnim.amountMl,
+          requestId: activePourAnim.id
         };
       }
     }
@@ -179,6 +194,35 @@
     }
   });
 
+  function roundedBox(width: number, height: number, depth: number, radius: number, material: THREE.Material) {
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(width, height, depth, 3, radius), material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  function textPlate(text: string, width: number, height: number, ink = '#c6d9df', background = '#20323e') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 768; canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = background; ctx.fillRect(0, 0, 768, 128);
+    ctx.fillStyle = ink; ctx.font = '500 40px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 384, 64, 716);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: texture, toneMapped: false }));
+  }
+
+  function homeCamera() {
+    camera.position.set(0.08, 1.9, 3.45);
+    controls.target.set(0, 0.57, 0);
+    controls.update();
+  }
+  $effect(() => {
+    const revision = resetViewRevision;
+    if (revision > 0 && camera && controls) homeCamera();
+  });
+
   function createBeakerGraduationsTexture(): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = 1024;
@@ -186,38 +230,19 @@
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.font = 'bold 24px "JetBrains Mono", monospace';
-    ctx.lineWidth = 3;
-
-    const centerX = 512;
-    const marks = [50, 100, 150, 200, 250];
-    marks.forEach((ml) => {
-      const ratio = ml / 270;
-      const y = canvas.height - ratio * (canvas.height * 0.82) - 30;
-      ctx.beginPath();
-      ctx.moveTo(centerX - 45, y);
-      ctx.lineTo(centerX + 15, y);
-      ctx.stroke();
-      ctx.fillText(`${ml} mL`, centerX + 24, y + 8);
-    });
-
+    ctx.strokeStyle = 'rgba(222, 243, 249, 0.75)';
+    ctx.fillStyle = 'rgba(235, 248, 250, 0.85)';
+    ctx.font = '500 20px monospace';
     ctx.lineWidth = 2;
-    [25, 75, 125, 175, 225].forEach((ml) => {
-      const ratio = ml / 270;
-      const y = canvas.height - ratio * (canvas.height * 0.82) - 30;
-      ctx.beginPath();
-      ctx.moveTo(centerX - 25, y);
-      ctx.lineTo(centerX + 5, y);
-      ctx.stroke();
-    });
-
-    ctx.font = 'bold 20px "Outfit", sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.fillText('SYMBIOLAB 250 mL', centerX - 185, 95);
-    ctx.font = '600 16px "JetBrains Mono", monospace';
-    ctx.fillText('BORO 3.3 · ±5% · 25°C', centerX - 185, 122);
+    const centerX = 512;
+    for (let ml = 25; ml <= 250; ml += 25) {
+      const y = canvas.height * (1 - (0.02 + 0.8 * ml / 250) / 0.86);
+      const major = ml % 50 === 0;
+      ctx.beginPath(); ctx.moveTo(centerX - (major ? 34 : 18), y); ctx.lineTo(centerX, y); ctx.stroke();
+      if (major) ctx.fillText(String(ml), centerX + 12, y + 6);
+    }
+    ctx.font = '500 17px sans-serif';
+    ctx.fillText('mL', centerX - 32, 24);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
@@ -231,37 +256,18 @@
     specLine = '0.01 mol/L · 100 mL'
   ): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 256;
+    canvas.width = 768; canvas.height = 384;
     const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const lx = 300;
-    const lw = 424;
-    const ly = 22;
-    const lh = 212;
-
-    ctx.fillStyle = 'rgba(248, 250, 252, 0.96)';
-    ctx.beginPath();
-    ctx.roundRect(lx, ly, lw, lh, 18);
-    ctx.fill();
-
-    ctx.fillStyle = accentHex;
-    ctx.beginPath();
-    ctx.roundRect(lx, ly, 28, lh, [18, 0, 0, 18]);
-    ctx.fill();
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '800 44px "JetBrains Mono", monospace';
-    ctx.fillText(formula.slice(0, 12), lx + 44, ly + 82);
-
-    ctx.fillStyle = '#334155';
-    ctx.font = 'bold 26px "Outfit", sans-serif';
-    ctx.fillText(subtitle.slice(0, 22), lx + 44, ly + 132);
-
-    ctx.fillStyle = accentHex;
-    ctx.font = 'bold 22px "JetBrains Mono", monospace';
-    ctx.fillText(specLine, lx + 44, ly + 178);
+    ctx.fillStyle = '#eaf0ed'; ctx.fillRect(0, 0, 768, 384);
+    ctx.fillStyle = accentHex; ctx.fillRect(0, 0, 20, 384);
+    ctx.fillStyle = '#263d43'; ctx.font = '600 26px sans-serif';
+    ctx.fillText('SYMBIOLAB  /  REACTIVO VIRTUAL', 52, 57);
+    ctx.font = '700 100px sans-serif'; ctx.fillStyle = '#132a31';
+    ctx.fillText(formula, 48, 180, 670);
+    ctx.font = '500 35px sans-serif'; ctx.fillStyle = '#354e57';
+    ctx.fillText(subtitle, 52, 250, 660);
+    ctx.font = '500 31px monospace'; ctx.fillStyle = '#354e57';
+    ctx.fillText(specLine, 52, 326, 660);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
@@ -269,113 +275,29 @@
   }
 
   /**
-   * Genera la textura de las páginas abiertas del Libro de Experimentos Caseros en la mesa
+   * Genera la textura de las páginas abiertas del Libro de Actividades de química en la mesa
    */
   function createOpenBookPagesTexture(): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 768;
+    canvas.width = 1024; canvas.height = 768;
     const ctx = canvas.getContext('2d')!;
-
-    // Papel crema cálido de libro ilustrado
-    ctx.fillStyle = '#fefce8';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Sombra del pliegue central entre ambas páginas
-    const spineGrad = ctx.createLinearGradient(470, 0, 554, 0);
-    spineGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    spineGrad.addColorStop(0.5, 'rgba(30, 27, 75, 0.35)');
-    spineGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = spineGrad;
-    ctx.fillRect(460, 0, 104, canvas.height);
-
-    // Marco decorativo en ambas páginas
-    ctx.strokeStyle = '#d97706';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(32, 32, 444, canvas.height - 64);
-    ctx.strokeRect(548, 32, 444, canvas.height - 64);
-
-    // PÁGINA IZQUIERDA: Título + Miniatura de Video
-    ctx.fillStyle = '#b45309';
-    ctx.font = 'bold 22px "Outfit", sans-serif';
-    ctx.fillText('GUÍA INTERACTIVA · EN CASA', 58, 82);
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '800 38px "Outfit", sans-serif';
-    ctx.fillText('Experimentos', 58, 132);
-    ctx.fillText('Caseros + Video', 58, 174);
-
-    // Recuadro de reproductor de video ilustrado en la página izquierda
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.roundRect(58, 210, 392, 230, 16);
-    ctx.fill();
-
-    // Botón Play central en la ilustración del video
-    ctx.fillStyle = '#f59e0b';
-    ctx.beginPath();
-    ctx.arc(254, 325, 42, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.moveTo(242, 304);
-    ctx.lineTo(242, 346);
-    ctx.lineTo(276, 325);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#334155';
-    ctx.font = 'bold 22px "Outfit", sans-serif';
-    ctx.fillText('1. Col Morada + Limón (pH)', 58, 495);
-    ctx.fillText('2. Vinagre + Bicarbonato', 58, 535);
-    ctx.fillText('3. Titulación HCl + NaOH', 58, 575);
-
-    ctx.fillStyle = '#d97706';
-    ctx.font = 'bold 24px "Outfit", sans-serif';
-    ctx.fillText('👉 HAZ CLIC PARA ABRIR', 58, 655);
-
-    // PÁGINA DERECHA: Diagrama de Escala de pH Casero y vasos
-    ctx.fillStyle = '#4f46e5';
-    ctx.font = 'bold 24px "Outfit", sans-serif';
-    ctx.fillText('ESCALA DE COLOR NATURAL', 576, 85);
-
-    const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
-    const labels = ['Limón (pH 2)', 'Vinagre (pH 3)', 'Agua (pH 7)', 'Bicarbonato (9)', 'Alcalino (12)'];
-    colors.forEach((c, idx) => {
-      const y = 130 + idx * 82;
-      ctx.fillStyle = c;
-      ctx.beginPath();
-      ctx.roundRect(576, y, 64, 54, 12);
-      ctx.fill();
-
-      ctx.fillStyle = '#1e293b';
-      ctx.font = 'bold 26px "Outfit", sans-serif';
-      ctx.fillText(labels[idx], 660, y + 36);
-    });
-
-    // Botón impreso en la página derecha
-    ctx.fillStyle = '#10b981';
-    ctx.beginPath();
-    ctx.roundRect(576, 565, 386, 95, 18);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 28px "Outfit", sans-serif';
-    ctx.fillText('VER VIDEO Y PRACTICAR', 602, 622);
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.anisotropy = 4;
-    return tex;
+    ctx.fillStyle = '#e2e8f0'; ctx.fillRect(0, 0, 1024, 768);
+    ctx.fillStyle = '#172554'; ctx.font = 'bold 48px sans-serif';
+    ctx.fillText('EXPLORA', 60, 110); ctx.fillText('OBSERVA', 560, 110);
+    ctx.font = '28px sans-serif';
+    const topics = labStore.isExplorationMode
+      ? ['Acidos y bases', 'Equilibrio y tampones', 'Carbonatos y CO2', 'Precipitacion', 'Yodo y almidon']
+      : ['HCl y NaOH', 'Modelo a 25 C', 'Neutralizacion', 'Indicador virtual', 'Conservacion'];
+    topics.forEach((t, i) => ctx.fillText(t, 60, 230 + i * 75));
+    ['Lee las fichas', 'Plantea tu pregunta', 'Mide y compara', 'Reconoce el peligro', 'Explica lo observado'].forEach((t, i) => ctx.fillText(t, 560, 230 + i * 75));
+    return new THREE.CanvasTexture(canvas);
   }
 
-  /**
-   * Construye el Libro 3D Interactivo de Experimentos Caseros en el costado derecho de la mesa
-   */
   function buildInteractiveHomeBook(): THREE.Group {
     const group = new THREE.Group();
     // Ubicado al costado derecho de la mesa, inclinado hacia el estudiante
-    group.position.set(1.52, 0.02, 0.34);
+    group.position.set(1.58, 0.02, 0.5);
+    group.scale.setScalar(0.66);
     group.rotation.y = -0.42;
     group.userData = { isHomeBook: true };
 
@@ -396,7 +318,7 @@
     // Tapa dura del libro (Cubierta color ámbar/índigo)
     const coverGeo = new THREE.BoxGeometry(0.66, 0.025, 0.46);
     const coverMat = new THREE.MeshStandardMaterial({
-      color: 0xd97706,
+      color: 0x617c7c,
       roughness: 0.35,
       metalness: 0.1
     });
@@ -412,7 +334,7 @@
       new THREE.MeshStandardMaterial({ color: 0xfef3c7 }), // right edge
       new THREE.MeshStandardMaterial({ color: 0xfef3c7 }), // left edge
       new THREE.MeshBasicMaterial({ map: pagesTex }), // top open pages!
-      new THREE.MeshStandardMaterial({ color: 0xd97706 }), // bottom
+      new THREE.MeshStandardMaterial({ color: 0x617c7c }), // bottom
       new THREE.MeshStandardMaterial({ color: 0xfef3c7 }), // front edge
       new THREE.MeshStandardMaterial({ color: 0xfef3c7 }) // back edge
     ];
@@ -435,7 +357,7 @@
     // Aro luminoso pulsante alrededor del libro para indicar que es interactivo
     const glowGeo = new THREE.RingGeometry(0.42, 0.47, 48);
     const glowMat = new THREE.MeshBasicMaterial({
-      color: 0xf59e0b,
+      color: 0xbad3cc,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.55
@@ -461,134 +383,73 @@
    * y el entorno arquitectónico de laboratorio al fondo.
    */
   function buildLabEnvironmentAndRack(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
-    const envGroup = new THREE.Group();
-
-    // 1. Pared trasera de laboratorio con paneles científicos oscuros
-    const wallGeo = new THREE.BoxGeometry(5.6, 3.2, 0.12);
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: 0x0d1322,
-      roughness: 0.5,
-      metalness: 0.2
+    const group = new THREE.Group();
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x193340, roughness: 0.9 });
+    const wall = roundedBox(5.4, 3.1, 0.12, 0.04, wallMat);
+    wall.position.set(0, 0.95, -1.5); group.add(wall);
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0x203e4b, roughness: 0.85 });
+    [-1.7, 0, 1.7].forEach(x => {
+      const panel = roundedBox(1.62, 2.12, 0.02, 0.01, panelMat);
+      panel.position.set(x, 1.1, -1.425); group.add(panel);
     });
-    const backWall = new THREE.Mesh(wallGeo, wallMat);
-    backWall.position.set(0, 1.4, -1.18);
-    backWall.receiveShadow = true;
-    envGroup.add(backWall);
-
-    // Estante superior de laboratorio en la pared trasera
-    const shelfGeo = new THREE.BoxGeometry(3.8, 0.06, 0.38);
-    const shelfMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.3,
-      metalness: 0.6
+    const shelfMat = new THREE.MeshStandardMaterial({ color: 0x40545c, roughness: 0.45, metalness: 0.35 });
+    const shelf = roundedBox(4.2, 0.04, 0.3, 0.015, shelfMat);
+    shelf.position.set(0, 1.38, -1.27); group.add(shelf);
+    const diffuser = new THREE.Mesh(new THREE.BoxGeometry(3.95, 0.008, 0.016), new THREE.MeshBasicMaterial({ color: 0xaddbd7 }));
+    diffuser.position.set(0, 1.353, -1.13); group.add(diffuser);
+    const amber = new THREE.MeshStandardMaterial({ color: 0x5b4630, roughness: 0.3, metalness: 0.1 });
+    [-1.6, -1.3, 1.55].forEach(x => {
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.21, 20), amber);
+      bottle.position.set(x, 1.505, -1.28); group.add(bottle);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.041, 0.041, 0.04, 16), shelfMat);
+      cap.position.set(x, 1.63, -1.28); group.add(cap);
     });
-    const shelf = new THREE.Mesh(shelfGeo, shelfMat);
-    shelf.position.set(0, 1.72, -0.95);
-    shelf.castShadow = true;
-    envGroup.add(shelf);
+    const sign = textPlate('SYMBIOLAB  /  OBSERVA Y DESCUBRE', 1.38, 0.16, '#c4d8da', '#203e4b');
+    sign.position.set(0.25, 1.72, -1.4); group.add(sign);
 
-    // Tira de luz LED cálida/científica bajo el estante superior
-    const ledStripGeo = new THREE.BoxGeometry(3.4, 0.015, 0.03);
-    const ledStripMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const ledStrip = new THREE.Mesh(ledStripGeo, ledStripMat);
-    ledStrip.position.set(0, 1.68, -0.82);
-    envGroup.add(ledStrip);
-
-    // Frascos ámbar de reserva en el estante superior (decoración de laboratorio)
-    const amberMat = new THREE.MeshPhysicalMaterial({
-      color: 0xb45309,
-      transmission: 0.65,
-      transparent: true,
-      roughness: 0.15,
-      ior: 1.5
+    const rack = new THREE.Group(); rack.position.set(1.02, 0, -0.83);
+    const rackMat = new THREE.MeshStandardMaterial({ color: 0xc2ccca, roughness: 0.4, metalness: 0.25 });
+    const tray = roundedBox(0.82, 0.04, 0.23, 0.016, rackMat); tray.position.y = 0.025; rack.add(tray);
+    [-0.37, 0.37].forEach(x => {
+      const upright = roundedBox(0.025, 0.25, 0.17, 0.008, rackMat);
+      upright.position.set(x, 0.16, 0); rack.add(upright);
     });
-    [-1.2, -0.85, 0.9, 1.25].forEach((bx) => {
-      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.28, 24), amberMat);
-      bottle.position.set(bx, 1.89, -0.95);
-      envGroup.add(bottle);
-      const cap = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.045, 0.045, 0.06, 16),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a })
-      );
-      cap.position.set(bx, 2.05, -0.95);
-      envGroup.add(cap);
+    [-0.075, 0.075].forEach(z => {
+      const support = roundedBox(0.78, 0.025, 0.025, 0.008, rackMat);
+      support.position.set(0, 0.27, z); rack.add(support);
     });
-
-    // 2. Gradilla de Tubos de Ensayo con los 5 Colores Patrón de pH en la mesa (atrás a la derecha)
-    const rackGroup = new THREE.Group();
-    rackGroup.position.set(0.78, 0.0, -0.52);
-    rackGroup.rotation.y = -0.18;
-
-    const rackFrameMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      roughness: 0.35,
-      metalness: 0.7
+    [0xf0a18e, 0xe7c77d, 0x8ed1a5, 0x73b9ce, 0xae9bda].forEach((color, i) => {
+      const x = (i - 2) * 0.14;
+      const tube = new THREE.Mesh(new THREE.LatheGeometry([
+        new THREE.Vector2(0, 0), new THREE.Vector2(0.025, 0.008),
+        new THREE.Vector2(0.032, 0.04), new THREE.Vector2(0.032, 0.37),
+        new THREE.Vector2(0.027, 0.37), new THREE.Vector2(0.025, 0.04), new THREE.Vector2(0, 0.016)
+      ], 20), glassMaterial);
+      tube.position.set(x, 0.05, 0); tube.renderOrder = 3; rack.add(tube);
+      const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.17, 18), new THREE.MeshStandardMaterial({ color, roughness: 0.28, transparent: true, opacity: 0.9 }));
+      liquid.position.set(x, 0.15, 0); liquid.renderOrder = 2; rack.add(liquid);
     });
-
-    const bottomBar = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.03, 0.18), rackFrameMat);
-    bottomBar.position.y = 0.015;
-    rackGroup.add(bottomBar);
-
-    const topBar = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.025, 0.18), rackFrameMat);
-    topBar.position.y = 0.26;
-    rackGroup.add(topBar);
-
-    [-0.31, 0.31].forEach((px) => {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.26, 12), rackFrameMat);
-      pillar.position.set(px, 0.135, 0);
-      rackGroup.add(pillar);
-    });
-
-    const refColors = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0x8b5cf6];
-    refColors.forEach((colHex, idx) => {
-      const tx = (idx - 2) * 0.12;
-      // Tubo de cristal
-      const tubeGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.38, 24);
-      const tubeMesh = new THREE.Mesh(tubeGeo, glassMaterial);
-      tubeMesh.position.set(tx, 0.22, 0);
-      rackGroup.add(tubeMesh);
-
-      // Muestra líquida coloreada según pH patrón
-      const sampleGeo = new THREE.CylinderGeometry(0.027, 0.027, 0.24, 20);
-      const sampleMat = new THREE.MeshBasicMaterial({
-        color: colHex,
-        transparent: true,
-        opacity: 0.88
-      });
-      const sampleMesh = new THREE.Mesh(sampleGeo, sampleMat);
-      sampleMesh.position.set(tx, 0.15, 0);
-      rackGroup.add(sampleMesh);
-    });
-
-    envGroup.add(rackGroup);
-    return envGroup;
+    const rackLabel = textPlate('REFERENCIA DE INDICADOR', 0.67, 0.048, '#3b5259', '#c2ccca');
+    rackLabel.position.set(0, 0.071, 0.117); rack.add(rackLabel);
+    group.add(rack);
+    return group;
   }
 
   function buildCentralBeakerStation(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const station = new THREE.Group();
     station.position.set(0, 0, 0);
 
-    const plateBaseGeo = new THREE.CylinderGeometry(0.56, 0.62, 0.09, 48);
-    const plateBaseMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.35,
-      metalness: 0.6
-    });
-    const plateBase = new THREE.Mesh(plateBaseGeo, plateBaseMat);
-    plateBase.position.y = 0.045;
-    plateBase.castShadow = true;
-    plateBase.receiveShadow = true;
-    station.add(plateBase);
-
-    const topCeramicGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.015, 48);
-    const topCeramicMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
-      roughness: 0.2,
-      metalness: 0.3
-    });
-    const topCeramic = new THREE.Mesh(topCeramicGeo, topCeramicMat);
-    topCeramic.position.y = 0.095;
-    station.add(topCeramic);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd2d9d6, roughness: 0.42, metalness: 0.15 });
+    const plateBase = roundedBox(1.12, 0.09, 1.04, 0.035, bodyMat);
+    plateBase.position.y = 0.045; station.add(plateBase);
+    const top = roundedBox(0.94, 0.015, 0.83, 0.007, new THREE.MeshStandardMaterial({ color: 0xa9b6b4, roughness: 0.6, metalness: 0.12 }));
+    top.position.y = 0.095; station.add(top);
+    const front = textPlate('AGITADOR  /  VIRTUAL', 0.62, 0.043, '#39525c', '#d2d9d6');
+    front.position.set(-0.12, 0.048, 0.524); station.add(front);
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.022, 24), new THREE.MeshStandardMaterial({ color: 0x354d56, roughness: 0.5, metalness: 0.3 }));
+    knob.rotation.x = Math.PI / 2; knob.position.set(0.4, 0.048, 0.53); station.add(knob);
+    const status = new THREE.Mesh(new THREE.CircleGeometry(0.009, 12), new THREE.MeshBasicMaterial({ color: 0x93d7be }));
+    status.position.set(0.31, 0.048, 0.533); station.add(status);
 
     const beakerYOffset = 0.1;
     const pts: THREE.Vector2[] = [
@@ -608,8 +469,8 @@
     beakerMesh.renderOrder = 3;
     station.add(beakerMesh);
 
-    const rimGeo = new THREE.TorusGeometry(0.41, 0.016, 16, 64);
-    const rimMesh = new THREE.Mesh(rimGeo, glassMaterial);
+    const rimGeo = new THREE.TorusGeometry(0.41, 0.009, 10, 64);
+    const rimMesh = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ color: 0xb3ced6, transparent: true, opacity: 0.55, roughness: 0.2, metalness: 0.15 }));
     rimMesh.rotation.x = Math.PI / 2;
     rimMesh.position.y = beakerYOffset + 0.925;
     station.add(rimMesh);
@@ -624,14 +485,14 @@
     });
     const gradMesh = new THREE.Mesh(gradGeo, gradMat);
     gradMesh.position.y = beakerYOffset + 0.45;
-    gradMesh.rotation.y = -Math.PI / 2;
+    gradMesh.rotation.y = Math.PI - 0.18;
     gradMesh.renderOrder = 4;
     station.add(gradMesh);
 
     const liquidGeo = new THREE.CylinderGeometry(0.38, 0.375, 0.8, 48);
     beakerLiquidMat = new THREE.MeshPhysicalMaterial({
       color: 0x10b981,
-      transmission: 0.55,
+      transmission: explorationStore.renderQuality === 'basic' ? 0 : 0.55,
       opacity: 0.9,
       transparent: true,
       roughness: 0.12,
@@ -680,17 +541,17 @@
     xPos: number,
     glassMaterial: THREE.MeshPhysicalMaterial
   ): FlaskRig {
-    const coasterGeo = new THREE.CylinderGeometry(0.36, 0.38, 0.02, 36);
+    const coasterGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.012, 40);
     const coasterMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
+      color: 0x2a414b,
       roughness: 0.8
     });
     const coaster = new THREE.Mesh(coasterGeo, coasterMat);
-    coaster.position.set(xPos, 0.01, 0.15);
+    coaster.position.set(xPos, 0.006, 0.25);
     coaster.receiveShadow = true;
     scene.add(coaster);
 
-    const ringGeo = new THREE.RingGeometry(0.37, 0.42, 48);
+    const ringGeo = new THREE.RingGeometry(0.345, 0.358, 48);
     const ringMat = new THREE.MeshBasicMaterial({
       color: colorHex,
       side: THREE.DoubleSide,
@@ -699,11 +560,11 @@
     });
     const ringMesh = new THREE.Mesh(ringGeo, ringMat);
     ringMesh.rotation.x = -Math.PI / 2;
-    ringMesh.position.set(xPos, 0.015, 0.15);
+    ringMesh.position.set(xPos, 0.014, 0.25);
     scene.add(ringMesh);
 
     const group = new THREE.Group();
-    const homePos = new THREE.Vector3(xPos, 0.02, 0.15);
+    const homePos = new THREE.Vector3(xPos, 0.02, 0.25);
     group.position.copy(homePos);
     group.userData = { flaskId: id };
 
@@ -725,31 +586,38 @@
     flaskMesh.castShadow = true;
     flaskMesh.renderOrder = 3;
     group.add(flaskMesh);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.117, 0.008, 8, 40), new THREE.MeshStandardMaterial({ color: 0xb3ced6, transparent: true, opacity: 0.65, roughness: 0.18 }));
+    lip.rotation.x = Math.PI / 2; lip.position.y = 0.81; group.add(lip);
+    const marker = textPlate(id === 'hcl' ? 'A  /  REACTIVO' : 'B  /  REACTIVO', 0.43, 0.068, '#bed4da', '#2a414b');
+    marker.rotation.x = -Math.PI / 2; marker.position.set(xPos, 0.015, 0.67); scene.add(marker);
 
-    const liqGeo = new THREE.CylinderGeometry(0.17, 0.305, 0.34, 40);
+    const liqGeo = new THREE.BufferGeometry();
+    liqGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9216), 3).setUsage(THREE.DynamicDrawUsage));
     const liquidMat = new THREE.MeshPhysicalMaterial({
       color: colorHex,
-      transmission: 0.5,
+      transmission: explorationStore.renderQuality === 'basic' ? 0 : 0.5,
       transparent: true,
       opacity: 0.88,
       roughness: 0.15,
-      ior: 1.33
+      ior: 1.33,
+      side: THREE.DoubleSide
     });
     const liquidMesh = new THREE.Mesh(liqGeo, liquidMat);
-    liquidMesh.position.y = 0.03 + 0.17;
+    liquidMesh.position.y = 0;
     liquidMesh.renderOrder = 2;
     group.add(liquidMesh);
 
-    const labelGeo = new THREE.CylinderGeometry(0.195, 0.275, 0.22, 48, 1, true);
-    const labelTex = createFlaskLabelTexture(formula, subtitle, accentCss);
+    const labelGeo = new THREE.CylinderGeometry(0.232, 0.309, 0.16, 40, 1, true, -0.85, 1.7);
+    const data = labStore.reagents.find(r => r.reagentId === id)!;
+    const labelTex = createFlaskLabelTexture(formula, subtitle, accentCss, `${data.concentrationMolPerL} mol/L · ${data.initialMl} mL`);
     const labelMat = new THREE.MeshBasicMaterial({
       map: labelTex,
       transparent: true,
       depthWrite: false
     });
     const labelMesh = new THREE.Mesh(labelGeo, labelMat);
-    labelMesh.position.y = 0.28;
-    labelMesh.rotation.y = -Math.PI / 2;
+    labelMesh.position.y = 0.23;
+    labelMesh.rotation.y = 0;
     labelMesh.renderOrder = 4;
     group.add(labelMesh);
 
@@ -773,77 +641,58 @@
       homePos,
       targetPos: homePos.clone(),
       targetRotZ: 0,
+      fluidHeight: 0,
+      fluidKey: '',
       colorHex
     };
   }
 
   function buildPhMeterInstrument(): THREE.Group {
-    const meterGroup = new THREE.Group();
-
-    const baseGeo = new THREE.BoxGeometry(0.36, 0.05, 0.36);
-    const metalMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      roughness: 0.3,
-      metalness: 0.8
-    });
-    const base = new THREE.Mesh(baseGeo, metalMat);
-    base.position.set(-0.62, 0.025, -0.35);
-    base.castShadow = true;
-    meterGroup.add(base);
-
-    const rodGeo = new THREE.CylinderGeometry(0.02, 0.02, 1.35, 24);
-    const chromeMat = new THREE.MeshStandardMaterial({
-      color: 0xcbd5e1,
-      roughness: 0.15,
-      metalness: 0.9
-    });
-    const rod = new THREE.Mesh(rodGeo, chromeMat);
-    rod.position.set(-0.62, 0.7, -0.35);
-    meterGroup.add(rod);
-
-    const armGeo = new THREE.BoxGeometry(0.68, 0.03, 0.04);
-    const arm = new THREE.Mesh(armGeo, metalMat);
-    arm.position.set(-0.32, 1.24, -0.18);
-    arm.rotation.y = -0.48;
-    meterGroup.add(arm);
-
-    const probeGeo = new THREE.CylinderGeometry(0.022, 0.018, 0.95, 24);
-    const probeMat = new THREE.MeshStandardMaterial({
-      color: 0x0ea5e9,
-      roughness: 0.2,
-      metalness: 0.4
-    });
-    const probe = new THREE.Mesh(probeGeo, probeMat);
-    probe.position.set(-0.14, 0.82, -0.06);
-    meterGroup.add(probe);
-
-    const tipGeo = new THREE.SphereGeometry(0.024, 16, 16);
-    const tipMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const tip = new THREE.Mesh(tipGeo, tipMat);
-    tip.position.set(-0.14, 0.34, -0.06);
-    meterGroup.add(tip);
-
-    const screenBodyGeo = new THREE.BoxGeometry(0.58, 0.38, 0.06);
-    const screenBody = new THREE.Mesh(screenBodyGeo, metalMat);
-    screenBody.position.set(-0.66, 0.98, -0.32);
-    screenBody.rotation.y = 0.32;
-    meterGroup.add(screenBody);
-
+    const group = new THREE.Group();
+    const housing = new THREE.MeshStandardMaterial({ color: 0xbfcac9, roughness: 0.4, metalness: 0.15 });
+    const graphite = new THREE.MeshStandardMaterial({ color: 0x2c434e, roughness: 0.5, metalness: 0.25 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9caeb3, roughness: 0.28, metalness: 0.7 });
+    const foot = roundedBox(0.54, 0.04, 0.34, 0.015, graphite);
+    foot.position.set(-0.83, 0.026, -0.65); group.add(foot);
+    const support = roundedBox(0.06, 0.51, 0.055, 0.015, steel);
+    support.position.set(-0.83, 0.29, -0.69); group.add(support);
+    const body = roundedBox(0.68, 0.38, 0.09, 0.035, housing);
+    body.position.set(-0.83, 0.63, -0.62); body.rotation.x = -0.2; group.add(body);
     phScreenCanvas = document.createElement('canvas');
-    phScreenCanvas.width = 512;
-    phScreenCanvas.height = 256;
+    phScreenCanvas.width = 512; phScreenCanvas.height = 256;
     phScreenCtx = phScreenCanvas.getContext('2d');
-    phScreenTexture = new THREE.CanvasTexture(phScreenCanvas);
-
-    const displayPlaneGeo = new THREE.PlaneGeometry(0.54, 0.34);
-    const displayPlaneMat = new THREE.MeshBasicMaterial({ map: phScreenTexture });
-    const displayPlane = new THREE.Mesh(displayPlaneGeo, displayPlaneMat);
-    displayPlane.position.set(0, 0, 0.032);
-    screenBody.add(displayPlane);
-
-    drawPhMeterScreen(7.0, 25.0, 'Neutro / Equivalencia', '#10b981', 50);
-
-    return meterGroup;
+    phScreenTexture = new THREE.CanvasTexture(phScreenCanvas); phScreenTexture.colorSpace = THREE.SRGBColorSpace;
+    const display = new THREE.Mesh(new THREE.PlaneGeometry(0.59, 0.295), new THREE.MeshBasicMaterial({ map: phScreenTexture, toneMapped: false }));
+    display.position.set(0, 0.018, 0.047); body.add(display);
+    [-0.2, 0, 0.2].forEach(x => {
+      const key = roundedBox(0.08, 0.02, 0.007, 0.003, graphite);
+      key.position.set(x, -0.157, 0.047); body.add(key);
+    });
+    const standFoot = roundedBox(0.3, 0.04, 0.29, 0.015, graphite);
+    standFoot.position.set(0.59, 0.026, -0.43); group.add(standFoot);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 1.23, 18), steel);
+    rod.position.set(0.59, 0.65, -0.43); group.add(rod);
+    const start = new THREE.Vector3(0.59, 1.23, -0.43), end = new THREE.Vector3(0.12, 1.23, 0.04);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, start.distanceTo(end), 16), steel);
+    arm.position.copy(start).add(end).multiplyScalar(0.5);
+    arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize()); group.add(arm);
+    const clamp = roundedBox(0.065, 0.07, 0.065, 0.012, graphite);
+    clamp.position.copy(start); group.add(clamp);
+    const probeHead = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.14, 18), graphite);
+    probeHead.position.set(0.12, 1.15, 0.04); group.add(probeHead);
+    const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.86, 18), new THREE.MeshStandardMaterial({ color: 0xa6c7cd, roughness: 0.3, metalness: 0.15, transparent: true, opacity: 0.65 }));
+    probe.position.set(0.12, 0.65, 0.04); group.add(probe);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 12), new THREE.MeshStandardMaterial({ color: 0xb3dcd5, roughness: 0.23 }));
+    tip.position.set(0.12, 0.21, 0.04); group.add(tip);
+    const cable = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.72, 0.60, -0.7), new THREE.Vector3(-0.55, 0.15, -0.95),
+      new THREE.Vector3(0.4, 0.13, -0.85), new THREE.Vector3(0.6, 1.27, -0.45), new THREE.Vector3(0.12, 1.27, 0.04)
+    ]);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(cable, 45, 0.007, 6, false), graphite));
+    const current = explorationStore.result;
+    drawPhMeterScreen(labStore.isExplorationMode ? current.pH : labStore.beaker.currentResult?.pH ?? 7,
+      labStore.isExplorationMode ? current.temperatureC : 25, 'REFERENCIA 25 C', current.color, labStore.totalVolumeMl);
+    return group;
   }
 
   onMount(() => {
@@ -851,43 +700,46 @@
     const height = container.clientHeight;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x080c14);
-    scene.fog = new THREE.FogExp2(0x080c14, 0.075);
+    scene.background = new THREE.Color(0x142833);
+    scene.fog = new THREE.FogExp2(0x142833, 0.045);
 
     camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
-    camera.position.set(0.12, 1.42, 2.55);
+    camera.position.set(0.08, 1.9, 3.45);
 
+    const basicGraphics = explorationStore.renderQuality === 'basic';
     renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: 'high-performance'
     });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, basicGraphics ? 1 : 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.18;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !basicGraphics;
     renderer.shadowMap.type = THREE.PCFShadowMap;
 
     renderer.domElement.setAttribute('role', 'img');
     renderer.domElement.setAttribute(
       'aria-label',
-      'Laboratorio químico 3D interactivo con vaso de precipitado de 250 mL, pH-metro digital, matraces reactivos, gradilla colorimétrica y Libro de Experimentos Caseros en la mesa.'
+      'Laboratorio químico 3D interactivo con vaso de precipitado de 250 mL, pH-metro digital, matraces reactivos, gradilla colorimétrica y Libro de Actividades de química en la mesa.'
     );
     container.appendChild(renderer.domElement);
 
+    if (!basicGraphics) {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const roomEnv = new RoomEnvironment();
     scene.environment = pmremGenerator.fromScene(roomEnv, 0.04).texture;
     scene.environmentIntensity = 0.88;
     roomEnv.dispose();
     pmremGenerator.dispose();
+    }
 
     controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0.15, 0.48, 0);
+    controls.target.set(0, 0.57, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
-    controls.minDistance = 1.5;
-    controls.maxDistance = 3.8;
+    controls.minDistance = 2.1;
+    controls.maxDistance = 5.2;
     controls.minPolarAngle = Math.PI * 0.2;
     controls.maxPolarAngle = Math.PI * 0.46;
     controls.minAzimuthAngle = -Math.PI * 0.35;
@@ -896,67 +748,60 @@
     controls.update();
 
     // Iluminación
-    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.6);
+    const ambientLight = new THREE.HemisphereLight(0xd7e9ed, 0x293b43, 1.35);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.3);
+    const keyLight = new THREE.DirectionalLight(0xfff5e6, 2.4);
     keyLight.position.set(2.5, 4.5, 3.0);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.bias = -0.0005;
     scene.add(keyLight);
 
-    const rimLight = new THREE.SpotLight(0x38bdf8, 8, 10, Math.PI / 3, 0.5);
+    const rimLight = new THREE.SpotLight(0xa8d9e0, 6, 10, Math.PI / 3, 0.5);
     rimLight.position.set(-2.5, 3.0, -2.0);
     scene.add(rimLight);
 
-    // Luz cálida focalizada sobre el Libro de Experimentos Caseros a la derecha
+    // Luz cálida focalizada sobre el Libro de Actividades de química a la derecha
     const bookSpotLight = new THREE.SpotLight(0xfbbf24, 5.5, 5, Math.PI / 4, 0.6);
     bookSpotLight.position.set(1.6, 1.8, 1.1);
     bookSpotLight.target.position.set(1.52, 0, 0.34);
     scene.add(bookSpotLight);
     scene.add(bookSpotLight.target);
 
-    underGlowLight = new THREE.PointLight(0x10b981, 3.5, 1.8);
+    underGlowLight = new THREE.PointLight(0x10b981, 0.35, 1.1);
     underGlowLight.position.set(0, 0.25, 0);
     scene.add(underGlowLight);
 
-    // Mesa de Laboratorio + Mueble inferior
-    const benchGeo = new THREE.BoxGeometry(5.2, 0.14, 2.4);
-    const benchMat = new THREE.MeshStandardMaterial({
-      color: 0x131b2e,
-      roughness: 0.26,
-      metalness: 0.18
+    // Rounded composite worktop, quiet work mat and grounded supports.
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x819397, roughness: 0.58, metalness: 0.15 });
+    const bench = roundedBox(4.8, 0.16, 2.65, 0.06, benchMat);
+    bench.position.y = -0.08; scene.add(bench);
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0x334c59, roughness: 0.4, metalness: 0.45 });
+    const underside = roundedBox(4.65, 0.08, 2.48, 0.035, trimMat);
+    underside.position.y = -0.2; scene.add(underside);
+    [-2.05, 2.05].forEach(x => {
+      const leg = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      leg.position.set(x, -0.88, 0.7); scene.add(leg);
     });
-    const bench = new THREE.Mesh(benchGeo, benchMat);
-    bench.position.set(0, -0.07, 0);
-    bench.receiveShadow = true;
-    scene.add(bench);
-
-    const railGeo = new THREE.BoxGeometry(5.22, 0.04, 0.04);
-    const railMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      roughness: 0.25,
-      metalness: 0.85
-    });
-    const rail = new THREE.Mesh(railGeo, railMat);
-    rail.position.set(0, -0.01, 1.2);
-    scene.add(rail);
-
-    const grid = new THREE.GridHelper(5.0, 25, 0x1e293b, 0x1e293b);
-    grid.position.y = 0.002;
-    scene.add(grid);
+    const mat = roundedBox(3.94, 0.008, 1.97, 0.003, new THREE.MeshStandardMaterial({ color: 0x253d47, roughness: 0.95 }));
+    mat.position.set(0, 0.004, 0.02); scene.add(mat);
+    const matLabel = textPlate('SYMBIOLAB  /  QUÍMICA VIRTUAL', 0.88, 0.055, '#819da7', '#253d47');
+    matLabel.rotation.x = -Math.PI / 2; matLabel.position.set(-1.15, 0.009, -0.86); scene.add(matLabel);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: 0x172a34, roughness: 1 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -1.55; floor.receiveShadow = true; scene.add(floor);
 
     const borosilicateGlassMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transmission: 0.92,
-      opacity: 1,
+      color: 0xcce4ec,
+      transmission: basicGraphics ? 0 : 0.92,
+      opacity: basicGraphics ? 0.10 : 1,
+      depthWrite: !basicGraphics,
       transparent: true,
       roughness: 0.06,
       ior: 1.47,
       thickness: 0.08,
       reflectivity: 0.9,
-      side: THREE.DoubleSide
+      side: THREE.FrontSide
     });
 
     // Entorno arquitectónico + Gradilla de tubos de ensayo
@@ -973,27 +818,39 @@
     // Matraces Erlenmeyer (Izquierda y Derecha)
     const hclRig = buildErlenmeyerFlask(
       'hcl',
-      'HCl 0.01 M',
-      'Ácido Clorhídrico',
-      0xef4444,
-      '#ef4444',
-      -0.96,
+      labStore.reagents[0].formula,
+      labStore.reagents[0].name,
+      parseInt(labStore.reagents[0].colorHex.slice(1), 16),
+      labStore.reagents[0].colorHex,
+      -1.08,
       borosilicateGlassMat
     );
     const naohRig = buildErlenmeyerFlask(
       'naoh',
-      'NaOH 0.01 M',
-      'Hidróxido de Sodio',
-      0x8b5cf6,
-      '#8b5cf6',
-      0.78,
+      labStore.reagents[1].formula,
+      labStore.reagents[1].name,
+      parseInt(labStore.reagents[1].colorHex.slice(1), 16),
+      labStore.reagents[1].colorHex,
+      1.08,
       borosilicateGlassMat
     );
     flasks = { hcl: hclRig, naoh: naohRig };
 
-    // Libro 3D de Experimentos Caseros en el costado derecho de la mesa
+    // Libro 3D de Actividades de química en el costado derecho de la mesa
     bookGroup = buildInteractiveHomeBook();
     scene.add(bookGroup);
+
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.415, 0.415, 0.018, 48),
+      new THREE.MeshStandardMaterial({ color: 0xa8bcbd, metalness: 0.5, roughness: 0.35, transparent: true, opacity: 0.72 }));
+    lid.position.set(0, 1.04, 0); lid.visible = false; scene.add(lid);
+    const sediment = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.1, 40),
+      new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.85 }));
+    sediment.position.set(0, 0.13, 0); sediment.visible = false; scene.add(sediment);
+    const bubbleGeo = new THREE.BufferGeometry();
+    bubbleGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(90), 3));
+    const bubbles = new THREE.Points(bubbleGeo, new THREE.PointsMaterial({ color: 0xe0f2fe, size: 0.018, transparent: true, opacity: 0.7 }));
+    bubbles.visible = false; scene.add(bubbles);
+    let lastGas = 0, bubblingUntil = 0;
 
     // Chorro de vertido 3D y partículas
     const streamGeo = new THREE.CylinderGeometry(0.012, 0.022, 0.65, 16);
@@ -1031,6 +888,36 @@
     const pointer = new THREE.Vector2();
     const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.15);
     const intersectPt = new THREE.Vector3();
+    const dragOffset = new THREE.Vector3();
+    let activePointerId: number | null = null;
+    let gestureFlaskId: 'hcl' | 'naoh' | null = null;
+    let wasPinched = false;
+    const gestureOffset = new THREE.Vector3();
+
+    function releaseGesture() {
+      if (gestureFlaskId) {
+        const rig = flasks[gestureFlaskId];
+        rig.targetPos.copy(rig.homePos);
+        rig.targetRotZ = 0;
+        flowAccumulator = 0;
+      }
+      gestureFlaskId = null;
+    }
+
+    function moveFlask(rig: FlaskRig, point: THREE.Vector3, tilt: number) {
+      const x = THREE.MathUtils.clamp(point.x, -1.4, 1.25);
+      const z = THREE.MathUtils.clamp(point.z, -0.4, 0.6);
+      const overZone = Math.hypot(x, z) < 0.68;
+      if (overZone) {
+        const side = rig.id === 'hcl' ? -1 : 1;
+        rig.targetPos.set(side * 0.9, 1.65, 0);
+        rig.targetRotZ = side * 1.95 * THREE.MathUtils.clamp(tilt, 0, 1);
+      } else {
+        rig.targetPos.set(x, 0.22, z);
+        rig.targetRotZ = 0;
+      }
+      return overZone;
+    }
 
     function updatePointer(e: PointerEvent) {
       const rect = renderer!.domElement.getBoundingClientRect();
@@ -1057,7 +944,7 @@
     }
 
     function onPointerDown(e: PointerEvent) {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || activePointerId !== null || labStore.activePourAnim || (labStore.isExplorationMode && explorationStore.pendingSafety)) return;
       const hit = checkInteractiveHit(e);
       if (!hit) return;
 
@@ -1067,8 +954,17 @@
       }
 
       if (hit.type === 'flask') {
+        releaseGesture();
         labStore.selectReagent(hit.id);
         draggedFlaskId = hit.id;
+        dragSource = e.pointerType === 'touch' ? 'touch' : 'mouse';
+        activePointerId = e.pointerId;
+        flowAccumulator = 0;
+        dragPlane.constant = -0.15;
+        if (raycaster.ray.intersectPlane(dragPlane, intersectPt)) {
+          dragOffset.copy(flasks[hit.id].group.position).sub(intersectPt);
+          dragOffset.y = 0;
+        }
         controls.enabled = false;
         renderer!.domElement.setPointerCapture(e.pointerId);
       }
@@ -1076,24 +972,13 @@
 
     function onPointerMove(e: PointerEvent) {
       if (draggedFlaskId) {
+        if (e.pointerId !== activePointerId) return;
         updatePointer(e);
         raycaster.setFromCamera(pointer, camera);
         if (raycaster.ray.intersectPlane(dragPlane, intersectPt)) {
           const rig = flasks[draggedFlaskId];
-          const clampedX = THREE.MathUtils.clamp(intersectPt.x, -1.4, 1.25);
-          const clampedZ = THREE.MathUtils.clamp(intersectPt.z, -0.4, 0.6);
-
-          const distToBeaker = Math.hypot(clampedX, clampedZ);
-          if (distToBeaker < 0.68) {
-            isOverPourZone = true;
-            const side = rig.id === 'hcl' ? -1 : 1;
-            rig.targetPos.set(side * 0.48, 1.05, 0);
-            rig.targetRotZ = side * -1.08;
-          } else {
-            isOverPourZone = false;
-            rig.targetPos.set(clampedX, 0.22, clampedZ);
-            rig.targetRotZ = 0;
-          }
+          intersectPt.add(dragOffset);
+          isOverPourZone = moveFlask(rig, intersectPt, 1);
         }
         return;
       }
@@ -1115,12 +1000,15 @@
     }
 
     function onPointerUp(e: PointerEvent) {
+      if (e.pointerId !== activePointerId) return;
       if (draggedFlaskId) {
         const rig = flasks[draggedFlaskId];
         rig.targetPos.copy(rig.homePos);
         rig.targetRotZ = 0;
         isOverPourZone = false;
         draggedFlaskId = null;
+        activePointerId = null;
+        flowAccumulator = 0;
         controls.enabled = true;
         if (renderer?.domElement.hasPointerCapture(e.pointerId)) {
           renderer.domElement.releasePointerCapture(e.pointerId);
@@ -1128,10 +1016,22 @@
       }
     }
 
-    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    // Captura antes de OrbitControls para que un arrastre no rote la cámara.
+    renderer.domElement.addEventListener('pointerdown', onPointerDown, true);
     renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('pointercancel', onPointerUp);
+    renderer.domElement.addEventListener('lostpointercapture', onPointerUp);
+    const cancelInteraction = () => {
+      if (activePointerId !== null) onPointerUp({ pointerId: activePointerId } as PointerEvent);
+      labStore.activePourAnim = null;
+      releaseGesture();
+    };
+    const onVisibility = () => { if (document.hidden) cancelInteraction(); };
+    window.addEventListener('blur', cancelInteraction);
+    document.addEventListener('visibilitychange', onVisibility);
 
+    let interactionRevision = labStore.presetRevision;
     timer = new Timer();
 
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -1143,6 +1043,34 @@
       timer.update(timestamp);
       const dt = Math.min(timer.getDelta(), 0.1);
       const elapsed = timer.getElapsed();
+      if (labStore.isExplorationMode) {
+        const r = explorationStore.result;
+        lid.visible = explorationStore.state.closed;
+        sediment.visible = (r.precipitateG ?? 0) > 1e-6;
+        sediment.scale.y = Math.min(1, (r.precipitateG ?? 0) * 2);
+        sediment.position.y = 0.12 + 0.05 * sediment.scale.y;
+        (sediment.material as THREE.MeshStandardMaterial).color.set(r.precipitateName?.includes('cobre') ? '#38bdf8' : '#f1f5f9');
+        const gas = r.gasMl ?? 0;
+        if (gas > lastGas + 1e-5) bubblingUntil = elapsed + 1.5;
+        lastGas = gas;
+        bubbles.visible = elapsed < bubblingUntil && !isReducedMotion;
+        const pos = bubbleGeo.getAttribute('position') as THREE.BufferAttribute;
+        if (bubbles.visible) {
+          for (let i = 0; i < 30; i++) {
+            const age = (elapsed * 0.7 + i / 30) % 1;
+            pos.setXYZ(i, Math.sin(i * 8) * 0.25, 0.14 + age * Math.max(0.02, 0.8 * currentFillRatio - 0.03), Math.cos(i * 7) * 0.25);
+          }
+          pos.needsUpdate = true;
+        }
+      }
+      if (interactionRevision !== labStore.presetRevision) {
+        interactionRevision = labStore.presetRevision;
+        cancelInteraction();
+        for (const rig of Object.values(flasks)) {
+          rig.targetPos.copy(rig.homePos);
+          rig.targetRotZ = 0;
+        }
+      }
 
       if (beakerLiquidMat) {
         beakerLiquidMat.color.lerp(targetLiquidColor, dt * 6);
@@ -1163,7 +1091,7 @@
         stirBarMesh.rotation.y += dt * 14;
       }
 
-      // Animación de realce cuando el usuario apunta al Libro de Experimentos Caseros en la mesa
+      // Animación de realce cuando el usuario apunta al Libro de Actividades de química en la mesa
       if (bookGroup && bookGlowRing) {
         const targetBookY = isBookHovered ? 0.065 : 0.02;
         bookGroup.position.y = THREE.MathUtils.lerp(bookGroup.position.y, targetBookY, dt * 10);
@@ -1172,86 +1100,147 @@
         (bookGlowRing.material as THREE.MeshBasicMaterial).opacity = isBookHovered ? 0.95 : 0.45;
       }
 
-      let isCurrentlyPouringStream = false;
-      let activeStreamColor = 0xef4444;
-      let streamX = 0;
-
-      if (draggedFlaskId && isOverPourZone) {
-        const rig = flasks[draggedFlaskId];
-        const reagentObj = labStore.reagents.find((r) => r.reagentId === draggedFlaskId);
-        if (reagentObj && reagentObj.remainingMl > 0 && labStore.availableCapacityMl > 0) {
-          isCurrentlyPouringStream = true;
-          activeStreamColor = rig.colorHex;
-          streamX = rig.id === 'hcl' ? -0.18 : 0.18;
-
-          pourHoldTimer += dt;
-          if (pourHoldTimer >= 0.25) {
-            pourHoldTimer = 0;
-            labStore.pour(draggedFlaskId, 2.5, 'mouse');
+      const hand = labStore.gestureInput;
+      const handFresh = hand && hand.tracked && performance.now() - hand.timestampMs < 250;
+      const handEnabled = labStore.isCameraActive && !(labStore.isExplorationMode && explorationStore.pendingSafety) && !draggedFlaskId && !labStore.activePourAnim
+        && !labStore.isCatalogOpen && !labStore.isCameraModalOpen && !labStore.isHomeBookOpen && !labStore.isNotebookOpen && !labStore.isHypothesisModalOpen;
+      handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched } : null;
+      let gestureCanPour = false;
+      if (!handEnabled || !hand || performance.now() - hand.timestampMs >= 1500) {
+        releaseGesture();
+        wasPinched = hand?.pinched ?? false;
+      } else if (handFresh) {
+        pointer.set(hand.x * 2 - 1, 1 - hand.y * 2);
+        raycaster.setFromCamera(pointer, camera);
+        if (hand.pinched && !wasPinched) {
+          scene.updateMatrixWorld(true);
+          const hits = raycaster.intersectObjects([flasks.hcl.group, flasks.naoh.group], true);
+          let object: THREE.Object3D | null = hits[0]?.object ?? null;
+          while (object && !object.userData.flaskId) object = object.parent;
+          if (object?.userData.flaskId) {
+            gestureFlaskId = object.userData.flaskId as 'hcl' | 'naoh';
+            labStore.selectReagent(gestureFlaskId);
+            if (raycaster.ray.intersectPlane(dragPlane, intersectPt)) {
+              gestureOffset.copy(flasks[gestureFlaskId].group.position).sub(intersectPt);
+              gestureOffset.y = 0;
+            }
           }
         }
-      } else {
-        pourHoldTimer = 0;
+        if (!hand.pinched) releaseGesture();
+        if (gestureFlaskId && raycaster.ray.intersectPlane(dragPlane, intersectPt)) {
+          intersectPt.add(gestureOffset);
+          const overZone = moveFlask(flasks[gestureFlaskId], intersectPt, Math.abs(hand.tilt));
+          gestureCanPour = overZone && hand.pouring;
+          labStore.gestureStatus = overZone ? (hand.pouring ? 'Vertiendo: abre la pinza para detener' : 'Frasco sobre el vaso: gira la mano para verter') : 'Frasco agarrado: muévelo hacia el vaso';
+        }
+        wasPinched = hand.pinched;
       }
 
-      if (animState && animState.active) {
+      if (labStore.isExplorationMode && explorationStore.result.stopped) labStore.activePourAnim = null;
+      let flowingRig: FlaskRig | null = null;
+      let requestedFlow = 0;
+      if (animState && labStore.activePourAnim?.id !== animState.requestId) {
+        const rig = flasks[animState.flaskId];
+        rig.targetPos.copy(rig.homePos);
+        rig.targetRotZ = 0;
+        animState = null;
+        flowAccumulator = 0;
+      }
+      if (animState) {
         animState.elapsed += dt;
-        const p = animState.elapsed / animState.duration;
         const rig = flasks[animState.flaskId];
         const side = rig.id === 'hcl' ? -1 : 1;
-
-        if (p < 0.28) {
-          rig.targetPos.set(side * 0.48, 1.06, 0);
-          rig.targetRotZ = side * -1.08;
-        } else if (p < 0.78) {
-          rig.targetPos.set(side * 0.48, 1.06, 0);
-          rig.targetRotZ = side * -1.12;
-          isCurrentlyPouringStream = true;
-          activeStreamColor = rig.colorHex;
-          streamX = side * 0.16;
-        } else if (p < 1.0) {
-          rig.targetPos.copy(rig.homePos);
-          rig.targetRotZ = 0;
-        } else {
-          rig.targetPos.copy(rig.homePos);
-          rig.targetRotZ = 0;
-          animState = null;
-        }
+        rig.targetPos.set(side * 0.9, 1.65, 0);
+        rig.targetRotZ = animState.elapsed > 0.45 ? side * 1.95 : 0;
+        flowingRig = rig;
+      } else if (draggedFlaskId && isOverPourZone) {
+        flowingRig = flasks[draggedFlaskId];
+      } else if (gestureFlaskId && gestureCanPour) {
+        flowingRig = flasks[gestureFlaskId];
       }
 
       (['hcl', 'naoh'] as const).forEach((id) => {
         const rig = flasks[id];
         const reagentData = labStore.reagents.find((r) => r.reagentId === id);
-        const remRatio = reagentData ? Math.max(0.02, reagentData.remainingMl / reagentData.initialMl) : 1;
-
-        rig.liquidMesh.scale.set(1, remRatio, 1);
-        rig.liquidMesh.position.y = 0.03 + 0.17 * remRatio;
-        rig.liquidMesh.visible = (reagentData?.remainingMl ?? 0) > 0.5;
+        const remRatio = reagentData ? reagentData.remainingMl / reagentData.initialMl : 0;
+        const smoothing = 1 - Math.exp(-8 * dt);
+        // Elevar primero evita atravesar el vaso al inclinar o devolver el matraz.
+        const returning = rig.targetPos.y < 0.5;
+        rig.group.rotation.z = THREE.MathUtils.lerp(rig.group.rotation.z,
+          !returning && rig.group.position.y < 1.4 ? 0 : rig.targetRotZ, smoothing);
+        const safeTarget = rig.targetPos.clone();
+        if (returning && Math.abs(rig.group.rotation.z) > 0.15) safeTarget.y = 1.65;
+        rig.group.position.lerp(safeTarget, smoothing);
+        const key = `${rig.group.rotation.z.toFixed(3)}:${remRatio.toFixed(4)}`;
+        if (key !== rig.fluidKey) {
+          const fluid = flaskFluid(rig.group.rotation.z, remRatio * 0.65);
+          rig.fluidHeight = fluid.height;
+          const attribute = rig.liquidMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+          (attribute.array as Float32Array).fill(0);
+          (attribute.array as Float32Array).set(fluid.positions);
+          attribute.needsUpdate = true;
+          rig.liquidMesh.geometry.setDrawRange(0, fluid.positions.length / 3);
+          rig.liquidMesh.geometry.computeVertexNormals();
+          rig.liquidMesh.geometry.computeBoundingSphere();
+          rig.fluidKey = key;
+        }
+        rig.liquidMesh.visible = remRatio > 0;
 
         const isSel = selectedId === id || hoveredFlaskId === id || draggedFlaskId === id;
         rig.ringMat.opacity = isSel ? 0.9 : 0.25;
         rig.ringMesh.scale.setScalar(isSel ? 1.08 : 1.0);
 
-        rig.group.position.lerp(rig.targetPos, dt * 10);
-        rig.group.rotation.z = THREE.MathUtils.lerp(rig.group.rotation.z, rig.targetRotZ, dt * 10);
       });
 
-      if (isCurrentlyPouringStream) {
-        pourStreamMesh.visible = true;
-        pourStreamMat.color.setHex(activeStreamColor);
-        pourStreamMesh.position.set(streamX, 0.66, 0);
-
-        splashParticles.visible = true;
+      const nozzle = flowingRig
+        ? new THREE.Vector3(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
+            .applyEuler(flowingRig.group.rotation).add(flowingRig.group.position)
+        : new THREE.Vector3();
+      if (flowingRig && streamHitsBeaker(nozzle)) {
+        requestedFlow = pourRate(flowingRig.group.rotation.z, flowingRig.fluidHeight) * dt;
+      }
+      const reagent = flowingRig && labStore.reagents.find(r => r.reagentId === flowingRig?.id);
+      const isFlowing = requestedFlow > 0 && !(labStore.isExplorationMode && (explorationStore.pendingSafety || explorationStore.result.stopped)) && (reagent?.remainingMl ?? 0) > 0 && labStore.availableCapacityMl > 0;
+      if (isFlowing && flowingRig) {
+        flowAccumulator += requestedFlow;
+        const amount = Math.min(Math.floor(flowAccumulator * 10 + 1e-8) / 10, animState?.remainingMl ?? Infinity);
+        if (amount >= 0.1) {
+          const before = reagent!.remainingMl;
+          const appliedSuccessfully = labStore.pour(flowingRig.id, amount, labStore.activePourAnim?.source ?? (gestureFlaskId === flowingRig.id ? 'gesture' : dragSource));
+          if (!appliedSuccessfully) { labStore.activePourAnim = null; flowingRig = null; }
+          const applied = Number((before - reagent!.remainingMl).toFixed(1));
+          flowAccumulator -= amount;
+          if (animState) animState.remainingMl = Number((animState.remainingMl - applied).toFixed(1));
+        }
+      } else {
+        flowAccumulator = 0;
+      }
+      if (animState && (animState.remainingMl < 0.1 || labStore.availableCapacityMl <= 0 || (reagent && reagent.remainingMl <= 0))) {
+        const rig = flasks[animState.flaskId];
+        rig.targetPos.copy(rig.homePos);
+        rig.targetRotZ = 0;
+        animState = null;
+        labStore.activePourAnim = null;
+        flowAccumulator = 0;
+      }
+      pourStreamMesh.visible = isFlowing;
+      splashParticles.visible = isFlowing;
+      if (isFlowing && flowingRig) {
+        pourStreamMat.color.setHex(flowingRig.colorHex);
+        const impactY = 0.12 + 0.8 * currentFillRatio;
+        const length = nozzle.y - impactY;
+        pourStreamMesh.scale.set(1, length / 0.65, 1);
+        pourStreamMesh.quaternion.identity();
+        pourStreamMesh.position.set(nozzle.x, impactY + length / 2, nozzle.z);
+        splashParticles.position.set(nozzle.x, impactY, nozzle.z);
         const posAttr = splashGeo.getAttribute('position') as THREE.BufferAttribute;
         for (let i = 0; i < posAttr.count; i++) {
-          let py = posAttr.getY(i) + dt * 0.75;
-          if (py > 0.75 * currentFillRatio) py = 0.05;
-          posAttr.setY(i, py);
+          const age = (elapsed * 2 + i / posAttr.count) % 1;
+          const azimuth = i * 2.4;
+          const radius = age * 0.13;
+          posAttr.setXYZ(i, Math.cos(azimuth) * radius, 0.4 * age * (1 - age), Math.sin(azimuth) * radius);
         }
         posAttr.needsUpdate = true;
-      } else {
-        pourStreamMesh.visible = false;
-        splashParticles.visible = false;
       }
 
       controls.update(dt);
@@ -1265,6 +1254,7 @@
       const w = container.clientWidth;
       const h = container.clientHeight;
       camera.aspect = w / h;
+      camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(42 / 2)) * Math.max(1, 1.45 / camera.aspect)));
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     });
@@ -1272,9 +1262,14 @@
 
     return () => {
       mediaQuery.removeEventListener('change', onMotionChange);
-      renderer?.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer?.domElement.removeEventListener('pointerdown', onPointerDown, true);
       renderer?.domElement.removeEventListener('pointermove', onPointerMove);
       renderer?.domElement.removeEventListener('pointerup', onPointerUp);
+      renderer?.domElement.removeEventListener('pointercancel', onPointerUp);
+      renderer?.domElement.removeEventListener('lostpointercapture', onPointerUp);
+      window.removeEventListener('blur', cancelInteraction);
+      document.removeEventListener('visibilitychange', onVisibility);
+      labStore.activePourAnim = null;
       resizeObserver.disconnect();
     };
   });
@@ -1282,6 +1277,18 @@
   onDestroy(() => {
     timer?.dispose();
     controls?.dispose();
+    if (scene) {
+      const geometries = new Set<THREE.BufferGeometry>();
+      const materials = new Set<THREE.Material>();
+      scene.traverse(object => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.geometry) geometries.add(mesh.geometry);
+        if (mesh.material) (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach(m => materials.add(m));
+      });
+      geometries.forEach(g => g.dispose());
+      materials.forEach(m => { for (const v of Object.values(m)) if (v instanceof THREE.Texture) v.dispose(); m.dispose(); });
+      if (scene.environment instanceof THREE.Texture) scene.environment.dispose();
+    }
     if (renderer) {
       renderer.setAnimationLoop(null);
       renderer.dispose();
@@ -1294,18 +1301,25 @@
 <div class="relative w-full h-full overflow-hidden select-none bg-[#080c14]">
   <div bind:this={container} class="w-full h-full"></div>
 
+  {#if handCursor}
+    <div class="absolute z-20 pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg flex items-center justify-center {handCursor.pinched ? 'w-6 h-6 border-amber-200 bg-amber-400/70' : 'w-9 h-9 border-white bg-amber-400/20'}"
+      style:left={`${handCursor.x * 100}%`} style:top={`${handCursor.y * 100}%`} aria-hidden="true"></div>
+  {/if}
+
   <!-- Notificación flotante cuando el usuario apunta al Libro 3D en la mesa -->
-  {#if isBookHovered}
+  {#if isBookHovered && !labStore.isExplorationMode}
     <div class="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none bg-amber-500 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-2">
-      <span>📖 Haz clic en el Libro de la mesa para ver los Videos de Experimentos Caseros y practicarlos aquí</span>
+      <span>📖 Haz clic en el Libro de la mesa para ver los Videos de Actividades de química y practicarlos aquí</span>
     </div>
   {/if}
 
-  <!-- Guía inferior con estado del experimento activo -->
+  <!-- Guía del prototipo; Exploración muestra su guía en el marco de la mesa. -->
+  {#if !labStore.isExplorationMode}
   <div class="absolute bottom-5 left-6 z-10 pointer-events-none flex items-center gap-2.5 bg-slate-950/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-slate-800/80 text-[11px] font-medium text-slate-300 shadow-lg">
     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
     <span>
-      <strong class="text-white">{labStore.activePreset.title}:</strong> Arrastra los matraces al vaso o haz clic en el <strong class="text-amber-400">Libro de Experimentos Caseros</strong> a la derecha de la mesa.
+      <strong class="text-white">{labStore.isExplorationMode ? 'Exploración libre' : labStore.activePreset.title}:</strong> Arrastra un matraz al vaso. Cambia su contenido en el catálogo y observa los instrumentos.
     </span>
   </div>
+  {/if}
 </div>

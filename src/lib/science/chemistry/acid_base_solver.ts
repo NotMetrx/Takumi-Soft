@@ -7,14 +7,14 @@ export const INDICATOR_BANDS: Record<string, IndicatorBand> = {
     band: 'strong_acid',
     range: [0, 3],
     colorHex: '#EF4444', // Rojo accesible
-    name: 'Ácido Fuerte',
+    name: 'Muy ácido',
     description: 'Exceso predominante de iones hidronio [H⁺]'
   },
   weak_acid: {
     band: 'weak_acid',
     range: [3, 6],
     colorHex: '#F59E0B', // Ámbar accesible
-    name: 'Ácido Débil / Diluido',
+    name: 'Ácido',
     description: 'Leve exceso de iones hidronio [H⁺]'
   },
   neutral: {
@@ -28,14 +28,14 @@ export const INDICATOR_BANDS: Record<string, IndicatorBand> = {
     band: 'weak_base',
     range: [8, 11],
     colorHex: '#3B82F6', // Azul accesible
-    name: 'Base Débil / Diluida',
+    name: 'Básico',
     description: 'Leve exceso de iones hidróxido [OH⁻]'
   },
   strong_base: {
     band: 'strong_base',
     range: [11, 14],
     colorHex: '#8B5CF6', // Violeta accesible
-    name: 'Base Fuerte',
+    name: 'Muy básico',
     description: 'Exceso predominante de iones hidróxido [OH⁻]'
   }
 };

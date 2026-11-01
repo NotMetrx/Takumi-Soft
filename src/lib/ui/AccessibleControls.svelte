@@ -73,7 +73,7 @@
               labStore.triggerAnimatedPour(selectedReagent.reagentId, ml, 'mouse');
             }
           }}
-          disabled={ml > (selectedReagent?.remainingMl ?? 0) || ml > labStore.availableCapacityMl}
+          disabled={!!labStore.activePourAnim || ml > (selectedReagent?.remainingMl ?? 0) || ml > labStore.availableCapacityMl}
           class="lab-btn py-1.5 px-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-700/80 rounded-lg text-[11px] font-mono-numbers font-bold text-slate-200 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
         >
           +{ml} mL
@@ -90,7 +90,7 @@
         labStore.triggerAnimatedPour(selectedReagent.reagentId, customPourMl, 'mouse');
       }
     }}
-    disabled={!selectedReagent || selectedReagent.remainingMl <= 0 || labStore.availableCapacityMl <= 0}
+    disabled={!!labStore.activePourAnim || !selectedReagent || selectedReagent.remainingMl <= 0 || labStore.availableCapacityMl <= 0}
     class="lab-btn w-full py-3 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 cursor-pointer min-h-[44px] shadow-lg
     {selectedReagent?.kind === 'strong_acid'
       ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/25'
@@ -98,7 +98,7 @@
     disabled:bg-slate-800 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
   >
     <Droplets class="w-4 h-4" />
-    <span>Verter {customPourMl} mL de {selectedReagent?.formula.split(' ')[0] ?? ''}</span>
+    <span>{labStore.activePourAnim ? 'Vertiendo…' : `Verter ${customPourMl} mL de ${selectedReagent?.formula.split(' ')[0] ?? ''}`}</span>
   </button>
 
   {#if labStore.availableCapacityMl <= 0}

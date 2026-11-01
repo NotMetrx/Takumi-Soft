@@ -32,7 +32,7 @@
           </span>
           <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            Offline
+            Local
           </span>
         </div>
         <p class="text-[11px] text-slate-300 font-medium">{activePreset.title} · {activePreset.subtitle}</p>
@@ -41,6 +41,7 @@
 
     <!-- Barra de Herramientas Derecha -->
     <div class="flex items-center gap-2 pointer-events-auto">
+      <button type="button" onclick={() => labStore.enterExploration()} class="lab-btn lab-panel px-3 py-2 text-xs font-bold">Exploración libre</button>
       <!-- Botón Destacado: Libro de Experimentos Caseros (también clicable en la mesa 3D) -->
       <button
         type="button"
@@ -48,7 +49,7 @@
         class="lab-btn px-3.5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 border cursor-pointer min-h-[42px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 shadow-lg shadow-amber-500/10"
       >
         <BookMarked class="w-4 h-4 text-amber-400" />
-        <span>Libro de Exp. Caseros (Video)</span>
+        <span>Libro de actividades</span>
       </button>
 
       <button
@@ -140,11 +141,11 @@
       <!-- Escala de Indicador Universal 0 - 14 -->
       <div>
         <div class="h-2.5 w-full rounded-full overflow-hidden flex border border-slate-700/80">
-          <div class="h-full w-[21.4%] bg-red-500" title="0 - 3: Ácido Fuerte"></div>
-          <div class="h-full w-[21.4%] bg-amber-400" title="3 - 6: Ácido Débil"></div>
+          <div class="h-full w-[21.4%] bg-red-500" title="0 - 3: Muy ácido"></div>
+          <div class="h-full w-[21.4%] bg-amber-400" title="3 - 6: Ácido"></div>
           <div class="h-full w-[14.4%] bg-emerald-500" title="6 - 8: Neutro"></div>
-          <div class="h-full w-[21.4%] bg-blue-500" title="8 - 11: Base Débil"></div>
-          <div class="h-full w-[21.4%] bg-purple-600" title="11 - 14: Base Fuerte"></div>
+          <div class="h-full w-[21.4%] bg-blue-500" title="8 - 11: Básico"></div>
+          <div class="h-full w-[21.4%] bg-purple-600" title="11 - 14: Muy básico"></div>
         </div>
         <div class="relative w-full h-2.5 mt-1">
           <div

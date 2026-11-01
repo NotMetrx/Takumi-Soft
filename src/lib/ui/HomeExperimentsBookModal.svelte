@@ -16,7 +16,7 @@
     ArrowRight
   } from '@lucide/svelte';
 
-  let viewedPresetId = $state<string>(labStore.activePresetId === 'chemistry-p0-acid-base' ? 'cabbage-home-lab' : labStore.activePresetId);
+  let viewedPresetId = $state<string>(labStore.activePresetId);
   const currentPreset = $derived<HomeExperimentPreset>(
     EXPERIMENT_PRESETS.find((p) => p.id === viewedPresetId) ?? EXPERIMENT_PRESETS[0]
   );
@@ -270,7 +270,7 @@
   >
     <!-- Contenedor de Libro Abierto a Doble Página -->
     <div class="relative w-full max-w-5xl bg-slate-950 border-2 border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-      <!-- Cabecera del Libro con Pestañas de Experimentos Caseros -->
+      <!-- Cabecera del Libro con Pestañas de Actividades de química -->
       <div class="bg-slate-900/95 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <div class="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
@@ -279,7 +279,7 @@
           <div>
             <div class="flex items-center gap-2">
               <h2 id="home-book-title" class="text-base font-extrabold text-white tracking-tight">
-                Manual Interactivo de Experimentos Caseros
+                Manual Interactivo de Actividades de química
               </h2>
               <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 SymbioReality · Del Video a la Mesa 3D
