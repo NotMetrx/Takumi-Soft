@@ -1,14 +1,16 @@
 <script lang="ts">
   import './exploration-workspace.css';
-  import { Search, Settings2, Maximize2, Minimize2, Plus, ChevronDown, Beaker, Check, FlaskConical, Hand, RotateCcw, Droplets, ShieldAlert, Thermometer, Gauge, Wind, BookOpen, Download, ArrowLeft, X } from '@lucide/svelte';
+  import { Search, Settings2, Maximize2, Minimize2, Plus, ChevronDown, Beaker, Check, FlaskConical, Hand, RotateCcw, Droplets, ShieldAlert, Thermometer, Gauge, Wind, BookOpen, BookMarked, Download, ArrowLeft, X } from '@lucide/svelte';
   import LabScene from '$lib/lab3d/LabScene.svelte';
   import { labStore } from '$lib/interaction/lab_store.svelte';
+  import { labSound } from '$lib/audio/lab_sound';
   import { explorationStore as lab } from '$lib/exploration/exploration_store.svelte';
   import { CHEMICALS, chemical } from '$lib/science/chemistry/catalog';
 
   let tab = $state<'catalog' | 'results' | 'notebook' | 'cases'>('catalog');
   const slot = $derived(labStore.selectedReagentId === 'naoh' ? 'naoh' : 'hcl');
   let catalogOpen = $state(false);
+  let guideOpen = $state(false);
   let catalogDialog = $state<HTMLDialogElement | null>(null);
   let family = $state('all');
   let focusMode = $state(false);
@@ -48,6 +50,7 @@
     labStore.resetExperiment();
     labStore.setExplorationBottle('hcl', a.pair[0]);
     labStore.setExplorationBottle('naoh', a.pair[1]);
+    guideOpen = false;
     labStore.isHomeBookOpen = false;
     labStore.selectReagent('hcl');
     activity = id; tab = 'catalog';
@@ -86,8 +89,8 @@
   });
   $effect(() => {
     if (guideDialog) {
-      if (labStore.isHomeBookOpen && !guideDialog.open) guideDialog.showModal();
-      else if (!labStore.isHomeBookOpen && guideDialog.open) guideDialog.close();
+      if (guideOpen && !guideDialog.open) guideDialog.showModal();
+      else if (!guideOpen && guideDialog.open) guideDialog.close();
     }
   });
 </script>
@@ -99,7 +102,9 @@
     </div>
     <div class="toolbar">
       <span class="session-label"><span></span> Sesión local</span>
-      <button aria-label="Actividades" onclick={() => labStore.isHomeBookOpen = true}><BookOpen size={17} aria-hidden="true" /> <span>Actividades</span></button>
+      <button aria-label="Libro 3D Primaria y Secundaria" onclick={() => { labSound.playBookOpen(); labStore.isHomeBookOpen = true; }}><BookMarked size={17} aria-hidden="true" /> <span>Libro 3D</span></button>
+      <button aria-label="Actividades" onclick={() => guideOpen = true}><BookOpen size={17} aria-hidden="true" /> <span>Actividades</span></button>
+      <button aria-label="Modo Guiado 3D" onclick={() => labStore.leaveExploration()}><ArrowLeft size={16} aria-hidden="true" /> <span>Modo Inmersivo</span></button>
       <button aria-label={labStore.isCameraActive ? 'Manos activas' : 'Control con manos'} class:camera-active={labStore.isCameraActive} onclick={() => labStore.isCameraModalOpen = true}><Hand size={17} aria-hidden="true" /><span>{labStore.isCameraActive ? 'Manos activas' : 'Control con manos'}</span></button>
       <button class="icon-button" onclick={() => labStore.resetExperiment()} aria-label="Reiniciar experimento" title="Reiniciar experimento"><RotateCcw size={17} /></button>
       <details class="settings-menu">
@@ -107,7 +112,7 @@
         <div class="settings-popover glass-surface">
           <label for="graphics-quality">Calidad de la escena</label>
           <select id="graphics-quality" aria-label="Calidad gráfica" bind:value={lab.renderQuality} disabled={!!labStore.activePourAnim}><option value="basic">Gráficos básicos</option><option value="standard">Vidrio detallado</option></select>
-          <button onclick={() => labStore.leaveExploration()}><ArrowLeft size={16} aria-hidden="true" /> Abrir MVP</button>
+          <button onclick={() => labStore.leaveExploration()}><ArrowLeft size={16} aria-hidden="true" /> Modo Inmersivo (Primaria/Secundaria)</button>
         </div>
       </details>
     </div>
@@ -211,8 +216,8 @@
   <p>No se añadió líquido. El modelo no calcula productos ni exposición para estas combinaciones. Continuar permite estudiar el aviso dentro del simulador.</p>
   <div class="toolbar"><button onclick={cancelSafety}>Cancelar mezcla</button><button class="primary" onclick={() => lab.acknowledge()}>Leí el aviso</button></div>
 </dialog>
-<dialog bind:this={guideDialog} oncancel={() => labStore.isHomeBookOpen = false} class="explore-dialog" aria-labelledby="guide-title">
-  <div class="section-heading"><h2 id="guide-title">Elige una investigación</h2><button onclick={() => labStore.isHomeBookOpen = false} aria-label="Cerrar actividades"><X size={20} /></button></div>
+<dialog bind:this={guideDialog} oncancel={() => guideOpen = false} class="explore-dialog" aria-labelledby="guide-title">
+  <div class="section-heading"><h2 id="guide-title">Elige una investigación</h2><button onclick={() => guideOpen = false} aria-label="Cerrar actividades"><X size={20} /></button></div>
   <p>Elegir una actividad inicia un ensayo nuevo. Puedes cambiar los reactivos después y explorar por tu cuenta.</p>
   {#each activities as a}<button class="activity-option" onclick={() => chooseActivity(a.id)}><strong>{a.name}</strong><span>{a.question}</span></button>{/each}
 </dialog>

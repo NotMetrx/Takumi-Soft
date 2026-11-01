@@ -75,14 +75,20 @@ export function calculateStrongAcidBase(input: ChemistryInput): ChemistryResult 
   // Exceso de concentración molar firmado (mol/L)
   const d = (molesAcid - molesBase) / vTotalL;
 
+  // Producto iónico del agua Kw(T): exactamente 1.0e-14 a 25 °C; variación endotérmica de Van 't Hoff fuera de 25 °C
+  const kw =
+    temperatureC === 25
+      ? KW_25C
+      : KW_25C * Math.exp((55800 / 8.314) * (1 / 298.15 - 1 / (temperatureC + 273.15)));
+
   // Raíz de electroneutralidad: H^2 - d*H - Kw = 0 (evitando cancelación numérica catastrófica)
   let hydroniumConcentration: number;
-  const sqrtDiscriminant = Math.sqrt(d * d + 4 * KW_25C);
+  const sqrtDiscriminant = Math.sqrt(d * d + 4 * kw);
 
   if (d >= 0) {
     hydroniumConcentration = (d + sqrtDiscriminant) / 2.0;
   } else {
-    hydroniumConcentration = (2.0 * KW_25C) / (sqrtDiscriminant - d);
+    hydroniumConcentration = (2.0 * kw) / (sqrtDiscriminant - d);
   }
 
   // Cálculo de pH acotado entre 0 y 14

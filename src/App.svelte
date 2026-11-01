@@ -8,7 +8,6 @@
   import NotebookDrawer from '$lib/ui/NotebookDrawer.svelte';
   import CameraCalibrationModal from '$lib/ui/CameraCalibrationModal.svelte';
   import HomeExperimentsBookModal from '$lib/ui/HomeExperimentsBookModal.svelte';
-  labStore.enterExploration();
 </script>
 
 {#if labStore.isExplorationMode}
@@ -28,10 +27,10 @@
     <AccessibleControls />
   </div>
 
-  <!-- Modales y Libro Interactivo de Experimentos Caseros -->
-  <HomeExperimentsBookModal />
+  <!-- Modales Globales -->
   <TutorModal />
   <NotebookDrawer />
 </main>
 {/if}
+<HomeExperimentsBookModal />
 <CameraCalibrationModal />
