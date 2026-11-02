@@ -121,9 +121,32 @@
 :where(.workspace, .explore-dialog) .incident { position: absolute; inset: 15% 8%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; padding: 25px; overflow: auto; border: 1px solid #e78b9d99; border-radius: 18px; background: #301c28f5; color: #ffdae2; text-align: center; }
 :where(.workspace, .explore-dialog) .incident h2 { font-size: 20px; }
 :where(.workspace, .explore-dialog) .explorer { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-:where(.workspace, .explore-dialog) .tabs { display: flex; gap: 3px; padding: 8px; border-bottom: 1px solid var(--lab-line); flex-shrink: 0; }
-.workspace .tabs button { flex: 1; min-width: 0; padding: 9px 3px; background: transparent; border-color: transparent; font-size: 11px; color: #afc4ce; }
+:where(.workspace, .explore-dialog) .tabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 8px; border-bottom: 1px solid var(--lab-line); flex-shrink: 0; }
+.workspace .tabs button { flex: 1 1 auto; min-width: 0; padding: 9px 5px; background: transparent; border-color: transparent; font-size: 11px; color: #afc4ce; }
 .workspace .tabs button.active { background: #99d9ca13; border-color: #95dac72e; color: #c2f2e4; box-shadow: inset 0 1px 0 #b4e5db12; }
+.workspace .guide-shortcut { margin-left: auto; flex-shrink: 0; color: var(--lab-accent); }
+.workspace .storage-error { margin: 0 20px 12px; padding: 10px 14px; border: 1px solid var(--lab-line); border-radius: 12px; color: #ffd6b3; }
+.workspace .experiment-guide, .workspace .guide-evaluation { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.workspace .experiment-guide h2 { display: flex; align-items: center; gap: 8px; }
+.workspace .experiment-guide progress { width: 100%; height: 6px; accent-color: var(--lab-accent); }
+.workspace .experiment-guide progress::-webkit-progress-bar { background: var(--lab-control); border-radius: 4px; }
+.workspace .experiment-guide progress::-webkit-progress-value { background: var(--lab-accent); border-radius: 4px; }
+.workspace .experiment-guide progress::-moz-progress-bar { background: var(--lab-accent); border-radius: 4px; }
+.workspace .guide-current { color: var(--lab-accent); font-weight: 600; }
+.workspace .experiment-guide fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.workspace .experiment-guide legend { padding: 0 0 10px; font-size: 13px; line-height: 1.6; }
+.workspace .guide-choice { display: flex; align-items: center; gap: 10px; padding: 10px; min-height: 44px; border: 1px solid var(--lab-line); border-radius: 10px; cursor: pointer; }
+.workspace .guide-choice.chosen { border-color: var(--lab-accent); background: #80e1ca0d; }
+.workspace .guide-choice input[type=radio] { width: 18px; height: 18px; min-height: 18px; padding: 0; margin: 0; flex-shrink: 0; accent-color: var(--lab-accent); }
+.workspace fieldset:disabled .guide-choice { opacity: .6; cursor: default; }
+.workspace .guide-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.workspace .guide-actions button { flex: 1 1 auto; font-size: 12px; }
+.workspace .guide-steps { padding-left: 20px; margin: 12px 0 0; display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+.workspace .guide-steps span { display: flex; align-items: baseline; gap: 4px; }
+.workspace .guide-steps small { display: block; margin-top: 4px; color: var(--lab-muted); }
+.workspace .guide-steps [aria-current=step] { color: var(--lab-accent); }
+.workspace .guide-evaluation { border-top: 1px solid var(--lab-line); padding-top: 16px; }
+.workspace .guide-assessment { border-color: var(--lab-accent); }
 :where(.workspace, .explore-dialog) .panel-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 16px; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #4a616b transparent; }
 :where(.workspace, .explore-dialog) .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #a9bec7; }
 :where(.workspace, .explore-dialog) .section-heading h2 { margin-top: 3px; color: #e8f2f4; }
@@ -244,6 +267,8 @@
   :where(.workspace, .explore-dialog) .toolbar>button:not(.icon-button)>span { display: none; }
   .workspace .toolbar>button { width: 44px; padding: 0; }
   :where(.workspace, .explore-dialog) .experiment-bar { margin: 0 16px; gap: 10px; padding-bottom: 14px; }
+  .workspace .experiment-bar { flex-wrap: wrap; }
+  .workspace .guide-shortcut { margin-left: 0; }
   :where(.workspace, .explore-dialog) .activity-picker { width: 100%; }
   :where(.workspace, .explore-dialog) .experiment-bar>p { display: none; }
   :where(.workspace, .explore-dialog) .workbench { display: flex; flex-direction: column; flex: none; padding: 0 12px 12px; gap: 12px; }

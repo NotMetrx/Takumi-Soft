@@ -39,10 +39,13 @@ describe('Integración de exploración', () => {
     const s = new LabStore(); s.enterExploration();
     s.pour('hcl', 5);
     const previous = explorationStore.result.pH;
+    const bottles = explorationStore.bottles.map(b => ({ ...b }));
     s.leaveExploration(); s.enterExploration();
     expect(s.totalVolumeMl).toBe(55);
     expect(explorationStore.trials).toHaveLength(1);
     expect(explorationStore.result.pH).toBe(previous);
+    expect(explorationStore.bottles).toEqual(bottles);
+    expect(s.reagents.map(r => ({ chemicalId: r.chemicalId, remainingMl: r.remainingMl }))).toEqual(bottles);
     s.resetExperiment();
   });
 

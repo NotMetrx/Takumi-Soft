@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import './exploration-workspace.css';
   import { Search, Settings2, Maximize2, Minimize2, Plus, ChevronDown, Beaker, Check, FlaskConical, Hand, RotateCcw, Droplets, ShieldAlert, Thermometer, Gauge, Wind, BookOpen, BookMarked, Download, ArrowLeft, X } from '@lucide/svelte';
   import LabScene from '$lib/lab3d/LabScene.svelte';
+  import ExperimentGuide from './ExperimentGuide.svelte';
   import { labStore } from '$lib/interaction/lab_store.svelte';
   import { labSound } from '$lib/audio/lab_sound';
   import { explorationStore as lab } from '$lib/exploration/exploration_store.svelte';
   import { CHEMICALS, chemical } from '$lib/science/chemistry/catalog';
+  import { ACTIVITIES as activities, GUIDES } from '$lib/exploration/guides';
 
-  let tab = $state<'catalog' | 'results' | 'notebook' | 'cases'>('catalog');
+  let tab = $state<'guide' | 'catalog' | 'results' | 'notebook' | 'cases'>(lab.guide ? 'guide' : 'catalog');
   const slot = $derived(labStore.selectedReagentId === 'naoh' ? 'naoh' : 'hcl');
   let catalogOpen = $state(false);
   let guideOpen = $state(false);
@@ -20,7 +23,6 @@
   let query = $state('');
   let safetyDialog = $state<HTMLDialogElement | null>(null);
   let guideDialog = $state<HTMLDialogElement | null>(null);
-  let activity = $state('free');
   let caseId = $state('pressure');
   let replay = $state(false);
   let hasFuel = $state(true), hasOxidant = $state(true), hasIgnition = $state(false), confined = $state(false);
@@ -31,20 +33,14 @@
   const maxDose = $derived(Math.max(0, Math.min(50, bottle.remainingMl, labStore.availableCapacityMl)));
   const preview = $derived(lab.preview(item.id));
   const busy = $derived(!!labStore.activePourAnim || r.stopped);
-  const activities = [
-    { id: 'free', name: 'Exploración libre', pair: ['hcl', 'bicarbonate'], question: 'Elige una pregunta, cambia una condición y compara los resultados.' },
-    { id: 'neutral', name: 'Neutralización y calor', pair: ['hcl', 'naoh'], question: '¿Cómo se relacionan pH, cantidad añadida y calor liberado?' },
-    { id: 'weak', name: 'Ácido débil y base', pair: ['acetic', 'naoh'], question: '¿El punto de equivalencia de un ácido débil tiene siempre pH 7?' },
-    { id: 'buffer', name: 'Ácido acético / acetato', pair: ['acetic', 'acetate'], question: 'Prepara un tampón; luego carga ácido o base y compara su respuesta.' },
-    { id: 'citric', name: 'Ácido cítrico poliprótico', pair: ['citric', 'naoh'], question: '¿Por qué un ácido con tres disociaciones no se comporta como HCl?' },
-    { id: 'ammonia', name: 'Base débil y ácido', pair: ['ammonia', 'hcl'], question: '¿Qué cambia entre una base débil y NaOH? La volatilidad no está modelada.' },
-    { id: 'gas', name: 'Carbonatos y CO₂', pair: ['hcl', 'bicarbonate'], question: '¿Qué cambia al capturar el gas en un colector cerrado?' },
-    { id: 'solid', name: 'Precipitación de CaCO₃', pair: ['calcium', 'carbonate'], question: '¿Qué evidencia muestra la formación de un sólido? ¿Puede redisolverse al acidificar?' },
-    { id: 'copper', name: 'Precipitado azul', pair: ['copper', 'naoh'], question: '¿Qué reactivo limita la cantidad de Cu(OH)₂? El pH está fuera de este modelo.' },
-    { id: 'starch', name: 'Yodo y almidón', pair: ['iodine', 'starch'], question: '¿Qué indica el color azul oscuro y qué no permite concluir?' },
-    { id: 'risk', name: 'Reconocer incompatibilidades', pair: ['bleach', 'hcl'], question: 'Lee las fichas y anticipa el peligro. Esta actividad no calcula generación de gas tóxico.' }
-  ];
-  const question = $derived(activities.find(a => a.id === activity)?.question ?? activities[0].question);
+  const question = $derived(activities.find(a => a.id === lab.activityId)?.question ?? activities[0].question);
+  async function showGuide() {
+    tab = 'guide'; focusMode = false;
+    await tick();
+    const panel = document.getElementById('experiment-guide');
+    panel?.focus({ preventScroll: true });
+    panel?.scrollIntoView({ block: 'start' });
+  }
   function chooseActivity(id: string) {
     const a = activities.find(x => x.id === id)!;
     labStore.resetExperiment();
@@ -53,7 +49,9 @@
     guideOpen = false;
     labStore.isHomeBookOpen = false;
     labStore.selectReagent('hcl');
-    activity = id; tab = 'catalog';
+    lab.activityId = id; lab.hypothesis = ''; lab.reflection = '';
+    tab = GUIDES[id] ? 'guide' : 'catalog';
+    if (GUIDES[id]) void showGuide();
   }
   function pour(event: MouseEvent) {
     const amount = Math.min(dose, maxDose);
@@ -101,7 +99,7 @@
       <div><h1>SymbioLab <span>Exploración</span></h1><p>Tu espacio para descubrir química</p></div>
     </div>
     <div class="toolbar">
-      <span class="session-label"><span></span> Sesión local</span>
+      <span class="session-label" title={lab.saveStatus}><span></span> Sesión local</span>
       <button aria-label="Libro 3D Primaria y Secundaria" onclick={() => { labSound.playBookOpen(); labStore.isHomeBookOpen = true; }}><BookMarked size={17} aria-hidden="true" /> <span>Libro 3D</span></button>
       <button aria-label="Actividades" onclick={() => guideOpen = true}><BookOpen size={17} aria-hidden="true" /> <span>Actividades</span></button>
       <button aria-label="Modo Guiado 3D" onclick={() => labStore.leaveExploration()}><ArrowLeft size={16} aria-hidden="true" /> <span>Modo Inmersivo</span></button>
@@ -118,10 +116,11 @@
     </div>
   </header>
   <div class="experiment-bar">
-    <div class="activity-picker"><span class="activity-icon"><Beaker size={18} aria-hidden="true" /></span><div><label for="activity">Investigación actual</label><select id="activity" value={activity} onchange={e => chooseActivity(e.currentTarget.value)} disabled={!!labStore.activePourAnim}>{#each activities as a}<option value={a.id}>{a.name}</option>{/each}</select></div></div>
+    <div class="activity-picker"><span class="activity-icon"><Beaker size={18} aria-hidden="true" /></span><div><label for="activity">Investigación actual</label><select id="activity" value={lab.activityId} onchange={e => chooseActivity(e.currentTarget.value)} disabled={!!labStore.activePourAnim}>{#each activities as a}<option value={a.id}>{a.name}{GUIDES[a.id] ? ' · Guía' : ''}</option>{/each}</select></div></div>
     <p>{question}</p>
-    <span class="learning-label">Predice. Experimenta. Comprende.</span>
+    {#if lab.guide}<button class="guide-shortcut" onclick={showGuide}>Guía · {lab.currentStep ? `Paso ${lab.evidence.length + 1}/${lab.guide.steps.length}` : 'Evaluación'}</button>{:else}<span class="learning-label">Predice. Experimenta. Comprende.</span>{/if}
   </div>
+  {#if lab.saveError}<p class="storage-error" role="alert">{lab.saveError}</p>{/if}
   <div class:focus-mode={focusMode} class="workbench">
     <aside class="instruments glass-surface" aria-label="Instrumentos virtuales">
       <div class="panel-heading"><div><span class="eyebrow">EN TIEMPO DE ENSAYO</span><h2>Mediciones</h2></div><Gauge size={18} aria-hidden="true" /></div>
@@ -156,9 +155,11 @@
       <div class="stage-foot"><span><Hand size={15} aria-hidden="true" /> Arrastra un matraz hacia el vaso para verter</span><span class="scene-caption">Vista 3D interactiva</span></div>
     </section>
     <aside class="explorer glass-surface" aria-label="Catálogo, resultados y cuaderno">
-      <nav class="tabs" aria-label="Panel de exploración">{#each [{id:'catalog', label:'Reactivos'}, {id:'results', label:'Resultados'}, {id:'notebook', label:'Cuaderno'}, {id:'cases', label:'Accidentes'}] as t}<button class:active={tab === t.id} aria-pressed={tab === t.id} onclick={() => tab = t.id as typeof tab}>{t.label}</button>{/each}</nav>
+      <nav class="tabs" aria-label="Panel de exploración">{#each [...(lab.guide ? [{id:'guide', label:'Guía'}] : []), {id:'catalog', label:'Reactivos'}, {id:'results', label:'Resultados'}, {id:'notebook', label:'Cuaderno'}, {id:'cases', label:'Accidentes'}] as t}<button class:active={tab === t.id} aria-pressed={tab === t.id} onclick={() => tab = t.id as typeof tab}>{t.label}</button>{/each}</nav>
       <div class="panel-body">
-        {#if tab === 'catalog'}
+        {#if tab === 'guide' && lab.guide}
+          <ExperimentGuide onNavigate={next => tab = next} />
+        {:else if tab === 'catalog'}
           <div class="section-heading"><div><span class="eyebrow">PREPARA TU ENSAYO</span><h2>Matraz seleccionado</h2></div><FlaskConical size={18} aria-hidden="true" /></div>
           <div class="slots">{#each labStore.reagents as reagent, i}<button class:active={slot === reagent.reagentId} onclick={() => labStore.selectReagent(reagent.reagentId)} aria-pressed={slot === reagent.reagentId}><span class="slot-top"><span class="slot-id">{i === 0 ? 'A' : 'B'}</span><small>{i === 0 ? 'Izquierdo' : 'Derecho'}</small>{#if slot === reagent.reagentId}<Check size={13} aria-hidden="true" />{/if}</span><strong style:color={reagent.colorHex}>{reagent.formula}</strong><span class="stock-volume">{reagent.remainingMl.toFixed(1)} <small>mL disponibles</small></span></button>{/each}</div>
           <div class="reagent-summary"><div class="reagent-symbol" style:color={item.color}><FlaskConical size={23} aria-hidden="true" /></div><div><h3>{item.name}</h3><span>{item.id === 'starch' ? 'Dispersión cualitativa' : item.concentrationM === 0 ? 'Disolvente' : `${item.concentrationM} mol/L · disolución virtual`}</span></div></div>
@@ -181,9 +182,10 @@
           <details open><summary>Alcance y límites del resultado</summary><p class="muted">Modelo: {r.modelId}</p><ul>{#each r.limitations as limitation}<li>{limitation}</li>{/each}</ul></details>
         {:else if tab === 'notebook'}
           <h2>Cuaderno de investigación</h2><label for="hypothesis-explore">Mi pregunta y predicción</label><textarea id="hypothesis-explore" rows="3" bind:value={lab.hypothesis} placeholder="¿Qué cambiará si…? ¿Qué mantendré constante?"></textarea>
-          <label for="reflection-explore">Qué observé y cómo lo explico</label><textarea id="reflection-explore" rows="3" bind:value={lab.reflection} placeholder="Compara tu predicción con los datos y los límites del modelo."></textarea>
+          <label for="reflection-explore">Qué observé y cómo lo explico</label><textarea id="reflection-explore" rows="3" bind:value={lab.reflection} oninput={() => lab.evaluated = false} placeholder="Compara tu predicción con los datos y los límites del modelo."></textarea>
           <div class="dose-row"><button onclick={() => lab.export('json')}><Download size={16} /> JSON</button><button onclick={() => lab.export('csv')}><Download size={16} /> CSV</button></div>
-          <p class="muted">Sesión en memoria: exporta antes de cerrar. Reiniciar borra los ensayos de esta sesión.</p>
+          <p class="muted" role="status">{lab.saveStatus}. Reiniciar borra los ensayos del intento actual. Exporta para conservar una copia aparte.</p>
+          {#if lab.guide}<button onclick={showGuide}>Volver a la guía y evaluación</button>{/if}
           {#each lab.events.slice(-8).reverse() as event}<p class="muted">{event.action} · {event.pressureKpa?.toFixed(1) ?? '—'} kPa abs.</p>{/each}
           <h3>Últimas dosificaciones · {lab.trials.length} registros</h3>
           {#each lab.trials.slice(-40).reverse() as trial}<article><h3>+{trial.ml.toFixed(1)} mL · {trial.name}</h3><p>pH {trial.pH?.toFixed(2) ?? 'no determinado'} · {trial.pressureKpa?.toFixed(1) ?? '—'} kPa · {trial.source}</p><small>{trial.observations.join(' · ')}</small></article>{/each}
@@ -219,6 +221,6 @@
 <dialog bind:this={guideDialog} oncancel={() => guideOpen = false} class="explore-dialog" aria-labelledby="guide-title">
   <div class="section-heading"><h2 id="guide-title">Elige una investigación</h2><button onclick={() => guideOpen = false} aria-label="Cerrar actividades"><X size={20} /></button></div>
   <p>Elegir una actividad inicia un ensayo nuevo. Puedes cambiar los reactivos después y explorar por tu cuenta.</p>
-  {#each activities as a}<button class="activity-option" onclick={() => chooseActivity(a.id)}><strong>{a.name}</strong><span>{a.question}</span></button>{/each}
+  {#each activities as a}<button class="activity-option" disabled={!!labStore.activePourAnim} onclick={() => chooseActivity(a.id)}><strong>{a.name}{GUIDES[a.id] ? ' · Guía paso a paso' : ''}</strong><span>{a.question}</span></button>{/each}
 </dialog>
 

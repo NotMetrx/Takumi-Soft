@@ -2024,6 +2024,7 @@ export class LabStore {
     if (this.isExplorationMode) {
       if (!explorationStore.add(reagent.chemicalId!, actualMl, source)) return false;
       reagent.remainingMl = Math.max(0, Number((reagent.remainingMl - actualMl).toFixed(1)));
+      explorationStore.bottles[reagentId === 'hcl' ? 0 : 1].remainingMl = reagent.remainingMl;
       return true;
     }
     reagent.remainingMl = Math.max(0, Number((reagent.remainingMl - actualMl).toFixed(1)));
@@ -2060,8 +2061,7 @@ export class LabStore {
     this.activePourAnim = null;
     this.isExplorationMode = true;
     this.isHomeBookOpen = this.isNotebookOpen = this.isHypothesisModalOpen = false;
-    this.setExplorationBottle('hcl', 'hcl');
-    this.setExplorationBottle('naoh', 'bicarbonate');
+    explorationStore.bottles.forEach((b, i) => this.setExplorationBottle(i === 0 ? 'hcl' : 'naoh', b.chemicalId, b.remainingMl));
   }
 
   leaveExploration() {
@@ -2069,7 +2069,7 @@ export class LabStore {
     this.loadExperimentPreset('chemistry-p0-acid-base');
   }
 
-  setExplorationBottle(slot: 'hcl' | 'naoh', id: string) {
+  setExplorationBottle(slot: 'hcl' | 'naoh', id: string, remainingMl = 100) {
     if (this.activePourAnim) return;
     const item = chemical(id);
     const index = slot === 'hcl' ? 0 : 1;
@@ -2081,10 +2081,11 @@ export class LabStore {
       formula: item.formula,
       concentrationMolPerL: item.concentrationM,
       initialMl: 100,
-      remainingMl: 100,
+      remainingMl,
       colorHex: item.color,
       hazardNotice: item.hazards.join(' ')
     };
+    explorationStore.bottles[index] = { chemicalId: id, remainingMl };
     this.presetRevision += 1;
   }
 
