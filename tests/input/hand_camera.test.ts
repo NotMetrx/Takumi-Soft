@@ -25,7 +25,7 @@ describe('Ciclo de vida de cámara y MediaPipe', () => {
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     video = { play: vi.fn().mockResolvedValue(undefined), srcObject: null } as unknown as HTMLVideoElement;
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
   it('no pide permiso hasta iniciar y carga solo recursos locales', async () => {
     const camera = new HandCamera();
     expect(getUserMedia).not.toHaveBeenCalled();
@@ -62,6 +62,41 @@ describe('Ciclo de vida de cámara y MediaPipe', () => {
     const camera = new HandCamera();
     await expect(camera.start(video, vi.fn(), vi.fn())).rejects.toThrow('Permiso denegado');
     expect(mocks.create).not.toHaveBeenCalled();
+    camera.stop();
+  });
+  it('entrega una detección lenta como reciente y deja tiempo entre inferencias', async () => {
+    let frame!: FrameRequestCallback;
+    vi.mocked(requestAnimationFrame).mockImplementation(callback => { frame = callback; return 42; });
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(450);
+    Object.assign(video, { readyState: 2, currentTime: 1, videoWidth: 640, videoHeight: 480 });
+    const landmarks = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5 }));
+    landmarks[0].y = 0.8; landmarks[9].y = 0.4;
+    detector.detectForVideo.mockReturnValue({ landmarks: [landmarks] });
+    const onSample = vi.fn();
+    const camera = new HandCamera();
+    await camera.start(video, onSample, vi.fn());
+    frame(100);
+    expect(detector.detectForVideo).toHaveBeenCalledWith(video, 100);
+    expect(onSample).toHaveBeenLastCalledWith(expect.objectContaining({ palmSize: 0.4 }), 450);
+    Object.assign(video, { currentTime: 2 });
+    frame(500);
+    expect(detector.detectForVideo).toHaveBeenCalledOnce();
+    clock.mockReturnValue(520);
+    frame(517);
+    expect(detector.detectForVideo).toHaveBeenCalledTimes(2);
+    camera.stop();
+  });
+  it('informa pérdida de seguimiento si el video se congela', async () => {
+    let frame!: FrameRequestCallback;
+    vi.mocked(requestAnimationFrame).mockImplementation(callback => { frame = callback; return 42; });
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    Object.assign(video, { readyState: 2, currentTime: 1, videoWidth: 640, videoHeight: 480 });
+    const onSample = vi.fn();
+    const camera = new HandCamera();
+    await camera.start(video, onSample, vi.fn());
+    frame(100); frame(351);
+    expect(detector.detectForVideo).toHaveBeenCalledOnce();
+    expect(onSample).toHaveBeenLastCalledWith(null, 351);
     camera.stop();
   });
 });

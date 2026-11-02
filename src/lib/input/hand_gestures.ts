@@ -2,7 +2,7 @@ export interface HandPoint { x: number; y: number }
 export interface HandSample { x: number; y: number; pinch: number; angle: number; palmSize: number }
 export interface GestureState {
   x: number; y: number; tilt: number; palmSize: number; pinched: boolean; pouring: boolean;
-  tracked: boolean; timestampMs: number;
+  tracked: boolean; needsOpen: boolean; timestampMs: number;
 }
 
 export function measureHand(points: HandPoint[], aspect = 4 / 3): HandSample | null {
@@ -28,13 +28,13 @@ export class HandGestures {
   private lostSince: number | null = null;
   private lastTime = 0;
   private armed = false;
-  private state: GestureState = { x: 0.5, y: 0.5, tilt: 0, palmSize: 0, pinched: false, pouring: false, tracked: false, timestampMs: 0 };
+  private state: GestureState = { x: 0.5, y: 0.5, tilt: 0, palmSize: 0, pinched: false, pouring: false, tracked: false, needsOpen: true, timestampMs: 0 };
 
   calibrate(open: HandSample, closed: HandSample) {
-    if (open.pinch - closed.pinch < 0.2 || closed.pinch < 0) return false;
+    if (![open.pinch, closed.pinch, open.angle, closed.angle].every(Number.isFinite) || open.pinch - closed.pinch < 0.2 || closed.pinch < 0) return false;
     const gap = open.pinch - closed.pinch;
-    this.closeThreshold = closed.pinch + gap * 0.3;
-    this.openThreshold = closed.pinch + gap * 0.65;
+    this.closeThreshold = closed.pinch + Math.min(gap * 0.3, 0.15);
+    this.openThreshold = closed.pinch + Math.min(gap * 0.65, 0.35);
     this.neutralAngle = open.angle;
     this.reset();
     return true;
@@ -43,7 +43,7 @@ export class HandGestures {
   reset() {
     this.armed = false;
     this.candidateSince = this.releaseSince = this.lostSince = null;
-    this.state = { ...this.state, pinched: false, pouring: false, tracked: false };
+    this.state = { ...this.state, pinched: false, pouring: false, tracked: false, needsOpen: true };
   }
 
   update(sample: HandSample | null, now: number): GestureState {
@@ -76,7 +76,7 @@ export class HandGestures {
       x: this.state.x + (workspace(sample.x) - this.state.x) * smoothing,
       y: this.state.y + (workspace(sample.y) - this.state.y) * smoothing,
       palmSize: this.state.palmSize + (sample.palmSize - this.state.palmSize) * sizeSmoothing,
-      tilt, pinched, tracked: true, timestampMs: now,
+      tilt, pinched, tracked: true, needsOpen: !this.armed, timestampMs: now,
       pouring: pinched && this.releaseSince === null && Math.abs(tilt) > Math.PI / 9
     };
     return this.state;

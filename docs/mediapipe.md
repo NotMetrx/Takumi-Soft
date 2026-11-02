@@ -4,6 +4,8 @@ Fecha: 2026-10-31. Documento revisado: `SymbioLab_SDD_Consolidado_v0.2.0.md`, es
 
 Movilidad actualizada el 2026-11-01: altura, profundidad relativa, giro con dirección, alcance del cursor y encuadre del modo manos.
 
+Reconocimiento corregido el 2026-11-01: calibración menos exigente al reabrir la pinza, tolerancia a ausencias breves, indicador de mano detectada y entrega de resultados recientes tras inferencias lentas.
+
 El repositorio contiene el consolidado 0.2.0. Las rutas individuales `specs/001-chemistry-gestural-mvp/` y `.specify/memory/constitution.md` citadas por él no están presentes. Se conserva el consolidado como referencia; este informe registra implementación y pendientes sin cambiar sus criterios de aceptación.
 
 ## Resultado de la revisión
@@ -43,20 +45,26 @@ La escala de los landmarks no se convierte a centímetros ni a mL. La profundida
 ## Recursos y ejecución
 
 - SDK `@mediapipe/tasks-vision` fijado a `0.10.35`.
+- Detección, presencia y seguimiento usan la confianza predeterminada del SDK (0.5), en lugar de exigir 0.65.
 - `static/models/mediapipe/hand_landmarker.task`: modelo oficial `float16/1`.
 - `static/models/mediapipe/wasm/`: variantes SIMD, no SIMD y módulo de esa versión del SDK.
 - `static/models/mediapipe/manifest.json`: origen, tamaños y SHA-256. Es un inventario verificable; todavía no es un verificador de caché en tiempo de ejecución.
 - Vite publica `static` en desarrollo y lo copia a `dist` al compilar.
 - Inferencia síncrona en CPU limitada a 15 Hz, separada del render por su cadencia. Puede bloquear la UI durante cada detección; debe medirse antes de validar NFR-001/002. Si hay bloqueos, trasladar inferencia a Worker y probar compatibilidad. No se promete FPS ni latencia.
+- La antigüedad del resultado se cuenta desde que termina la inferencia; una detección lenta no se descarta como antigua al entregarla. La cadencia deja al menos 67 ms desde esa entrega antes de volver a inferir. El vídeo congelado sigue notificando ausencia.
+
+La captura de calibración solo se habilita al detectar una mano y muestra su progreso. Tolera hasta 350 ms de ausencia; una interrupción mayor cancela la captura. Los umbrales de pinza siguen adaptándose al cierre de cada persona, pero limitan la separación adicional exigida: abrir mucho los dedos durante la calibración ya no obliga a repetir esa apertura extrema para activar o soltar el agarre. Después de calibrar o retomar, la interfaz indica que hay que separar índice y pulgar antes de agarrar.
 
 Se usa `HandLandmarker.createFromOptions` y `detectForVideo(video, timestamp)` siguiendo la [guía oficial de Google](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js). El modelo se obtiene de [Google MediaPipe Models](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task). Durante el uso se carga desde el mismo origen de la aplicación.
 
 ## Verificación
 
-Pruebas automatizadas en `tests/input/hand_gestures.test.ts` y `tests/input/hand_camera.test.ts`: normalización, espejo, histéresis, inclinación, ausencia prolongada, recursos locales, solicitud explícita y cierre tras cancelaciones asíncronas. Las pruebas de cámara usan dobles; no ejecutan el modelo ni sustituyen una webcam real.
+Pruebas automatizadas en `tests/input/hand_gestures.test.ts` y `tests/input/hand_camera.test.ts`: normalización, espejo, histéresis, inclinación, ausencia prolongada, reapertura tras calibraciones muy separadas, datos de calibración inválidos, frescura tras inferencias lentas, vídeo congelado, recursos locales, solicitud explícita y cierre tras cancelaciones asíncronas. Las pruebas unitarias de cámara usan dobles; no ejecutan el modelo ni sustituyen una webcam real.
 
-`tests/interaction/hand_manipulation.test.ts` verifica que elevar la mano conserva profundidad con tres orientaciones de cámara, el agarre no salta, el tamaño de palma tiene margen y límites, ambos giros permiten verter por la boca y el alcance respeta la mesa. La suite completa contiene 47 pruebas; el chequeo Svelte/TypeScript no tiene errores ni avisos. La compilación conserva el aviso de tamaño de bundle.
+`tests/interaction/hand_manipulation.test.ts` verifica que elevar la mano conserva profundidad con tres orientaciones de cámara, el agarre no salta, el tamaño de palma tiene margen y límites, ambos giros permiten verter por la boca y el alcance respeta la mesa. La suite completa contiene 51 pruebas; el chequeo Svelte/TypeScript no tiene errores ni avisos. La compilación conserva el aviso de tamaño de bundle.
 
 En Chromium se verificaron secuencias sintéticas a través de `HandGestures` y la escena WebGL: agarre desde el apoyo, elevación con profundidad constante y cuello visible, cambio de profundidad, vertido con ambos matraces, corte al abrir, devolución al apoyo y pérdida de seguimiento aun recibiendo continuamente muestras ausentes. Se comprobó también dosificación por botón tras reiniciar en el mismo fotograma y después del uso gestual. Otra comprobación con el adaptador de cámara sustituido verifica las dos etapas de calibración, ocultar/mostrar video, pausa, apertura obligatoria al retomar, pérdida de foco y apagado. No se usaron imágenes de una webcam real para estas comprobaciones.
+
+La corrección del reconocimiento se comprobó además con `HandCamera` y el modelo local real en Chromium, alimentando un `canvas.captureStream(15)` con la [imagen pública de mano del ejemplo oficial de Google](https://github.com/google-ai-edge/mediapipe-samples-web/blob/main/public/hand_model.png): 16 detecciones válidas, ninguna ausencia, también con el vídeo oculto; al apagar se cerró el stream. Un ensayo de interfaz con el adaptador de cámara y el dibujado 3D sustituidos comprobó el bloqueo de captura sin mano, progreso, tolerancia a una ausencia de 200 ms, cancelación tras más de 350 ms, reapertura relajada después de calibrar con dedos muy separados, mensajes de activación/objetivo, pausa prolongada, retomar y apagado. Estas comprobaciones no acreditan rendimiento ni usabilidad con una webcam física.
 
 Antes de aceptar AC-002/003 hay que probar manualmente ambos matraces, ambas manos, mala luz, apertura rápida, oclusiones breves/prolongadas, pestaña oculta, permiso denegado/revocado, vaso lleno, reactivo agotado y la alternativa mouse. Medir tiempos de detección y frames durante el recorrido. Para AC-006.1 se requiere además completar y probar la instalación offline.

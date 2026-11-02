@@ -14,6 +14,8 @@
   let sampling = $state(false);
   let paused = $state(false);
   let previewExpanded = $state(true);
+  let hasHand = $state(false);
+  let captureProgress = $state(0);
   let sampleStart = 0;
   let samples: HandSample[] = [];
   let openSample: HandSample | null = null;
@@ -33,6 +35,8 @@
     sampling = false;
     samples = [];
     openSample = null;
+    hasHand = false;
+    captureProgress = 0;
   }
 
   function cameraError(message: string) {
@@ -42,9 +46,10 @@
   }
 
   function onSample(sample: HandSample | null, now: number) {
+    hasHand = sample !== null;
+    if (sampling && lostSince !== null && now - lostSince > 350) { sampling = false; samples = []; captureProgress = 0; }
     if (!sample) {
       lostSince ??= now;
-      if (sampling) { sampling = false; samples = []; }
       if (now - lostSince >= 1500 && phase === 'ready') paused = true;
       labStore.gestureStatus = paused ? 'Seguimiento pausado. Abre la mano y pulsa Retomar.' : 'Muestra una mano completa con buena luz';
     } else lostSince = null;
@@ -52,6 +57,7 @@
       labStore.gestureInput = null;
       if (sample && sampling) {
         samples.push(sample);
+        captureProgress = Math.min(1, samples.length / 8, (now - sampleStart) / 1000);
         if (now - sampleStart >= 1000 && samples.length >= 8) {
           const median = (key: keyof HandSample) => samples.map(s => s[key]).sort((a, b) => a - b)[Math.floor(samples.length / 2)];
           const measured = { x: median('x'), y: median('y'), pinch: median('pinch'), angle: median('angle'), palmSize: median('palmSize') };
@@ -66,6 +72,7 @@
           }
           sampling = false;
           samples = [];
+          captureProgress = 0;
         }
       }
       return;
@@ -108,6 +115,7 @@
     labStore.gestureInput = null;
     samples = [];
     sampleStart = performance.now();
+    captureProgress = 0;
     sampling = true;
   }
 
@@ -159,16 +167,20 @@
         class="w-full h-full object-cover -scale-x-100"
       ></video>
     </div>
+    <p class="text-[11px] flex items-center gap-1.5" class:text-emerald-300={hasHand} class:text-slate-300={!hasHand}>
+      <span class="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true"></span>
+      {isRequesting ? 'Cargando reconocimiento…' : hasHand ? 'Mano detectada' : 'Buscando una mano en el encuadre'}
+    </p>
     <p class="text-[11px] text-slate-200" role="status">{labStore.gestureStatus}</p>
     {#if !isRequesting && phase !== 'ready'}
       <p class="text-[11px] text-amber-200">{phase === 'open' ? '1. Mantén la palma vertical y los dedos abiertos.' : '2. Junta índice y pulgar sin girar la mano.'}</p>
-      <button type="button" onclick={calibrate} disabled={sampling} class="lab-btn bg-amber-500 text-slate-950 rounded-lg p-2 text-xs font-bold disabled:opacity-50">
-        {sampling ? 'Mantén el gesto un segundo…' : phase === 'open' ? 'Calibrar mano abierta' : 'Calibrar pinza'}
+      <button type="button" onclick={calibrate} disabled={sampling || !hasHand} class="lab-btn bg-amber-500 text-slate-950 rounded-lg p-2 text-xs font-bold disabled:opacity-50">
+        {sampling ? `Capturando… ${Math.round(captureProgress * 100)}%` : phase === 'open' ? 'Calibrar mano abierta' : 'Calibrar pinza'}
       </button>
     {:else if paused}
       <button type="button" onclick={() => { paused = false; gestures.reset(); lostSince = null; }} class="lab-btn bg-amber-500 text-slate-950 rounded-lg p-2 text-xs font-bold">Retomar con la mano abierta</button>
     {:else if phase === 'ready'}
-      <p class="text-[11px] text-slate-300">Pinza para agarrar. Sube o baja la mano para elevar o bajar el matraz. Acerca o aleja la mano para cambiar profundidad. Inclina hacia el vaso para verter. Abre para cortar y devolverlo.</p>
+      <p class="text-[11px] text-slate-300">Abre la mano para empezar. Apunta al matraz y junta índice y pulgar para agarrar. Sube o baja la mano para elevar o bajar el matraz. Acerca o aleja la mano para cambiar profundidad. Inclina hacia el vaso para verter. Abre para cortar y devolverlo.</p>
       <button type="button" onclick={() => { phase = 'open'; previewExpanded = true; gestures.reset(); labStore.gestureInput = null; }} class="min-h-11 text-xs text-amber-300 underline">Recalibrar</button>
     {/if}
   </div>

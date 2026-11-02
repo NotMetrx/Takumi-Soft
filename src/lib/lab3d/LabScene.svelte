@@ -3253,6 +3253,7 @@
       if (!handEnabled || !hand || performance.now() - lastHandSeen >= 1500) {
         releaseGesture();
         wasPinched = hand?.pinched ?? false;
+        if (labStore.isCameraActive && handFresh && labStore.isMicroscopeActive) labStore.gestureStatus = 'Mano detectada. Vuelve a la mesa para agarrar recipientes.';
       } else if (handFresh) {
         pointer.set(hand.x * 2 - 1, 1 - hand.y * 2);
         raycaster.setFromCamera(pointer, camera);
@@ -3262,7 +3263,7 @@
           let object: THREE.Object3D | null = hits[0]?.object ?? null;
           while (object && !object.userData.flaskId) object = object.parent;
           handHoveredFlaskId = object?.userData.flaskId ?? null;
-          if (hand.pinched && !wasPinched && handHoveredFlaskId) {
+          if (!hand.needsOpen && hand.pinched && !wasPinched && handHoveredFlaskId) {
             const rig = flasks[handHoveredFlaskId];
             gesturePlane.copy(handDragPlane(camera, rig.group.position));
             if (raycaster.ray.intersectPlane(gesturePlane, intersectPt)) {
@@ -3288,11 +3289,13 @@
           }
           labStore.gestureStatus = hand.pouring ? 'Inclinado: coloca la boca por encima de la abertura del vaso' : 'Matraz agarrado: sube o baja la mano; acércala o aléjala para cambiar profundidad';
         } else {
-          labStore.gestureStatus = handHoveredFlaskId ? `Matraz ${handHoveredFlaskId === 'hcl' ? 'A' : 'B'} al alcance: junta índice y pulgar para agarrar` : 'Señala un matraz y junta índice y pulgar';
+          labStore.gestureStatus = hand.needsOpen ? 'Mano detectada. Separa índice y pulgar para activar el agarre.'
+            : hand.pinched ? 'Abre la pinza, apunta al matraz y vuelve a juntar índice y pulgar.'
+            : handHoveredFlaskId ? `Matraz ${handHoveredFlaskId === 'hcl' ? 'A' : 'B'} al alcance: junta índice y pulgar para agarrar` : 'Señala un matraz y junta índice y pulgar';
         }
         wasPinched = hand.pinched;
       }
-      handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched, overFlask: !!(handHoveredFlaskId || gestureFlaskId) } : null;
+      handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched, overFlask: !hand.needsOpen && !!(handHoveredFlaskId || gestureFlaskId) } : null;
 
       if (labStore.isExplorationMode && explorationStore.result.stopped) labStore.activePourAnim = null;
       let flowingRig: FlaskRig | null = null;

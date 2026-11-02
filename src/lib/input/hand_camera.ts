@@ -21,8 +21,7 @@ export class HandCamera {
     if (this.stopped) return;
     const detector = await HandLandmarker.createFromOptions(files, {
       baseOptions: { modelAssetPath: `${import.meta.env.BASE_URL}models/mediapipe/hand_landmarker.task`, delegate: 'CPU' },
-      runningMode: 'VIDEO', numHands: 1, minHandDetectionConfidence: 0.65,
-      minHandPresenceConfidence: 0.65, minTrackingConfidence: 0.65
+      runningMode: 'VIDEO', numHands: 1
     });
     if (this.stopped) { detector.close(); return; }
     this.detector = detector;
@@ -37,7 +36,9 @@ export class HandCamera {
           lastInference = now;
           lastVideoTime = video.currentTime;
           const result = detector.detectForVideo(video, now);
-          onSample(measureHand(result.landmarks[0] ?? [], video.videoWidth / video.videoHeight), now);
+          // Freshness starts at delivery; CPU inference can outlast the scene's 250 ms watchdog.
+          lastInference = performance.now();
+          onSample(measureHand(result.landmarks[0] ?? [], video.videoWidth / video.videoHeight), lastInference);
         } else if (!document.hidden && now - lastInference > 250) {
           lastInference = now;
           onSample(null, now);

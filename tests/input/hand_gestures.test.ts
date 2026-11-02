@@ -58,6 +58,24 @@ describe('Control gestual de una mano', () => {
     expect(g.calibrate(open, { ...closed, pinch: 0.95 })).toBe(false);
     expect(g.calibrate({ ...open, angle: 3 }, { ...closed, angle: 3 })).toBe(true);
     expect(Math.abs(g.update({ ...open, angle: -3.1 }, 0).tilt)).toBeLessThan(0.2);
+    expect(g.calibrate({ ...open, pinch: NaN }, closed)).toBe(false);
+    expect(g.calibrate(open, { ...closed, angle: Infinity })).toBe(false);
+  });
+  it.each([0.1, 0.55])('permite reabrir una pinza calibrada con los dedos muy separados (cierre %s)', pinch => {
+    const g = new HandGestures();
+    const grip = { ...closed, pinch };
+    const relaxed = { ...open, pinch: pinch + 0.4 };
+    expect(g.calibrate({ ...open, pinch: 3 }, grip)).toBe(true);
+    expect(g.update(grip, 0)).toMatchObject({ needsOpen: true, pinched: false });
+    expect(g.update(grip, 200)).toMatchObject({ needsOpen: true, pinched: false });
+    expect(g.update(relaxed, 210).needsOpen).toBe(false);
+    g.update(grip, 220);
+    expect(g.update({ ...grip, angle: 0.8 }, 370).pinched).toBe(true);
+    expect(g.update({ ...relaxed, angle: 0.8 }, 380).pouring).toBe(false);
+    expect(g.update(relaxed, 480).pinched).toBe(false);
+    g.update(null, 500);
+    expect(g.update(null, 2000).needsOpen).toBe(true);
+    expect(g.update(grip, 2010)).toMatchObject({ needsOpen: true, pinched: false });
   });
   it('suaviza el tamaño de palma y el giro sin retrasar el corte al abrir', () => {
     const g = controller();
