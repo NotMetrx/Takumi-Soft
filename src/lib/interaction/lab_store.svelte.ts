@@ -15,6 +15,383 @@ export type SteamVisualEffect =
   | 'tea_complex'
   | 'botijo_cooling';
 
+export type MicroscopeObjectivePower = 4 | 10 | 40 | 100;
+
+export type MicroscopeOpticalMode = 'brightfield' | 'darkfield' | 'phase' | 'polarized';
+
+export type MicroscopePartId =
+  | 'oculars'
+  | 'head'
+  | 'arm'
+  | 'nosepiece'
+  | 'objectives'
+  | 'stage'
+  | 'slide'
+  | 'coarse_knob'
+  | 'fine_knob'
+  | 'condenser'
+  | 'diaphragm'
+  | 'illuminator';
+
+export type MicroscopeSpecimenId =
+  | 'reactor_live'
+  | 'onion_lugol'
+  | 'elodea_chloroplasts'
+  | 'blood_smear'
+  | 'tea_microplastics'
+  | 'clay_nacl_crystals';
+
+export interface MicroscopeObjectiveSpec {
+  power: MicroscopeObjectivePower;
+  totalMagnification: number;
+  name: string;
+  dinColorName: string;
+  dinColorHex: string;
+  numericalAperture: number;
+  workingDistanceMm: number;
+  fieldOfViewUm: number;
+  depthOfFieldUm: number;
+  parfocalTargetUm: number;
+  requiresOil: boolean;
+  revolverAngleRad: number;
+  description: string;
+}
+
+export interface MicroscopePartSpec {
+  id: MicroscopePartId;
+  code: string;
+  name: string;
+  system: 'Sistema Óptico' | 'Sistema Mecánico' | 'Sistema de Iluminación';
+  spec: string;
+  primariaExplain: string;
+  secundariaExplain: string;
+  interactiveHint: string;
+}
+
+export interface MicroscopeSpecimenSpec {
+  id: MicroscopeSpecimenId;
+  name: string;
+  scientificName: string;
+  stainOrMedium: string;
+  recommendedPower: MicroscopeObjectivePower;
+  accentColor: string;
+  summary: string;
+  structuresVisible: string[];
+}
+
+export const MICROSCOPE_OBJECTIVES: Record<MicroscopeObjectivePower, MicroscopeObjectiveSpec> = {
+  4: {
+    power: 4,
+    totalMagnification: 40,
+    name: 'Plan Acromático 4x / 0.10 (Rastreo)',
+    dinColorName: 'Anillo Rojo DIN',
+    dinColorHex: '#ef4444',
+    numericalAperture: 0.1,
+    workingDistanceMm: 18.0,
+    fieldOfViewUm: 4500,
+    depthOfFieldUm: 260,
+    parfocalTargetUm: 4500,
+    requiresOil: false,
+    revolverAngleRad: Math.PI / 2,
+    description:
+      'Objetivo seco de barrido panorámico. Permite ubicar la región de interés en el portaobjetos y enfocar con el tornillo macrométrico sin riesgo de impacto.'
+  },
+  10: {
+    power: 10,
+    totalMagnification: 100,
+    name: 'Plan Acromático 10x / 0.25 (Bajo Aumento)',
+    dinColorName: 'Anillo Amarillo DIN',
+    dinColorHex: '#eab308',
+    numericalAperture: 0.25,
+    workingDistanceMm: 6.5,
+    fieldOfViewUm: 1800,
+    depthOfFieldUm: 85,
+    parfocalTargetUm: 4512,
+    requiresOil: false,
+    revolverAngleRad: Math.PI,
+    description:
+      'Objetivo seco intermedio para observar tejidos vegetales completos, redes cristalinas de NaCl, antiburbujas y colonias celulares.'
+  },
+  40: {
+    power: 40,
+    totalMagnification: 400,
+    name: 'Plan Acromático 40x / 0.65 (Alto Seco · 0.17)',
+    dinColorName: 'Anillo Azul Claro DIN',
+    dinColorHex: '#38bdf8',
+    numericalAperture: 0.65,
+    workingDistanceMm: 0.55,
+    fieldOfViewUm: 450,
+    depthOfFieldUm: 18,
+    parfocalTargetUm: 4518,
+    requiresOil: false,
+    revolverAngleRad: 0,
+    description:
+      'Objetivo retráctil corregido para cubreobjetos de 0.17 mm. Con distancia de trabajo de 0.55 mm, exige enfocar exclusivamente con el tornillo micrométrico.'
+  },
+  100: {
+    power: 100,
+    totalMagnification: 1000,
+    name: 'Plan Acromático 100x / 1.25 OIL (Inmersión)',
+    dinColorName: 'Anillo Blanco + Negro OIL',
+    dinColorHex: '#f8fafc',
+    numericalAperture: 1.25,
+    workingDistanceMm: 0.14,
+    fieldOfViewUm: 180,
+    depthOfFieldUm: 6,
+    parfocalTargetUm: 4522,
+    requiresOil: true,
+    revolverAngleRad: (3 * Math.PI) / 2,
+    description:
+      'Objetivo de inmersión en aceite de cedro sintético (n = 1.515). Elimina la refracción aire-vidrio para alcanzar el límite de difracción de Abbe (~0.22 µm).'
+  }
+};
+
+export const MICROSCOPE_PARTS: MicroscopePartSpec[] = [
+  {
+    id: 'oculars',
+    code: 'OPT-01',
+    name: 'Oculares Binoculares WF10x / 18 mm',
+    system: 'Sistema Óptico',
+    spec: 'Aumento 10x · Campo FN 18 mm · Dioptrías ±5D',
+    primariaExplain:
+      'Son los dos visores superiores por donde miramos con ambos ojos. Amplían 10 veces la imagen que sube desde los lentes de abajo.',
+    secundariaExplain:
+      'Sistema de lentes tipo Huygens/ Ramsden de campo amplio (Wide Field 10x, FN 18 mm) que amplifica la imagen real intermedia proyectada por el objetivo en el plano focal del diafragma ocular.',
+    interactiveHint: 'Multiplica ×10 el aumento del objetivo activo e incluye retícula micrométrica calibrada.'
+  },
+  {
+    id: 'head',
+    code: 'MEC-02',
+    name: 'Cabezal Binocular Siedentopf (30°)',
+    system: 'Sistema Mecánico',
+    spec: 'Inclinación ergonómica 30° · Giro 360° · IPD 55–75 mm',
+    primariaExplain:
+      'Es la cabeza inclinada del microscopio que sostiene los dos oculares y se ajusta al ancho de nuestros ojos.',
+    secundariaExplain:
+      'Cabezal prismático tipo Siedentopf que divide el haz luminoso 50/50 mediante prismas de techo sin alterar la longitud mecánica de tubo (160 mm DIN) al ajustar la distancia interpupilar.',
+    interactiveHint: 'Mantiene constante la longitud óptica de 160 mm del estándar DIN.'
+  },
+  {
+    id: 'nosepiece',
+    code: 'MEC-03',
+    name: 'Revólver Portaobjetivos Cuádruple',
+    system: 'Sistema Mecánico',
+    spec: 'Rotación con retenes de esfera · Parfocalidad 45 mm',
+    primariaExplain:
+      'Es la rueda giratoria plateada que hace "¡clic!" al girarla para cambiar entre las 4 lupas de colores.',
+    secundariaExplain:
+      'Torreta giratoria mecanizada con rodamientos de precisión y paradas de clic que garantiza la alineación coaxial de cada objetivo con el eje óptico del condensador.',
+    interactiveHint: 'Haz clic en el revólver 3D o selecciona 4x, 10x, 40x o 100x para girarlo físicamente.'
+  },
+  {
+    id: 'objectives',
+    code: 'OPT-04',
+    name: 'Objetivos Acromáticos DIN (4x, 10x, 40x, 100x)',
+    system: 'Sistema Óptico',
+    spec: 'ISO 8578 · NA 0.10 a 1.25 Oil · Tubo 160 mm / 0.17',
+    primariaExplain:
+      'Son las 4 lentes principales cerca de la muestra: Rojo (4x para buscar), Amarillo (10x), Azul (40x muy cerca) y Blanco (100x con gotita de aceite).',
+    secundariaExplain:
+      'Conjunto de lentes corregidas para aberración cromática y esférica que determinan la resolución límite según la ecuación de Abbe (d = 0.61·λ / NA) y forman la primera imagen real invertida.',
+    interactiveHint: 'Cambia entre 40x, 100x, 400x y 1000x de aumento total.'
+  },
+  {
+    id: 'arm',
+    code: 'MEC-05',
+    name: 'Brazo o Columna Ergonómica en C',
+    system: 'Sistema Mecánico',
+    spec: 'Aleación de aluminio fundido · Rigidez estructural axial',
+    primariaExplain:
+      'Es el cuerpo curvo y resistente del microscopio por donde siempre debemos sujetarlo con una mano al transportarlo.',
+    secundariaExplain:
+      'Columna vertebral de fundición monolítica que conecta el pie con el cabezal óptico y aloja el sistema de cremallera y piñón de precisión para el desplazamiento vertical de la platina.',
+    interactiveHint: 'Aísla vibraciones mecánicas durante observaciones a 400x y 1000x.'
+  },
+  {
+    id: 'stage',
+    code: 'MEC-06',
+    name: 'Platina Mecánica X-Y con Escala Vernier',
+    system: 'Sistema Mecánico',
+    spec: '140 × 140 mm · Rango X: 75 mm / Y: 50 mm · Precisión 0.1 mm',
+    primariaExplain:
+      'Es la mesita negra donde ponemos el vidrio con la muestra. Tiene un agujero en el centro para que pase la luz desde abajo.',
+    secundariaExplain:
+      'Plataforma anodizada dura de doble capa con mandos coaxiales ortogonales (X-Y) y nonio Vernier de 0.1 mm para barrido sistemático y localización por coordenadas.',
+    interactiveHint: 'Usa los controles X-Y para desplazar físicamente el portaobjetos 3D.'
+  },
+  {
+    id: 'slide',
+    code: 'OPT-07',
+    name: 'Portaobjetos, Cubreobjetos (0.17 mm) y Pinza',
+    system: 'Sistema Óptico',
+    spec: 'Vidrio borosilicato 76×26×1 mm · Cubreobjetos Nº 1.5 (0.17 mm)',
+    primariaExplain:
+      'Es la lámina de vidrio transparente con una tapita fina donde colocamos una gota del vaso, una telita de cebolla o una hoja.',
+    secundariaExplain:
+      'Sustrato óptico con índice de refracción n = 1.515 y cubreobjetos calibrado de 0.17 mm de espesor, crítico para evitar aberración esférica en objetivos de alta apertura numérica (40x y 100x).',
+    interactiveHint: 'Cambia entre las 6 preparaciones microscópicas o toma una alícuota en vivo del vaso.'
+  },
+  {
+    id: 'coarse_knob',
+    code: 'MEC-08',
+    name: 'Tornillo Macrométrico (Enfoque Rápido)',
+    system: 'Sistema Mecánico',
+    spec: 'Desplazamiento grueso · 2000 µm por revolución',
+    primariaExplain:
+      'Es la rueda grande de los lados: sube y baja rápido la mesita (platina) para encontrar la muestra cuando usamos el lente rojo (4x).',
+    secundariaExplain:
+      'Mando coaxial exterior de avance rápido para aproximación focal inicial a bajo aumento (4x y 10x). Prohibido su uso en 40x y 100x por riesgo de fractura del cubreobjetos.',
+    interactiveHint: 'Gira el macrométrico para subir o bajar la platina 3D rápidamente.'
+  },
+  {
+    id: 'fine_knob',
+    code: 'MEC-09',
+    name: 'Tornillo Micrométrico (Enfoque de Precisión)',
+    system: 'Sistema Mecánico',
+    spec: 'Avance micrométrico · 2 µm por división (200 µm/vuelta)',
+    primariaExplain:
+      'Es la rueda pequeña del centro: mueve la muestra tan poquito que casi no se nota, pero hace que la imagen borrosa se vea súper nítida.',
+    secundariaExplain:
+      'Mecanismo planetario reductor sin juego (backlash-free) con tambor graduado cada 2 µm, indispensable para explorar planos ópticos sucesivos dentro de la reducida profundidad de campo de 40x y 100x.',
+    interactiveHint: 'Ajusta el micrométrico para lograr el 100% de nitidez óptica en alto aumento.'
+  },
+  {
+    id: 'condenser',
+    code: 'OPT-10',
+    name: 'Condensador Acromático de Abbe (NA 1.25)',
+    system: 'Sistema Óptico',
+    spec: 'Doble lente convergente · NA 1.25 · Regulable por piñón',
+    primariaExplain:
+      'Es un lente escondido debajo de la mesita que junta toda la luz de la lámpara en un rayo brillante justo sobre la muestra.',
+    secundariaExplain:
+      'Sistema óptico subplatina de dos lentes que concentra el haz del colector sobre el plano del espécimen con un ángulo de apertura capaz de igualar la NA de objetivos de inmersión (1.25).',
+    interactiveHint: 'Concentra el cono luminoso para maximizar la resolución según la iluminación de Köhler.'
+  },
+  {
+    id: 'diaphragm',
+    code: 'OPT-11',
+    name: 'Diafragma Iris de Apertura y Portafiltros',
+    system: 'Sistema Óptico',
+    spec: 'Apertura variable 2–30 mm · Control de NA efectiva y contraste',
+    primariaExplain:
+      'Se abre y se cierra como la pupila de nuestro ojo para dejar pasar más o menos luz y ver mejor los bordes transparentes.',
+    secundariaExplain:
+      'Regula la apertura numérica efectiva del cono de iluminación (óptimo al 70–80% de la NA del objetivo). Cerrarlo incrementa el contraste por difracción y la profundidad de foco a costa de resolución.',
+    interactiveHint: 'Ajusta la apertura del diafragma iris para equilibrar contraste y resolución.'
+  },
+  {
+    id: 'illuminator',
+    code: 'OPT-12',
+    name: 'Iluminador Köhler LED (5700 K) y Base Antivibración',
+    system: 'Sistema de Iluminación',
+    spec: 'LED 3W Luz Día 5700 K · Lente colectora · Reóstato 0–100%',
+    primariaExplain:
+      'Es la lámpara brillante en el pie pesado del microscopio que ilumina la muestra desde abajo con un botón para subir o bajar el brillo.',
+    secundariaExplain:
+      'Fuente emisora de estado sólido a temperatura de color constante (5700 K, sin deriva rojiza al atenuar) acoplada a lente colectora de campo y alojada en base ergonómica de baja resonancia.',
+    interactiveHint: 'Enciende/apaga el LED y regula el reóstato o cambia a Campo Oscuro / Fase / Polarizada.'
+  }
+];
+
+export const MICROSCOPE_SPECIMENS: MicroscopeSpecimenSpec[] = [
+  {
+    id: 'reactor_live',
+    name: 'Alícuota en Vivo del Vaso Central',
+    scientificName: 'Reactor Químico SymbioLab (Tiempo Real)',
+    stainOrMedium: 'Sincronizado con pH, T (°C) y Caso STEAM activo',
+    recommendedPower: 40,
+    accentColor: '#10b981',
+    summary:
+      'Extrae una gota en tiempo real del vaso de precipitados central: observa vesículas de antocianina cambiando de color con el pH actual, movimiento browniano térmico, micelas de antiburbujas, complejos Fe-tanino o cristales de NaCl.',
+    structuresVisible: [
+      'Vesículas cromóforas sensibles al pH actual del vaso',
+      'Microcristales cúbicos de NaCl por neutralización ácido-base',
+      'Agitación térmica browniana proporcional a la temperatura (°C)',
+      'Coloides de MnO₂ / Tanato férrico / Micelas según experimento STEAM'
+    ]
+  },
+  {
+    id: 'onion_lugol',
+    name: 'Epidermis de Cebolla (Allium cepa)',
+    scientificName: 'Allium cepa · Tejido epidérmico vegetal',
+    stainOrMedium: 'Tinción con Solución de Lugol (I₂/KI)',
+    recommendedPower: 10,
+    accentColor: '#f59e0b',
+    summary:
+      'Preparación histológica clásica en túnica interna de bulbo de cebolla teñida con yodo-yoduro potásico. Permite distinguir con gran nitidez la arquitectura en ladrillo de las células vegetales.',
+    structuresVisible: [
+      'Pared celular celulósica rígida de doble contorno',
+      'Núcleo celular esférico teñido en ámbar por complejo triyoduro',
+      'Nucléolos refringentes intranucleares (visibles a 40x y 100x)',
+      'Citoplasma periférico y gran vacuola central hipertónica'
+    ]
+  },
+  {
+    id: 'elodea_chloroplasts',
+    name: 'Hoja de Elodea (Ciclosis en Vivo)',
+    scientificName: 'Elodea canadensis · Parénquima clorofílico',
+    stainOrMedium: 'Montaje húmedo en fresco (H₂O a 25 °C)',
+    recommendedPower: 40,
+    accentColor: '#22c55e',
+    summary:
+      'Hoja acuática viva de dos capas celulares de espesor. Muestra decenas de cloroplastos verdes desplazándose en corriente circular (ciclosis) impulsados por filamentos de actina y miosina.',
+    structuresVisible: [
+      'Cloroplastos lenticulares ricos en clorofila a y b (~5 µm)',
+      'Corriente de ciclosis citoplasmática perivacuolar en tiempo real',
+      'Pared celular con plasmodesmos intercelulares',
+      'Región central transparente ocupada por la vacuola'
+    ]
+  },
+  {
+    id: 'blood_smear',
+    name: 'Frotis Sanguíneo Humano',
+    scientificName: 'Homo sapiens · Tejido hematopoyético periférico',
+    stainOrMedium: 'Tinción diferencial de Wright-Giemsa',
+    recommendedPower: 100,
+    accentColor: '#ef4444',
+    summary:
+      'Extensión monocapa de sangre periférica ideal para practicar el uso del objetivo 100x de inmersión en aceite (n = 1.515) y diferenciar eritrocitos, leucocitos y plaquetas.',
+    structuresVisible: [
+      'Eritrocitos discos bicóncavos anucleados (7.5 µm) con halo central',
+      'Neutrófilos polimorfonucleares con núcleo multilobulado violeta',
+      'Linfocitos de núcleo esférico denso y citoplasma basófilo',
+      'Plaquetas (trombocitos de 2–3 µm) agrupadas entre hematíes'
+    ]
+  },
+  {
+    id: 'tea_microplastics',
+    name: 'Microplásticos y Complejos en Té (Caso 3 PDF)',
+    scientificName: 'Camellia sinensis + Polímeros de Bolsita Piramidal',
+    stainOrMedium: 'Infusión a 95 °C + Cloruro de Hierro(III)',
+    recommendedPower: 40,
+    accentColor: '#8b5cf6',
+    summary:
+      'Basado en el Caso 3 de Prolongo & Pinto (RSEQ): permite observar las microfibras poliméricas de nailon/PET liberadas por bolsitas piramidales calientes junto a los agregados negros de tanato férrico.',
+    structuresVisible: [
+      'Microfibras birrefringentes de nailon y tereftalato de polietileno (PET)',
+      'Precipitados octaédricos oscuros de complejo Fe(III)-ácido gálico',
+      'Cristales aciculares de polifenoles y catequinas del té',
+      'Nanopartículas submicrónicas detectables en Campo Oscuro y Polarizada'
+    ]
+  },
+  {
+    id: 'clay_nacl_crystals',
+    name: 'Cristales de NaCl y Poros de Botijo (Casos 4 y 5 PDF)',
+    scientificName: 'Halita cúbica (NaCl) sobre matriz de arcilla ilita/caolinita',
+    stainOrMedium: 'Cristalización evaporativa / Luz Polarizada',
+    recommendedPower: 10,
+    accentColor: '#38bdf8',
+    summary:
+      'Relacionado con los Casos 4 y 5 de Prolongo & Pinto: muestra la red microporosa capilar de la cerámica del botijo donde el agua se evapora absorbiendo 44 kJ/mol y los cristales cúbicos de salmuera.',
+    structuresVisible: [
+      'Cristales cúbicos perfectos de cloruro de sodio (hábito en tolva)',
+      'Red de microporos intercomunicados (1–15 µm) de arcilla cocida',
+      'Meniscos capilares de evaporación endotérmica en bordes minerales',
+      'Birrefringencia mineral en granos de cuarzo y feldespato bajo polarizador'
+    ]
+  }
+];
+
 export interface PourAnimationRequest {
   id: number;
   reagentId: string;
@@ -1172,6 +1549,21 @@ export class LabStore {
   dropperPulseRevision = $state<number>(0);
   stripDipRevision = $state<number>(0);
 
+  // Estado completo del Microscopio Óptico Compuesto Binocular 3D (Estación Óptica Interactiva)
+  isMicroscopeActive = $state<boolean>(false);
+  microscopeObjective = $state<MicroscopeObjectivePower>(10);
+  microscopeOpticalMode = $state<MicroscopeOpticalMode>('brightfield');
+  microscopeSpecimenId = $state<MicroscopeSpecimenId>('reactor_live');
+  microscopeSelectedPartId = $state<MicroscopePartId>('objectives');
+  microscopeCoarseUm = $state<number>(4490); // Enfoque macrométrico (rango 3800 – 4700 µm)
+  microscopeFineUm = $state<number>(20); // Enfoque micrométrico (rango -150 a +150 µm)
+  microscopeStageXUm = $state<number>(0); // Platina mecánica eje X (-1500 a +1500 µm)
+  microscopeStageYUm = $state<number>(0); // Platina mecánica eje Y (-1500 a +1500 µm)
+  microscopeLampOn = $state<boolean>(true);
+  microscopeLampIntensity = $state<number>(0.85); // Reóstato Köhler 0.0 – 1.0
+  microscopeDiaphragm = $state<number>(0.72); // Diafragma iris de Abbe 0.10 – 1.0
+  microscopeImmersionOilApplied = $state<boolean>(false); // Gota de aceite n = 1.515 para 100x
+
   reagents = $state<Reagent[]>([
     {
       reagentId: 'hcl',
@@ -1323,10 +1715,166 @@ export class LabStore {
       this.isSensorCardVisible = true;
     } else if (toolId === 'cabinet') {
       this.isCabinetModalOpen = true;
+    } else if (toolId === 'microscope') {
+      this.openMicroscope();
+      return;
     }
     if (toolId) {
       labSound.playInstrumentClick();
     }
+  }
+
+  get activeMicroscopeObjectiveSpec(): MicroscopeObjectiveSpec {
+    return MICROSCOPE_OBJECTIVES[this.microscopeObjective];
+  }
+
+  get activeMicroscopeSpecimenSpec(): MicroscopeSpecimenSpec {
+    return (
+      MICROSCOPE_SPECIMENS.find((s) => s.id === this.microscopeSpecimenId) ??
+      MICROSCOPE_SPECIMENS[0]
+    );
+  }
+
+  get activeMicroscopePartSpec(): MicroscopePartSpec {
+    return (
+      MICROSCOPE_PARTS.find((p) => p.id === this.microscopeSelectedPartId) ??
+      MICROSCOPE_PARTS[0]
+    );
+  }
+
+  get microscopeTotalStageUm(): number {
+    return this.microscopeCoarseUm + this.microscopeFineUm;
+  }
+
+  get microscopeFocusErrorUm(): number {
+    const target = this.activeMicroscopeObjectiveSpec.parfocalTargetUm;
+    return this.microscopeTotalStageUm - target;
+  }
+
+  get microscopeBlurPx(): number {
+    const spec = this.activeMicroscopeObjectiveSpec;
+    const absErr = Math.abs(this.microscopeFocusErrorUm);
+    const dof = spec.depthOfFieldUm;
+    let focusBlur = Math.max(0, (absErr - dof * 0.25) / (dof * 0.85)) * 4.5;
+    if (spec.requiresOil && !this.microscopeImmersionOilApplied) {
+      focusBlur += 4.2; // Aberración esférica y reflexión total interna sin aceite n=1.515
+    }
+    return Math.min(18, Number(focusBlur.toFixed(2)));
+  }
+
+  get microscopeFocusQualityPercent(): number {
+    const spec = this.activeMicroscopeObjectiveSpec;
+    const absErr = Math.abs(this.microscopeFocusErrorUm);
+    const raw = Math.max(0, 100 - (absErr / (spec.depthOfFieldUm * 2.2)) * 100);
+    const oilPenalty = spec.requiresOil && !this.microscopeImmersionOilApplied ? 45 : 0;
+    return Math.max(0, Math.min(100, Math.round(raw - oilPenalty)));
+  }
+
+  get microscopeSlideCollisionWarning(): boolean {
+    return (
+      (this.microscopeObjective === 40 || this.microscopeObjective === 100) &&
+      this.microscopeFocusErrorUm > 48
+    );
+  }
+
+  openMicroscope(partId?: MicroscopePartId) {
+    labSound.playInstrumentClick();
+    this.isMicroscopeActive = true;
+    this.inspectedToolId = 'microscope';
+    this.selectedCabinetComponentId = null;
+    if (partId) {
+      this.microscopeSelectedPartId = partId;
+    }
+  }
+
+  closeMicroscope() {
+    labSound.playInstrumentClick();
+    this.isMicroscopeActive = false;
+    if (this.inspectedToolId === 'microscope') {
+      this.inspectedToolId = null;
+    }
+  }
+
+  setMicroscopeObjective(power: MicroscopeObjectivePower) {
+    labSound.playInstrumentClick();
+    this.microscopeObjective = power;
+    this.microscopeSelectedPartId = 'objectives';
+    // Parfocalidad real DIN (45 mm): al girar el revólver la muestra queda cerca del foco pero requiere ajuste fino en 40x/100x
+    const target = MICROSCOPE_OBJECTIVES[power].parfocalTargetUm;
+    const currentTotal = this.microscopeCoarseUm + this.microscopeFineUm;
+    if (Math.abs(currentTotal - target) > 180) {
+      this.microscopeCoarseUm = 4500;
+      this.microscopeFineUm = power === 4 ? 0 : power === 10 ? 8 : power === 40 ? 9 : 11;
+    }
+  }
+
+  cycleMicroscopeObjective() {
+    const order: MicroscopeObjectivePower[] = [4, 10, 40, 100];
+    const idx = order.indexOf(this.microscopeObjective);
+    const next = order[(idx + 1) % order.length];
+    this.setMicroscopeObjective(next);
+    this.microscopeSelectedPartId = 'nosepiece';
+  }
+
+  autoFocusMicroscope() {
+    labSound.playInstrumentClick();
+    const spec = this.activeMicroscopeObjectiveSpec;
+    this.microscopeCoarseUm = 4500;
+    this.microscopeFineUm = spec.parfocalTargetUm - 4500;
+    if (spec.requiresOil) {
+      this.microscopeImmersionOilApplied = true;
+    }
+    // Ajuste óptimo de diafragma según criterio de Köhler (~75% de NA)
+    this.microscopeDiaphragm =
+      spec.power === 4 ? 0.45 : spec.power === 10 ? 0.6 : spec.power === 40 ? 0.78 : 0.92;
+    this.microscopeLampOn = true;
+  }
+
+  adjustCoarseFocus(deltaUm: number) {
+    this.microscopeCoarseUm = Math.max(
+      3900,
+      Math.min(4650, Math.round(this.microscopeCoarseUm + deltaUm))
+    );
+    this.microscopeSelectedPartId = 'coarse_knob';
+  }
+
+  adjustFineFocus(deltaUm: number) {
+    this.microscopeFineUm = Math.max(
+      -150,
+      Math.min(150, Number((this.microscopeFineUm + deltaUm).toFixed(1)))
+    );
+    this.microscopeSelectedPartId = 'fine_knob';
+  }
+
+  moveMicroscopeStage(dxUm: number, dyUm: number) {
+    this.microscopeStageXUm = Math.max(
+      -1200,
+      Math.min(1200, Math.round(this.microscopeStageXUm + dxUm))
+    );
+    this.microscopeStageYUm = Math.max(
+      -1200,
+      Math.min(1200, Math.round(this.microscopeStageYUm + dyUm))
+    );
+    this.microscopeSelectedPartId = 'stage';
+  }
+
+  selectMicroscopePart(partId: MicroscopePartId) {
+    labSound.playInstrumentClick();
+    this.microscopeSelectedPartId = partId;
+  }
+
+  selectMicroscopeSpecimen(specimenId: MicroscopeSpecimenId) {
+    labSound.playInstrumentClick();
+    this.microscopeSpecimenId = specimenId;
+    this.microscopeStageXUm = 0;
+    this.microscopeStageYUm = 0;
+    this.microscopeSelectedPartId = 'slide';
+  }
+
+  applyImmersionOil() {
+    labSound.playDrop();
+    this.microscopeImmersionOilApplied = !this.microscopeImmersionOilApplied;
+    this.microscopeSelectedPartId = 'objectives';
   }
 
   /**

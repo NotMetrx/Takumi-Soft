@@ -11,8 +11,11 @@
     labStore,
     LAB_TOOLS_CATALOG,
     CABINET_COMPONENTS,
+    MICROSCOPE_PARTS,
     type LabToolInfo,
-    type CabinetComponentInfo
+    type CabinetComponentInfo,
+    type MicroscopePartId,
+    type MicroscopeSpecimenId
   } from '$lib/interaction/lab_store.svelte';
   import { labSound } from '$lib/audio/lab_sound';
 
@@ -80,6 +83,42 @@
   let interactiveToolGroups: THREE.Object3D[] = [];
   let cabinetItemGroups: THREE.Object3D[] = [];
 
+  // Referencias 3D articuladas del Microscopio Compuesto Binocular
+  let microscopeGroup: THREE.Group;
+  let microscopeFocusPedestal: THREE.Group;
+  let microscopeRevolverGroup: THREE.Group;
+  let microscopeStageAssembly: THREE.Group;
+  let microscopeSlideGroup: THREE.Group;
+  let microscopeSpecimenMat: THREE.MeshBasicMaterial;
+  let microscopeOilDropMesh: THREE.Mesh;
+  let microscopeCoarseKnobMesh: THREE.Mesh;
+  let microscopeFineKnobMesh: THREE.Mesh;
+  let microscopeLedGlowMat: THREE.MeshBasicMaterial;
+  let microscopeLightBeamMesh: THREE.Mesh;
+  let microscopeLightBeamMat: THREE.MeshBasicMaterial;
+  let microscopeProxyMesh: THREE.Object3D | null = null;
+
+  // Posición de reposo (esquina de la mesa) y posición de enfoque (elevado al frente-centro, sobre todo lo demás)
+  const MICROSCOPE_HOME_POS = new THREE.Vector3(-1.62, 0, -0.68);
+  const MICROSCOPE_HOME_ROT_Y = 0.52;
+  const MICROSCOPE_FOCUS_POS = new THREE.Vector3(-0.5, 0.14, 0.86);
+  const MICROSCOPE_FOCUS_ROT_Y = 0.42;
+  const MICROSCOPE_REVOLVER_TILT = 0.35;
+  const MICROSCOPE_OBJECTIVE_ANGLES: Record<number, number> = {
+    4: Math.PI / 2,
+    10: Math.PI,
+    40: 0,
+    100: (3 * Math.PI) / 2
+  };
+  const MICROSCOPE_SPECIMEN_COLORS: Record<MicroscopeSpecimenId, number> = {
+    reactor_live: 0x10b981,
+    onion_lugol: 0xd97706,
+    elodea_chloroplasts: 0x16a34a,
+    blood_smear: 0xdc2626,
+    tea_microplastics: 0x4c1d95,
+    clay_nacl_crystals: 0xc2410c
+  };
+
   // Grupos 3D de los Efectos STEAM en el Vaso Central (Prolongo & Pinto · RSEQ)
   let steamChupaChupsGroup: THREE.Group;
   let steamLollipopRotor: THREE.Group;
@@ -94,6 +133,7 @@
 
   let isBookHovered = $state<boolean>(false);
   let hoveredToolId = $state<LabToolInfo['id'] | null>(null);
+  let hoveredMicroscopePartId = $state<MicroscopePartId | null>(null);
   let hoveredCabinetId = $state<string | null>(null);
 
   let pourStreamMesh: THREE.Mesh;
@@ -525,7 +565,7 @@
   }
 
   /**
-   * Genera la textura de las páginas abiertas del Libro 3D en la mesa
+   * Genera la textura editorial estilo Apple Books / Taschen de las páginas abiertas del Libro 3D en la mesa
    */
   function createOpenBookPagesTexture(): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
@@ -533,72 +573,83 @@
     canvas.height = 768;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#fdf8e7';
+    // Papel marfil cálido de museo (Apple Books Warm Ivory)
+    ctx.fillStyle = '#faf8f5';
     ctx.fillRect(0, 0, 1024, 768);
 
-    const spineGrad = ctx.createLinearGradient(465, 0, 559, 0);
+    // Sombra suave de pliegue central realista
+    const spineGrad = ctx.createLinearGradient(468, 0, 556, 0);
     spineGrad.addColorStop(0, 'rgba(0,0,0,0)');
-    spineGrad.addColorStop(0.5, 'rgba(71, 36, 12, 0.35)');
+    spineGrad.addColorStop(0.5, 'rgba(24, 24, 27, 0.22)');
     spineGrad.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = spineGrad;
-    ctx.fillRect(465, 0, 94, 768);
+    ctx.fillRect(468, 0, 88, 768);
 
-    ctx.strokeStyle = '#d97706';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(28, 28, 445, 712);
-    ctx.strokeRect(551, 28, 445, 712);
+    // Marcos editoriales de 1px hairline
+    ctx.strokeStyle = 'rgba(28, 25, 23, 0.14)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(36, 36, 434, 696);
+    ctx.strokeRect(554, 36, 434, 696);
 
-    ctx.fillStyle = '#065f46';
-    ctx.font = 'bold 24px "Outfit", sans-serif';
-    ctx.fillText('NIVEL PRIMARIA', 54, 76);
+    // Página izquierda — Índice Editorial & Primaria
+    ctx.fillStyle = '#78716c';
+    ctx.font = 'bold 16px "JetBrains Mono", monospace';
+    ctx.fillText('SYMBIOLAB PRESS  •  01', 64, 82);
 
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 30px "Outfit", sans-serif';
-    ctx.fillText('Col Morada y Volcán', 54, 118);
+    ctx.fillStyle = '#0c0a09';
+    ctx.font = 'bold 32px "Outfit", sans-serif';
+    ctx.fillText('Prácticas STEAM', 64, 130);
 
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(54, 148, 392, 220);
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(54, 148, 392, 220);
+    // Visor Keynote oscuro minimalista en página izquierda
+    ctx.fillStyle = '#090a0d';
+    ctx.fillRect(64, 162, 378, 210);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(64, 162, 378, 210);
 
-    ctx.fillStyle = '#10b981';
+    // Botón play estilo Apple Keynote (blanco traslúcido)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
     ctx.beginPath();
-    ctx.arc(250, 258, 42, 0, Math.PI * 2);
+    ctx.arc(253, 267, 36, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#090a0d';
     ctx.beginPath();
-    ctx.moveTo(238, 236);
-    ctx.lineTo(238, 280);
-    ctx.lineTo(274, 258);
+    ctx.moveTo(243, 249);
+    ctx.lineTo(243, 285);
+    ctx.lineTo(273, 267);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#334155';
+    ctx.fillStyle = '#44403c';
+    ctx.font = 'bold 19px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('01  Indicador Antocianina', 64, 428);
+    ctx.fillText('02  Neutralización y CO₂', 64, 468);
+    ctx.fillText('03  Camaleón Redox (Mn)', 64, 508);
+    ctx.fillText('04   Antiburbujas en Sirope', 64, 548);
+
+    // Página derecha — Secundaria & Acción
+    ctx.fillStyle = '#78716c';
+    ctx.font = 'bold 16px "JetBrains Mono", monospace';
+    ctx.fillText('MONOGRAFÍA EXPERIMENTAL  •  02', 582, 82);
+
+    ctx.fillStyle = '#0c0a09';
+    ctx.font = 'bold 30px "Outfit", sans-serif';
+    ctx.fillText('Química Cuantitativa', 582, 130);
+
+    ctx.fillStyle = '#44403c';
+    ctx.font = 'bold 19px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('05  Titulación Ácido-Base', 582, 198);
+    ctx.fillText('06  Termoquímica Kw(T)', 582, 242);
+    ctx.fillText('07  Complejos Fe-Taninos', 582, 286);
+    ctx.fillText('08   Termodinámica & Botijo', 582, 330);
+    ctx.fillText('09  Catálogo Estantería 3D', 582, 374);
+
+    // Botón Píldora Editorial Oscuro (Apple Books CTA)
+    ctx.fillStyle = '#0c0a09';
+    ctx.fillRect(582, 594, 378, 78);
+    ctx.fillStyle = '#faf8f5';
     ctx.font = 'bold 21px "Plus Jakarta Sans", sans-serif';
-    ctx.fillText('• Pág. 2: Col Morada y Limón', 54, 425);
-    ctx.fillText('• Pág. 4: Volcán de Vinagre', 54, 468);
-    ctx.fillText('• Tiras reactivas y Gotero 3D', 54, 511);
-
-    ctx.fillStyle = '#3730a3';
-    ctx.font = 'bold 24px "Outfit", sans-serif';
-    ctx.fillText('NIVEL SECUNDARIA', 578, 76);
-
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 28px "Outfit", sans-serif';
-    ctx.fillText('Titulación y Termoquímica', 578, 118);
-
-    ctx.fillStyle = '#334155';
-    ctx.font = 'bold 21px "Plus Jakarta Sans", sans-serif';
-    ctx.fillText('• Pág. 6: Bureta HCl + NaOH', 578, 190);
-    ctx.fillText('• Pág. 8: Efecto Térmico Kw(T)', 578, 240);
-    ctx.fillText('• Pág. 10: Guía de Herramientas', 578, 290);
-
-    ctx.fillStyle = '#d97706';
-    ctx.fillRect(578, 590, 392, 86);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 24px "Outfit", sans-serif';
-    ctx.fillText('HAZ CLIC PARA ABRIR LIBRO', 602, 642);
+    ctx.fillText('ABRIR LIBRO INTERACTIVO', 630, 641);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
@@ -614,9 +665,9 @@
 
     const standGeo = new THREE.BoxGeometry(0.72, 0.06, 0.50);
     const standMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.4,
-      metalness: 0.5
+      color: 0x27272a,
+      roughness: 0.35,
+      metalness: 0.65
     });
     const stand = new THREE.Mesh(standGeo, standMat);
     stand.position.y = 0.04;
@@ -627,9 +678,9 @@
 
     const coverGeo = new THREE.BoxGeometry(0.70, 0.026, 0.48);
     const coverMat = new THREE.MeshStandardMaterial({
-      color: 0x78350f,
-      roughness: 0.4,
-      metalness: 0.2
+      color: 0x18191e,
+      roughness: 0.55,
+      metalness: 0.15
     });
     const cover = new THREE.Mesh(coverGeo, coverMat);
     cover.position.set(0, 0.08, 0);
@@ -639,7 +690,7 @@
 
     const spineBump = new THREE.Mesh(
       new THREE.CylinderGeometry(0.022, 0.022, 0.485, 16),
-      new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.5 })
+      new THREE.MeshStandardMaterial({ color: 0x0f1014, roughness: 0.6 })
     );
     spineBump.rotation.x = Math.PI / 2 + 0.24;
     spineBump.position.set(0, 0.075, 0);
@@ -647,12 +698,12 @@
 
     const pagesTex = createOpenBookPagesTexture();
     const pagesMaterials = [
-      new THREE.MeshStandardMaterial({ color: 0xfef3c7 }),
-      new THREE.MeshStandardMaterial({ color: 0xfef3c7 }),
+      new THREE.MeshStandardMaterial({ color: 0xf5f2eb }),
+      new THREE.MeshStandardMaterial({ color: 0xf5f2eb }),
       new THREE.MeshBasicMaterial({ map: pagesTex }),
-      new THREE.MeshStandardMaterial({ color: 0x78350f }),
-      new THREE.MeshStandardMaterial({ color: 0xfef3c7 }),
-      new THREE.MeshStandardMaterial({ color: 0xfef3c7 })
+      new THREE.MeshStandardMaterial({ color: 0x18191e }),
+      new THREE.MeshStandardMaterial({ color: 0xf5f2eb }),
+      new THREE.MeshStandardMaterial({ color: 0xf5f2eb })
     ];
     const pagesGeo = new THREE.BoxGeometry(0.65, 0.036, 0.44);
     const pagesMesh = new THREE.Mesh(pagesGeo, pagesMaterials);
@@ -662,19 +713,19 @@
     pagesMesh.userData = { isHomeBook: true };
     group.add(pagesMesh);
 
-    const ribbonGeo = new THREE.BoxGeometry(0.035, 0.006, 0.14);
-    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 });
+    const ribbonGeo = new THREE.BoxGeometry(0.032, 0.006, 0.14);
+    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6 });
     const ribbon = new THREE.Mesh(ribbonGeo, ribbonMat);
     ribbon.position.set(0.12, 0.06, 0.25);
     ribbon.rotation.x = 0.24;
     group.add(ribbon);
 
-    const glowGeo = new THREE.RingGeometry(0.44, 0.49, 48);
+    const glowGeo = new THREE.RingGeometry(0.44, 0.48, 48);
     const glowMat = new THREE.MeshBasicMaterial({
-      color: 0xf59e0b,
+      color: 0xe2e8f0,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.55
+      opacity: 0.35
     });
     bookGlowRing = new THREE.Mesh(glowGeo, glowMat);
     bookGlowRing.rotation.x = -Math.PI / 2;
@@ -1113,213 +1164,284 @@
   }
 
   /**
-   * Microscopio Óptico Compuesto Binocular Profesional a Escala Real
+   * Microscopio Óptico Compuesto Binocular Profesional a Escala Real (articulado)
    * Altura total ~1.48 unidades (más de 4 veces más alto que los tubos de ensayo de 0.34 u
    * y más alto que el vaso de precipitados de 250 mL).
+   * Cada pieza lleva userData.microscopePart para poder seleccionarla y manipularla en 3D:
+   * oculares, cabezal, brazo, revólver, objetivos, platina, portaobjetos, macrométrico,
+   * micrométrico, condensador, diafragma e iluminador.
    */
   function buildSchoolMicroscope(): THREE.Group {
     const group = new THREE.Group();
-    group.position.set(-1.62, 0, -0.68);
-    group.rotation.y = 0.52;
+    group.position.copy(MICROSCOPE_HOME_POS);
+    group.rotation.y = MICROSCOPE_HOME_ROT_Y;
     group.scale.setScalar(1.18);
     group.userData = { toolId: 'microscope' };
 
-    const enamelMat = new THREE.MeshStandardMaterial({
-      color: 0xf8fafc,
-      roughness: 0.22,
-      metalness: 0.25
-    });
-    const darkMetalMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
-      roughness: 0.35,
-      metalness: 0.78
-    });
-    const chromeMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      roughness: 0.15,
-      metalness: 0.92
-    });
-    const brassMat = new THREE.MeshStandardMaterial({
-      color: 0xfbbf24,
-      roughness: 0.22,
-      metalness: 0.88
-    });
+    const tag = (obj: THREE.Object3D, part: MicroscopePartId) => {
+      obj.traverse((o) => (o.userData = { ...o.userData, microscopePart: part }));
+      return obj;
+    };
 
-    // 1. Base piramidal pesada con iluminador Köhler
-    const footBase = roundedBox(0.40, 0.065, 0.50, 0.018, darkMetalMat);
+    const enamelMat = new THREE.MeshStandardMaterial({ color: 0xf1f3f5, roughness: 0.28, metalness: 0.18 });
+    const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.38, metalness: 0.7 });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xdfe4ea, roughness: 0.14, metalness: 0.95 });
+    const rubberMat = new THREE.MeshStandardMaterial({ color: 0x0b0c0f, roughness: 0.85, metalness: 0.05 });
+
+    // 1. ILUMINADOR KÖHLER LED EN BASE ANTIVIBRACIÓN
+    const baseGroup = new THREE.Group();
+    const footBase = roundedBox(0.40, 0.065, 0.50, 0.02, darkMetalMat);
     footBase.position.set(0, 0.0325, 0);
-    group.add(footBase);
+    baseGroup.add(footBase);
+    const upperBase = roundedBox(0.32, 0.045, 0.42, 0.016, enamelMat);
+    upperBase.position.set(0, 0.085, -0.02);
+    baseGroup.add(upperBase);
+    const collector = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.03, 32), darkMetalMat);
+    collector.position.set(0, 0.12, 0.09);
+    baseGroup.add(collector);
+    microscopeLedGlowMat = new THREE.MeshBasicMaterial({ color: 0xf8fbff, toneMapped: false });
+    const ledGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.006, 28), microscopeLedGlowMat);
+    ledGlow.position.set(0, 0.137, 0.09);
+    baseGroup.add(ledGlow);
+    // Reóstato lateral de intensidad
+    const dimmer = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.03, 24), rubberMat);
+    dimmer.rotation.z = Math.PI / 2;
+    dimmer.position.set(0.215, 0.06, 0.08);
+    baseGroup.add(dimmer);
+    group.add(tag(baseGroup, 'illuminator'));
 
-    const upperBase = roundedBox(0.32, 0.045, 0.42, 0.014, enamelMat);
-    upperBase.position.set(0, 0.08, -0.02);
-    group.add(upperBase);
+    // 2. BRAZO / COLUMNA EN C
+    const armGroup = new THREE.Group();
+    const lowerPillar = roundedBox(0.11, 0.5, 0.13, 0.024, enamelMat);
+    lowerPillar.position.set(0, 0.34, -0.17);
+    armGroup.add(lowerPillar);
+    const upperSpine = roundedBox(0.10, 0.42, 0.12, 0.024, enamelMat);
+    upperSpine.position.set(0, 0.76, -0.14);
+    upperSpine.rotation.x = -0.14;
+    armGroup.add(upperSpine);
+    const cantilever = roundedBox(0.11, 0.09, 0.26, 0.024, enamelMat);
+    cantilever.position.set(0, 0.93, -0.04);
+    armGroup.add(cantilever);
+    group.add(tag(armGroup, 'arm'));
 
-    const fieldLens = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.065, 0.03, 28),
-      darkMetalMat
+    // 3. TORNILLOS COAXIALES: macrométrico (exterior) y micrométrico (interior), a ambos lados
+    const makeKnob = (radius: number, length: number, mat: THREE.Material, ridges: number) => {
+      const holder = new THREE.Group();
+      holder.rotation.z = Math.PI / 2; // eje del tornillo a lo largo de X
+      const spinner = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 32), mat);
+      // Estrías moleteadas para que la rotación sea visible
+      for (let i = 0; i < ridges; i++) {
+        const a = (i / ridges) * Math.PI * 2;
+        const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.006, length * 0.98, 0.006), mat);
+        ridge.position.set(Math.cos(a) * radius, 0, Math.sin(a) * radius);
+        spinner.add(ridge);
+      }
+      holder.add(spinner);
+      return { holder, spinner };
+    };
+    const coarse = makeKnob(0.056, 0.2, darkMetalMat, 18);
+    coarse.holder.position.set(0, 0.3, -0.16);
+    microscopeCoarseKnobMesh = coarse.spinner;
+    group.add(tag(coarse.holder, 'coarse_knob'));
+    const fine = makeKnob(0.032, 0.26, chromeMat, 12);
+    fine.holder.position.set(0, 0.3, -0.16);
+    microscopeFineKnobMesh = fine.spinner;
+    group.add(tag(fine.holder, 'fine_knob'));
+
+    // 4. CONJUNTO PLATINA (sube y baja con el enfoque): platina X-Y, condensador, diafragma y portaobjetos
+    microscopeStageAssembly = new THREE.Group();
+    group.add(microscopeStageAssembly);
+
+    const stageGroup = new THREE.Group();
+    const stageCarrier = roundedBox(0.09, 0.2, 0.12, 0.016, darkMetalMat);
+    stageCarrier.position.set(0, 0.46, -0.09);
+    stageGroup.add(stageCarrier);
+    const stagePlate = roundedBox(0.32, 0.03, 0.3, 0.012, darkMetalMat);
+    stagePlate.position.set(0, 0.545, 0.07);
+    stageGroup.add(stagePlate);
+    // Carro mecánico con nonio Vernier y mandos coaxiales X-Y colgantes
+    const vernierRail = roundedBox(0.3, 0.012, 0.03, 0.004, chromeMat);
+    vernierRail.position.set(0, 0.566, -0.05);
+    stageGroup.add(vernierRail);
+    const xyKnobs = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.09, 20), rubberMat);
+    xyKnobs.position.set(0.15, 0.49, 0.12);
+    stageGroup.add(xyKnobs);
+    microscopeStageAssembly.add(tag(stageGroup, 'stage'));
+
+    const condenserGroup = new THREE.Group();
+    const condenser = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.036, 0.075, 32), darkMetalMat);
+    condenser.position.set(0, 0.49, 0.09);
+    condenserGroup.add(condenser);
+    const condenserLens = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 0.004, 28),
+      new THREE.MeshPhysicalMaterial({ color: 0xdbeafe, transmission: 0.8, transparent: true, opacity: 0.85, roughness: 0.02 })
     );
-    fieldLens.position.set(0, 0.11, 0.09);
-    group.add(fieldLens);
+    condenserLens.position.set(0, 0.529, 0.09);
+    condenserGroup.add(condenserLens);
+    microscopeStageAssembly.add(tag(condenserGroup, 'condenser'));
 
-    const ledGlow = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.042, 0.042, 0.008, 24),
-      new THREE.MeshBasicMaterial({ color: 0x7dd3fc })
-    );
-    ledGlow.position.set(0, 0.126, 0.09);
-    group.add(ledGlow);
+    const diaphragmGroup = new THREE.Group();
+    const irisRing = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.014, 32), chromeMat);
+    irisRing.position.set(0, 0.445, 0.09);
+    diaphragmGroup.add(irisRing);
+    const irisLever = roundedBox(0.05, 0.008, 0.01, 0.003, rubberMat);
+    irisLever.position.set(0.06, 0.445, 0.11);
+    diaphragmGroup.add(irisLever);
+    microscopeStageAssembly.add(tag(diaphragmGroup, 'diaphragm'));
 
-    // 2. Columna y brazo ergonómico en C
-    const lowerPillar = roundedBox(0.11, 0.48, 0.13, 0.02, enamelMat);
-    lowerPillar.position.set(0, 0.32, -0.16);
-    lowerPillar.rotation.x = 0.08;
-    group.add(lowerPillar);
-
-    const upperSpine = roundedBox(0.10, 0.46, 0.12, 0.02, enamelMat);
-    upperSpine.position.set(0, 0.74, -0.13);
-    upperSpine.rotation.x = -0.12;
-    group.add(upperSpine);
-
-    const topCantilever = roundedBox(0.11, 0.09, 0.28, 0.02, enamelMat);
-    topCantilever.position.set(0, 0.94, -0.02);
-    group.add(topCantilever);
-
-    // 3. Tornillos macrométrico y micrométrico coaxiales
-    const coarseKnob = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.055, 0.19, 28),
-      darkMetalMat
-    );
-    coarseKnob.rotation.z = Math.PI / 2;
-    coarseKnob.position.set(0, 0.28, -0.15);
-    group.add(coarseKnob);
-
-    const fineKnob = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.034, 0.034, 0.23, 24),
-      chromeMat
-    );
-    fineKnob.rotation.z = Math.PI / 2;
-    fineKnob.position.set(0, 0.28, -0.15);
-    group.add(fineKnob);
-
-    // 4. Platina mecánica XY de doble capa + Portaobjetos y muestra
-    const stageCarrier = roundedBox(0.09, 0.22, 0.12, 0.015, darkMetalMat);
-    stageCarrier.position.set(0, 0.42, -0.08);
-    group.add(stageCarrier);
-
-    const stage = roundedBox(0.32, 0.032, 0.30, 0.01, darkMetalMat);
-    stage.position.set(0, 0.50, 0.07);
-    group.add(stage);
-
-    const condenser = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.045, 0.036, 0.09, 24),
-      darkMetalMat
-    );
-    condenser.position.set(0, 0.43, 0.09);
-    group.add(condenser);
-
+    // Portaobjetos 76×26 mm con cubreobjetos y muestra teñida (se desplaza con la platina X-Y)
+    microscopeSlideGroup = new THREE.Group();
+    microscopeSlideGroup.position.set(0, 0.564, 0.09);
     const slideGlass = new THREE.Mesh(
-      new THREE.BoxGeometry(0.19, 0.006, 0.068),
-      new THREE.MeshPhysicalMaterial({
-        color: 0xe0f2fe,
-        transmission: 0.85,
-        transparent: true,
-        opacity: 0.9,
-        roughness: 0.05
-      })
+      new THREE.BoxGeometry(0.19, 0.006, 0.066),
+      new THREE.MeshPhysicalMaterial({ color: 0xe8f4fb, transmission: 0.85, transparent: true, opacity: 0.88, roughness: 0.04 })
     );
-    slideGlass.position.set(0, 0.52, 0.09);
-    group.add(slideGlass);
-
-    const specimenCover = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.022, 0.008, 20),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+    microscopeSlideGroup.add(slideGlass);
+    const frostedLabel = new THREE.Mesh(
+      new THREE.BoxGeometry(0.045, 0.0065, 0.064),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.9 })
     );
-    specimenCover.position.set(0, 0.525, 0.09);
-    group.add(specimenCover);
-
-    // 5. Revólver cuádruple con 4 objetivos DIN codificados por color
-    const nosepiece = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.082, 0.092, 0.042, 28),
-      chromeMat
+    frostedLabel.position.x = -0.07;
+    microscopeSlideGroup.add(frostedLabel);
+    microscopeSpecimenMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.8 });
+    const specimen = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.002, 28), microscopeSpecimenMat);
+    specimen.position.y = 0.004;
+    microscopeSlideGroup.add(specimen);
+    const coverSlip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.0015, 0.05),
+      new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.9, transparent: true, opacity: 0.55, roughness: 0.02 })
     );
-    nosepiece.position.set(0, 0.84, 0.08);
-    nosepiece.rotation.x = 0.16;
-    group.add(nosepiece);
+    coverSlip.position.y = 0.0055;
+    microscopeSlideGroup.add(coverSlip);
+    microscopeOilDropMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.009, 16, 12),
+      new THREE.MeshPhysicalMaterial({ color: 0xfef3c7, transmission: 0.7, transparent: true, opacity: 0.8, roughness: 0.02 })
+    );
+    microscopeOilDropMesh.scale.set(1, 0.45, 1);
+    microscopeOilDropMesh.position.y = 0.008;
+    microscopeOilDropMesh.visible = false;
+    microscopeSlideGroup.add(microscopeOilDropMesh);
+    // Pinzas de sujeción
+    [-0.05, 0.05].forEach((zOff) => {
+      const clip = roundedBox(0.09, 0.004, 0.008, 0.002, chromeMat);
+      clip.position.set(0.045, 0.004, zOff * 0.62);
+      microscopeSlideGroup.add(clip);
+    });
+    microscopeStageAssembly.add(tag(microscopeSlideGroup, 'slide'));
 
-    const objectives = [
-      { angle: 0, len: 0.16, bandColor: 0x38bdf8 },
-      { angle: Math.PI / 2, len: 0.11, bandColor: 0xef4444 },
-      { angle: Math.PI, len: 0.14, bandColor: 0xeab308 },
-      { angle: (3 * Math.PI) / 2, len: 0.17, bandColor: 0xf8fafc }
+    // Haz de luz cónico condensador → muestra (visible con el LED encendido)
+    microscopeLightBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xf8fbff,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false
+    });
+    microscopeLightBeamMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.006, 0.028, 0.03, 24, 1, true),
+      microscopeLightBeamMat
+    );
+    microscopeLightBeamMesh.position.set(0, 0.546, 0.09);
+    microscopeStageAssembly.add(microscopeLightBeamMesh);
+
+    // 5. REVÓLVER CUÁDRUPLE INCLINADO + 4 OBJETIVOS DIN (ISO 8578: rojo 4x, amarillo 10x, azul 40x, blanco 100x)
+    const revolverTilt = new THREE.Group();
+    revolverTilt.position.set(0, 0.875, 0.04);
+    revolverTilt.rotation.x = MICROSCOPE_REVOLVER_TILT;
+    group.add(revolverTilt);
+    microscopeRevolverGroup = new THREE.Group();
+    revolverTilt.add(microscopeRevolverGroup);
+    const nosepiece = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.085, 0.04, 36), chromeMat);
+    microscopeRevolverGroup.add(tag(nosepiece, 'nosepiece'));
+    const knurlRing = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.005, 8, 48), darkMetalMat);
+    knurlRing.rotation.x = Math.PI / 2;
+    knurlRing.position.y = -0.018;
+    microscopeRevolverGroup.add(tag(knurlRing, 'nosepiece'));
+
+    const objectiveDefs: { power: 4 | 10 | 40 | 100; len: number; color: number }[] = [
+      { power: 4, len: 0.075, color: 0xef4444 },
+      { power: 10, len: 0.1, color: 0xeab308 },
+      { power: 40, len: 0.13, color: 0x38bdf8 },
+      { power: 100, len: 0.14, color: 0xf8fafc }
     ];
-    objectives.forEach((obj) => {
-      const objGroup = new THREE.Group();
-      const ox = Math.sin(obj.angle) * 0.052;
-      const oz = Math.cos(obj.angle) * 0.052;
-      objGroup.position.set(ox, 0.83, 0.08 + oz);
-      objGroup.rotation.x = obj.angle === 0 ? 0.08 : 0.24;
+    const revolverAngles: Record<number, number> = { 4: Math.PI / 2, 10: Math.PI, 40: 0, 100: (3 * Math.PI) / 2 };
+    objectiveDefs.forEach((def) => {
+      const a = revolverAngles[def.power];
+      const mount = new THREE.Group();
+      mount.position.set(Math.sin(a) * 0.05, -0.02, Math.cos(a) * 0.05);
+      mount.rotation.y = a;
+      const plumb = new THREE.Group();
+      plumb.rotation.x = -MICROSCOPE_REVOLVER_TILT; // queda vertical cuando está en posición de trabajo
+      mount.add(plumb);
 
-      const barrel = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.018, 0.013, obj.len, 20),
-        chromeMat
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.014, def.len, 24), chromeMat);
+      barrel.position.y = -def.len / 2;
+      plumb.add(barrel);
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.0195, 0.0195, 0.012, 24),
+        new THREE.MeshBasicMaterial({ color: def.color })
       );
-      barrel.position.y = -obj.len / 2;
-      objGroup.add(barrel);
-
-      const colorRing = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.019, 0.019, 0.016, 20),
-        new THREE.MeshBasicMaterial({ color: obj.bandColor })
+      band.position.y = -def.len * 0.62;
+      plumb.add(band);
+      if (def.power === 100) {
+        const oilRing = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.0172, 0.0172, 0.006, 24),
+          new THREE.MeshBasicMaterial({ color: 0x0b0c0f })
+        );
+        oilRing.position.y = -def.len * 0.8;
+        plumb.add(oilRing);
+      }
+      const frontLens = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, 0.003, 18),
+        new THREE.MeshPhysicalMaterial({ color: 0xbfdbfe, transmission: 0.6, transparent: true, opacity: 0.9, roughness: 0.02 })
       );
-      colorRing.position.y = -obj.len * 0.65;
-      objGroup.add(colorRing);
-
-      group.add(objGroup);
+      frontLens.position.y = -def.len - 0.001;
+      plumb.add(frontLens);
+      microscopeRevolverGroup.add(tag(mount, 'objectives'));
     });
 
-    // 6. Cabezal binocular Siedentopf y dos oculares WF10x inclinados
-    const headBlock = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.09, 0.12, 24),
-      enamelMat
-    );
-    headBlock.position.set(0, 1.02, 0.05);
-    group.add(headBlock);
+    // 6. CABEZAL BINOCULAR SIEDENTOPF (30°) Y OCULARES WF10x/18
+    const headGroup = new THREE.Group();
+    const headBlock = roundedBox(0.16, 0.11, 0.17, 0.035, enamelMat);
+    headBlock.position.set(0, 1.0, 0.04);
+    headGroup.add(headBlock);
+    const prismHousing = roundedBox(0.2, 0.06, 0.09, 0.025, enamelMat);
+    prismHousing.position.set(0, 1.07, 0.08);
+    prismHousing.rotation.x = 0.52;
+    headGroup.add(prismHousing);
+    group.add(tag(headGroup, 'head'));
 
-    [-0.044, 0.044].forEach((xOff) => {
-      const ocularGroup = new THREE.Group();
-      ocularGroup.position.set(xOff, 1.07, 0.08);
-      ocularGroup.rotation.x = 0.56;
-
-      const tube = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.024, 0.022, 0.19, 20),
-        darkMetalMat
+    [-0.046, 0.046].forEach((xOff) => {
+      const ocular = new THREE.Group();
+      ocular.position.set(xOff, 1.08, 0.1);
+      ocular.rotation.x = 0.52;
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.022, 0.16, 24), darkMetalMat);
+      tube.position.y = 0.08;
+      ocular.add(tube);
+      const dioptre = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.018, 24), chromeMat);
+      dioptre.position.y = 0.15;
+      ocular.add(dioptre);
+      const eyeCup = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.025, 0.03, 24), rubberMat);
+      eyeCup.position.y = 0.175;
+      ocular.add(eyeCup);
+      const eyeLens = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.016, 0.016, 0.002, 20),
+        new THREE.MeshPhysicalMaterial({ color: 0x93c5fd, transmission: 0.5, transparent: true, opacity: 0.9, roughness: 0.02 })
       );
-      tube.position.y = 0.095;
-      ocularGroup.add(tube);
-
-      const silverRing = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.025, 0.022, 20),
-        brassMat
-      );
-      silverRing.position.y = 0.175;
-      ocularGroup.add(silverRing);
-
-      const eyeCup = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.028, 0.024, 0.032, 20),
-        darkMetalMat
-      );
-      eyeCup.position.y = 0.20;
-      ocularGroup.add(eyeCup);
-
-      group.add(ocularGroup);
+      eyeLens.position.y = 0.191;
+      ocular.add(eyeLens);
+      group.add(tag(ocular, 'oculars'));
     });
 
-    const proxy = new THREE.Mesh(
-      new THREE.BoxGeometry(0.48, 1.32, 0.56),
-      new THREE.MeshBasicMaterial({ visible: false })
-    );
+    // Hitbox global para seleccionar el microscopio cuando está en reposo
+    const proxy = new THREE.Mesh(new THREE.BoxGeometry(0.48, 1.32, 0.56), new THREE.MeshBasicMaterial({ visible: false }));
     proxy.position.set(0, 0.66, 0);
-    proxy.userData = { toolId: 'microscope' };
+    proxy.userData = { toolId: 'microscope', isMicroscopeProxy: true };
     group.add(proxy);
 
+    microscopeProxyMesh = proxy;
+    microscopeGroup = group;
     return group;
   }
 
@@ -2323,6 +2445,41 @@
     return group;
   }
 
+  /**
+   * Acción física de cada pieza del microscopio al hacer clic sobre ella en 3D
+   * (Shift + clic invierte el sentido en tornillos y platina).
+   */
+  function handleMicroscopePartClick(partId: MicroscopePartId, reverse = false) {
+    const dir = reverse ? -1 : 1;
+    switch (partId) {
+      case 'nosepiece':
+      case 'objectives':
+        labStore.cycleMicroscopeObjective();
+        break;
+      case 'coarse_knob':
+        labStore.adjustCoarseFocus(25 * dir);
+        break;
+      case 'fine_knob':
+        labStore.adjustFineFocus(4 * dir);
+        break;
+      case 'illuminator':
+        labStore.microscopeLampOn = !labStore.microscopeLampOn;
+        labStore.selectMicroscopePart('illuminator');
+        break;
+      case 'diaphragm': {
+        const next = labStore.microscopeDiaphragm + 0.15 * dir;
+        labStore.microscopeDiaphragm = next > 1.001 ? 0.15 : next < 0.15 ? 1 : Number(next.toFixed(2));
+        labStore.selectMicroscopePart('diaphragm');
+        break;
+      }
+      case 'stage':
+        labStore.moveMicroscopeStage(120 * dir, 0);
+        break;
+      default:
+        labStore.selectMicroscopePart(partId);
+    }
+  }
+
   function handleToolInteraction(toolId: LabToolInfo['id']) {
     labStore.inspectTool(toolId);
     if (toolId === 'burette') {
@@ -2498,6 +2655,42 @@
     interactiveToolGroups.push(microscope);
     scene.add(microscope);
 
+    // Pedestal de enfoque (vidrio grafito esmerilado) que aparece bajo el microscopio al elevarlo
+    microscopeFocusPedestal = new THREE.Group();
+    microscopeFocusPedestal.position.set(MICROSCOPE_FOCUS_POS.x, 0, MICROSCOPE_FOCUS_POS.z);
+    const pedestalTop = roundedBox(
+      0.78,
+      0.04,
+      0.78,
+      0.018,
+      new THREE.MeshPhysicalMaterial({ color: 0x1a1c22, roughness: 0.35, metalness: 0.4, clearcoat: 0.8 })
+    );
+    pedestalTop.position.y = MICROSCOPE_FOCUS_POS.y - 0.02;
+    microscopeFocusPedestal.add(pedestalTop);
+    const pedestalColumn = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.22, MICROSCOPE_FOCUS_POS.y - 0.04, 40),
+      new THREE.MeshStandardMaterial({ color: 0x2a2d34, roughness: 0.3, metalness: 0.75 })
+    );
+    pedestalColumn.position.y = (MICROSCOPE_FOCUS_POS.y - 0.04) / 2;
+    microscopeFocusPedestal.add(pedestalColumn);
+    const pedestalHalo = new THREE.Mesh(
+      new THREE.RingGeometry(0.42, 0.45, 64),
+      new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+    );
+    pedestalHalo.rotation.x = -Math.PI / 2;
+    pedestalHalo.position.y = 0.012;
+    microscopeFocusPedestal.add(pedestalHalo);
+    microscopeFocusPedestal.scale.setScalar(0.001);
+    microscopeFocusPedestal.visible = false;
+    scene.add(microscopeFocusPedestal);
+
+    // Luz de estudio suave sobre la estación óptica
+    const microscopeKeyLight = new THREE.SpotLight(0xffffff, 0, 4, Math.PI / 5, 0.6);
+    microscopeKeyLight.position.set(MICROSCOPE_FOCUS_POS.x + 0.6, 2.2, MICROSCOPE_FOCUS_POS.z + 0.9);
+    microscopeKeyLight.target.position.set(MICROSCOPE_FOCUS_POS.x, 0.6, MICROSCOPE_FOCUS_POS.z);
+    scene.add(microscopeKeyLight);
+    scene.add(microscopeKeyLight.target);
+
     // Matraces Erlenmeyer (Izquierda y Derecha)
     const hclRig = buildErlenmeyerFlask(
       'hcl',
@@ -2640,21 +2833,30 @@
       | { type: 'book' }
       | { type: 'tool'; toolId: LabToolInfo['id'] }
       | { type: 'cabinet'; compId: string }
+      | { type: 'microscopePart'; partId: MicroscopePartId }
       | null {
       updatePointer(e);
       raycaster.setFromCamera(pointer, camera);
-      const targets = [
-        flasks.hcl.group,
-        flasks.naoh.group,
-        bookGroup,
-        ...interactiveToolGroups,
-        ...cabinetItemGroups
-      ];
-      const hits = raycaster.intersectObjects(targets, true);
+      const microActive = labStore.isMicroscopeActive;
+      // En modo enfoque solo el microscopio es interactivo: la atención queda centrada en él
+      const targets = microActive
+        ? [microscopeGroup]
+        : [
+            flasks.hcl.group,
+            flasks.naoh.group,
+            bookGroup,
+            ...interactiveToolGroups,
+            ...cabinetItemGroups
+          ];
+      const hits = raycaster
+        .intersectObjects(targets, true)
+        .filter((h) => !(microActive && h.object === microscopeProxyMesh));
       if (hits.length === 0) return null;
 
       let curr: THREE.Object3D | null = hits[0].object;
       while (curr) {
+        if (curr.userData?.microscopePart && microActive)
+          return { type: 'microscopePart', partId: curr.userData.microscopePart };
         if (curr.userData?.flaskId) return { type: 'flask', id: curr.userData.flaskId };
         if (curr.userData?.isHomeBook) return { type: 'book' };
         if (curr.userData?.toolId) return { type: 'tool', toolId: curr.userData.toolId };
@@ -2675,6 +2877,11 @@
         return;
       const hit = checkInteractiveHit(e);
       if (!hit) return;
+
+      if (hit.type === 'microscopePart') {
+        handleMicroscopePartClick(hit.partId, e.shiftKey);
+        return;
+      }
 
       if (hit.type === 'book') {
         labSound.playBookOpen();
@@ -2724,7 +2931,14 @@
       }
 
       const hit = checkInteractiveHit(e);
-      if (hit?.type === 'flask') {
+      hoveredMicroscopePartId = hit?.type === 'microscopePart' ? hit.partId : null;
+      if (hit?.type === 'microscopePart') {
+        hoveredFlaskId = null;
+        isBookHovered = false;
+        hoveredToolId = null;
+        hoveredCabinetId = null;
+        renderer!.domElement.style.cursor = 'pointer';
+      } else if (hit?.type === 'flask') {
         hoveredFlaskId = hit.id;
         isBookHovered = false;
         hoveredToolId = null;
@@ -2779,6 +2993,37 @@
     renderer.domElement.addEventListener('pointerup', onPointerUp);
     renderer.domElement.addEventListener('pointercancel', onPointerUp);
     renderer.domElement.addEventListener('lostpointercapture', onPointerUp);
+
+    // Rueda del ratón sobre los tornillos: girarlos como en un microscopio real
+    function onMicroscopeWheel(e: WheelEvent) {
+      if (!labStore.isMicroscopeActive) return;
+      const part = hoveredMicroscopePartId;
+      if (part !== 'coarse_knob' && part !== 'fine_knob' && part !== 'diaphragm') return;
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      if (part === 'coarse_knob') labStore.adjustCoarseFocus(15 * dir);
+      else if (part === 'fine_knob') labStore.adjustFineFocus(2 * dir);
+      else
+        labStore.microscopeDiaphragm = THREE.MathUtils.clamp(
+          Number((labStore.microscopeDiaphragm + 0.05 * dir).toFixed(2)),
+          0.15,
+          1
+        );
+    }
+    renderer.domElement.addEventListener('wheel', onMicroscopeWheel, { passive: false });
+
+    // Encuadre de cámara: se guarda la vista de la mesa para volver al cerrar el microscopio
+    const homeCameraPos = camera.position.clone();
+    const homeCameraTarget = controls.target.clone();
+    const focusCameraTarget = new THREE.Vector3(
+      MICROSCOPE_FOCUS_POS.x + 0.42,
+      MICROSCOPE_FOCUS_POS.y + 0.68,
+      MICROSCOPE_FOCUS_POS.z
+    );
+    const focusCameraPos = focusCameraTarget.clone().add(new THREE.Vector3(0.22, 0.38, 2.2));
+    let microscopeWasActive = false;
+    let cameraReturnTimer = 0;
+    let revolverAngle = MICROSCOPE_OBJECTIVE_ANGLES[labStore.microscopeObjective];
     const cancelInteraction = () => {
       if (activePointerId !== null) onPointerUp({ pointerId: activePointerId } as PointerEvent);
       labStore.activePourAnim = null;
@@ -3171,6 +3416,114 @@
         posAttr.needsUpdate = true;
       }
 
+      // ===================== MICROSCOPIO: ELEVACIÓN, ENCUADRE Y MECÁNICA ÓPTICA =====================
+      if (microscopeGroup) {
+        const microActive = labStore.isMicroscopeActive;
+        const k = 1 - Math.exp(-(isReducedMotion ? 30 : 5) * dt);
+
+        // Trayectoria en arco: sube por encima de los demás objetos y aterriza sobre el pedestal
+        const destPos = microActive ? MICROSCOPE_FOCUS_POS : MICROSCOPE_HOME_POS;
+        const travelLeft = microscopeGroup.position.distanceTo(destPos);
+        microscopeGroup.position.lerp(destPos, k);
+        microscopeGroup.position.y = Math.max(
+          microscopeGroup.position.y,
+          destPos.y + Math.min(0.35, travelLeft * 0.25)
+        );
+        microscopeGroup.position.y = THREE.MathUtils.lerp(microscopeGroup.position.y, destPos.y, k * 0.6);
+        microscopeGroup.rotation.y = THREE.MathUtils.lerp(
+          microscopeGroup.rotation.y,
+          microActive ? MICROSCOPE_FOCUS_ROT_Y : MICROSCOPE_HOME_ROT_Y,
+          k
+        );
+
+        // Pedestal de vidrio grafito
+        microscopeFocusPedestal.visible = microActive || microscopeFocusPedestal.scale.x > 0.01;
+        const pedTarget = microActive ? 1 : 0.001;
+        microscopeFocusPedestal.scale.setScalar(
+          THREE.MathUtils.lerp(microscopeFocusPedestal.scale.x, pedTarget, k)
+        );
+        microscopeKeyLight.intensity = THREE.MathUtils.lerp(
+          microscopeKeyLight.intensity,
+          microActive ? 9 : 0,
+          k
+        );
+
+        // Encuadre de cámara (deja el microscopio a la izquierda y la estación óptica a la derecha)
+        if (microActive && !microscopeWasActive) {
+          homeCameraPos.copy(camera.position);
+          homeCameraTarget.copy(controls.target);
+          controls.enableZoom = false;
+        }
+        if (!microActive && microscopeWasActive) {
+          cameraReturnTimer = 1.4;
+          controls.enableZoom = true;
+        }
+        microscopeWasActive = microActive;
+        if (microActive) {
+          camera.position.lerp(focusCameraPos, k * 0.8);
+          controls.target.lerp(focusCameraTarget, k * 0.8);
+        } else if (cameraReturnTimer > 0) {
+          cameraReturnTimer -= dt;
+          camera.position.lerp(homeCameraPos, k * 0.8);
+          controls.target.lerp(homeCameraTarget, k * 0.8);
+        }
+
+        // Revólver: gira por el camino más corto hasta el objetivo activo (con retén de clic)
+        const targetAngle = -MICROSCOPE_OBJECTIVE_ANGLES[labStore.microscopeObjective];
+        let diff = targetAngle - revolverAngle;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        revolverAngle += diff * (1 - Math.exp(-9 * dt));
+        microscopeRevolverGroup.rotation.y = revolverAngle;
+
+        // Tornillos: macrométrico 2000 µm/vuelta, micrométrico 200 µm/vuelta
+        microscopeCoarseKnobMesh.rotation.y = THREE.MathUtils.lerp(
+          microscopeCoarseKnobMesh.rotation.y,
+          ((labStore.microscopeCoarseUm - 4500) / 2000) * Math.PI * 2,
+          k
+        );
+        microscopeFineKnobMesh.rotation.y = THREE.MathUtils.lerp(
+          microscopeFineKnobMesh.rotation.y,
+          (labStore.microscopeFineUm / 200) * Math.PI * 2,
+          k
+        );
+
+        // La platina sube/baja según el enfoque (cremallera y piñón) y se traslada en X-Y
+        const stageLift =
+          (labStore.microscopeCoarseUm - 4500) * 0.00012 + labStore.microscopeFineUm * 0.00006;
+        microscopeStageAssembly.position.y = THREE.MathUtils.lerp(
+          microscopeStageAssembly.position.y,
+          stageLift,
+          k
+        );
+        microscopeSlideGroup.position.x = THREE.MathUtils.lerp(
+          microscopeSlideGroup.position.x,
+          labStore.microscopeStageXUm * 0.00003,
+          k
+        );
+        microscopeSlideGroup.position.z = THREE.MathUtils.lerp(
+          microscopeSlideGroup.position.z,
+          0.09 + labStore.microscopeStageYUm * 0.00003,
+          k
+        );
+
+        // Muestra, aceite de inmersión e iluminación Köhler
+        const specColor =
+          labStore.microscopeSpecimenId === 'reactor_live'
+            ? targetLiquidColor
+            : new THREE.Color(MICROSCOPE_SPECIMEN_COLORS[labStore.microscopeSpecimenId]);
+        microscopeSpecimenMat.color.lerp(specColor, k);
+        microscopeOilDropMesh.visible = labStore.microscopeImmersionOilApplied;
+        const lamp = labStore.microscopeLampOn ? labStore.microscopeLampIntensity : 0;
+        microscopeLedGlowMat.color.setRGB(0.15 + lamp * 0.85, 0.16 + lamp * 0.84, 0.18 + lamp * 0.82);
+        microscopeLightBeamMesh.visible = lamp > 0.02;
+        microscopeLightBeamMat.opacity = lamp * (0.08 + labStore.microscopeDiaphragm * 0.22);
+        microscopeLightBeamMesh.scale.set(
+          0.4 + labStore.microscopeDiaphragm * 0.8,
+          1,
+          0.4 + labStore.microscopeDiaphragm * 0.8
+        );
+      }
+
       controls.update(dt);
       renderer?.render(scene, camera);
     }
@@ -3197,6 +3550,7 @@
       renderer?.domElement.removeEventListener('pointerup', onPointerUp);
       renderer?.domElement.removeEventListener('pointercancel', onPointerUp);
       renderer?.domElement.removeEventListener('lostpointercapture', onPointerUp);
+      renderer?.domElement.removeEventListener('wheel', onMicroscopeWheel);
       window.removeEventListener('blur', cancelInteraction);
       document.removeEventListener('visibilitychange', onVisibility);
       labStore.activePourAnim = null;
@@ -3249,7 +3603,30 @@
   {/if}
 
   <!-- Píldora espacial contextual (estilo Apple visionOS Look Pill, sin colores chillones ni emojis) -->
-  {#if isBookHovered}
+  {#if labStore.isMicroscopeActive && hoveredMicroscopePartId}
+    {@const part = MICROSCOPE_PARTS.find((p) => p.id === hoveredMicroscopePartId)}
+    {#if part}
+      <div class="fixed bottom-20 left-6 z-30 pointer-events-none apple-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 text-xs shadow-xl max-w-[46vw]">
+        <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
+        <span class="font-mono-numbers text-white/50 text-[10px] shrink-0">{part.code}</span>
+        <span class="font-semibold text-white truncate">{part.name}</span>
+        <span class="text-white/45">·</span>
+        <span class="text-white/65 truncate">
+          {hoveredMicroscopePartId === 'coarse_knob' || hoveredMicroscopePartId === 'fine_knob'
+            ? 'Rueda o clic para girar (Shift invierte)'
+            : hoveredMicroscopePartId === 'nosepiece' || hoveredMicroscopePartId === 'objectives'
+              ? 'Clic para girar el revólver'
+              : hoveredMicroscopePartId === 'illuminator'
+                ? 'Clic para encender / apagar el LED'
+                : hoveredMicroscopePartId === 'diaphragm'
+                  ? 'Rueda o clic para abrir / cerrar el iris'
+                  : 'Clic para ver su función'}
+        </span>
+      </div>
+    {/if}
+  {:else if labStore.isMicroscopeActive}
+    <!-- Sin píldoras de otros objetos mientras el microscopio está en primer plano -->
+  {:else if isBookHovered}
     <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none apple-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 text-xs shadow-xl">
       <span class="w-2 h-2 rounded-full bg-amber-400"></span>
       <span class="font-semibold text-white">Manual Correlativo 3D</span>
@@ -3348,7 +3725,7 @@
         </div>
       </div>
     </div>
-  {:else if labStore.inspectedTool && labStore.inspectedTool.id !== 'ph_meter'}
+  {:else if labStore.inspectedTool && labStore.inspectedTool.id !== 'ph_meter' && labStore.inspectedTool.id !== 'microscope'}
     {@const tool = labStore.inspectedTool}
     <div class="fixed bottom-22 left-6 z-20 w-full max-w-[340px] pointer-events-auto apple-popover-enter">
       <div class="apple-glass rounded-[26px] p-4 flex flex-col gap-3">

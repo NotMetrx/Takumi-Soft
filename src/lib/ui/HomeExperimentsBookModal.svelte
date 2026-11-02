@@ -14,7 +14,7 @@
     Play,
     Pause,
     RotateCcw,
-    CheckCircle2,
+    Check,
     FlaskConical,
     Upload,
     X,
@@ -22,17 +22,17 @@
     ChevronRight,
     Volume2,
     VolumeX,
-    Package
+    ArrowUpRight
   } from '@lucide/svelte';
 
   /**
-   * Estructura física del Libro 3D Correlativo (Primaria, Secundaria y Casos STEAM Prolongo & Pinto 2022):
-   * - Hoja 0 (Sheet 0): Frente = Portada Dura | Reverso = Página 1 (Índice General Correlativo: 8 Experimentos + Mueble 3D)
+   * Estructura física del Libro 3D Correlativo (Estilo Editorial Apple Books / Taschen):
+   * - Hoja 0 (Sheet 0): Frente = Portada Editorial | Reverso = Página 1 (Índice General Correlativo: 8 Experimentos + Estantería 3D)
    * - Hojas 1..8 (Sheets 1..8):
    *    - Frente = Página par (2, 4, 6, 8, 10, 12, 14, 16): Fundamento STEAM, Materiales Clasificados y Video Demostrativo
-   *    - Reverso = Página impar (3, 5, 7, 9, 11, 13, 15, 17): Misión Práctica en el Laboratorio 3D, Evaluación y Botón Equipar
+   *    - Reverso = Página impar (3, 5, 7, 9, 11, 13, 15, 17): Protocolo en el Laboratorio 3D, Evaluación y Botón Equipar
    * - Hoja 9 (Sheet 9):
-   *    - Frente = Página 18: Guía del Mueble 3D Clasificado de Componentes STEAM y Herramientas de Escala Real
+   *    - Frente = Página 18: Guía de la Estantería 3D Clasificada STEAM e Instrumentación de Escala Real
    */
   const MAX_SPREAD = EXPERIMENT_PRESETS.length + 1; // 9 pliegos (Páginas 1 a 18)
 
@@ -63,11 +63,6 @@
 
   const primariaPresets = EXPERIMENT_PRESETS.filter((p) => p.level === 'primaria');
   const secundariaPresets = EXPERIMENT_PRESETS.filter((p) => p.level === 'secundaria');
-
-  const activeVideoPreset = $derived<HomeExperimentPreset>(
-    EXPERIMENT_PRESETS[Math.max(0, Math.min(EXPERIMENT_PRESETS.length - 1, currentSpread - 1))] ??
-      EXPERIMENT_PRESETS[0]
-  );
 
   // Al abrir el modal, el libro aparece cerrado (Portada) y en 180 ms gira su tapa dura con sonido real
   $effect(() => {
@@ -279,46 +274,52 @@
       Math.max(0, (videoTimeSec - ch.timeSec) / ch.durationSec)
     );
 
-    // Fondo de laboratorio científico
+    // Fondo de estudio oscuro estilo Apple Keynote
     const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
-    bgGrad.addColorStop(0, '#090e1a');
-    bgGrad.addColorStop(1, '#162033');
+    bgGrad.addColorStop(0, '#090a0f');
+    bgGrad.addColorStop(1, '#12151e');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
 
-    // Mesa de laboratorio en la parte inferior
-    ctx.fillStyle = '#1e293b';
-    ctx.fillRect(0, h - 50, w, 50);
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 2;
+    // Superficie de mesa minimalista
+    ctx.fillStyle = '#181c26';
+    ctx.fillRect(0, h - 48, w, 48);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, h - 50);
-    ctx.lineTo(w, h - 50);
+    ctx.moveTo(0, h - 48);
+    ctx.lineTo(w, h - 48);
     ctx.stroke();
 
-    // Badge de Nivel Educativo + Referencia STEAM
-    ctx.fillStyle = preset.level === 'primaria' ? '#065f46' : '#312e81';
+    // Píldora superior izquierda sin emojis (estilo Apple visionOS)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.beginPath();
-    ctx.roundRect(12, 10, 210, 26, 7);
+    ctx.roundRect(14, 12, 195, 26, 13);
     ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px "Outfit", sans-serif';
+
+    ctx.fillStyle = preset.acidReagent.colorHex;
+    ctx.beginPath();
+    ctx.arc(27, 25, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#f5f5f7';
+    ctx.font = '600 10.5px -apple-system, BlinkMacSystemFont, "Inter", sans-serif';
     ctx.fillText(
       preset.steamEffect !== 'none'
-        ? `${preset.level === 'primaria' ? '🎒 PRIMARIA' : '🔬 SECUNDARIA'} · STEAM RSEQ`
+        ? `${preset.level === 'primaria' ? 'PRIMARIA' : 'SECUNDARIA'} · STEAM RSEQ`
         : preset.level === 'primaria'
-          ? '🎒 NIVEL PRIMARIA'
-          : '🔬 NIVEL SECUNDARIA',
-      20,
-      27
+          ? 'NIVEL PRIMARIA'
+          : 'NIVEL SECUNDARIA',
+      38,
+      29
     );
 
     // Base del Agitador Magnético bajo el vaso
     const cx = w * 0.5;
-    const plateY = h - 62;
-    ctx.fillStyle = '#334155';
+    const plateY = h - 60;
+    ctx.fillStyle = '#2c3240';
     ctx.beginPath();
-    ctx.roundRect(cx - 64, plateY, 128, 14, 6);
+    ctx.roundRect(cx - 64, plateY, 128, 13, 6);
     ctx.fill();
 
     // Vaso de precipitados graduado (250 mL)
@@ -349,11 +350,8 @@
     ctx.fillRect(bx + 5, by + bh - liqH, bw - 10, 3);
     ctx.globalAlpha = 1.0;
 
-    // =========================================================================
-    // EFECTOS VISUALES ESPECÍFICOS DE LOS EXPERIMENTOS STEAM (PROLONGO & PINTO)
-    // =========================================================================
+    // Efectos visuales específicos de los experimentos STEAM
     if (preset.steamEffect === 'chupachups') {
-      // Palito del Chupa Chups girando y caramelo esférico sumergido en el KMnO4
       const candyX = cx + Math.sin(videoTimeSec * 8) * 6;
       const candyY = by + bh - liqH * 0.55;
       ctx.strokeStyle = '#f8fafc';
@@ -363,7 +361,6 @@
       ctx.lineTo(candyX, candyY);
       ctx.stroke();
 
-      // Caramelo esférico con anillo ecuatorial
       ctx.fillStyle = '#f43f5e';
       ctx.beginPath();
       ctx.arc(candyX, candyY, 11, 0, Math.PI * 2);
@@ -372,14 +369,12 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Estelas espirales redox Mn(+7) -> Mn(+6) -> Mn(+4)
       ctx.strokeStyle = ch.simColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(candyX, candyY, 16 + Math.sin(videoTimeSec * 6) * 4, 0, Math.PI * 1.4);
       ctx.stroke();
     } else if (preset.steamEffect === 'antibubbles') {
-      // Gradiente inferior de Sirope de Agave denso
       const syrupGrad = ctx.createLinearGradient(0, by + bh - 34, 0, by + bh);
       syrupGrad.addColorStop(0, 'rgba(245, 158, 11, 0.15)');
       syrupGrad.addColorStop(1, 'rgba(217, 119, 6, 0.72)');
@@ -388,7 +383,6 @@
       ctx.roundRect(bx + 4, by + bh - 34, bw - 8, 31, [0, 0, 10, 10]);
       ctx.fill();
 
-      // Pajita / Pipeta Pasteur dosificando gotas desde arriba
       ctx.strokeStyle = '#bae6fd';
       ctx.lineWidth = 5;
       ctx.beginPath();
@@ -396,7 +390,6 @@
       ctx.lineTo(cx + 2, by + bh - liqH + 6);
       ctx.stroke();
 
-      // Antiburbujas esféricas suspendidas con película plateada de aire (refractive rim)
       for (let i = 0; i < 5; i++) {
         const abX = bx + 22 + ((i * 15) % (bw - 40));
         const abY =
@@ -405,18 +398,15 @@
           28 -
           ((Math.sin(videoTimeSec * 2.2 + i * 1.3) * 0.5 + 0.5) * Math.max(18, liqH - 36));
         const radius = 5.5 + (i % 2) * 2;
-        // Núcleo de líquido coloreado
         ctx.fillStyle = i % 2 === 0 ? '#0284c7' : '#38bdf8';
         ctx.beginPath();
         ctx.arc(abX, abY, radius, 0, Math.PI * 2);
         ctx.fill();
-        // Película esférica de aire brillante
         ctx.strokeStyle = '#f0f9ff';
         ctx.lineWidth = 2.2;
         ctx.stroke();
       }
     } else if (preset.steamEffect === 'ice_convection') {
-      // Cubito de hielo teñido de rojo flotando en el menisco
       const iceY = by + bh - liqH - 4;
       ctx.fillStyle = 'rgba(225, 29, 72, 0.82)';
       ctx.strokeStyle = '#ffe4e6';
@@ -426,7 +416,6 @@
       ctx.fill();
       ctx.stroke();
 
-      // Si es agua pura (prep / pour_acid), penachos convectivos rojos descienden al fondo
       if (ch.actionType === 'prep' || ch.actionType === 'pour_acid') {
         ctx.strokeStyle = 'rgba(225, 29, 72, 0.65)';
         ctx.lineWidth = 2.5;
@@ -439,12 +428,10 @@
           ctx.stroke();
         }
       } else {
-        // En salmuera saturada (NaCl), capa roja estratificada flotando arriba
         ctx.fillStyle = 'rgba(225, 29, 72, 0.72)';
         ctx.fillRect(bx + 5, by + bh - liqH + 2, bw - 10, 12);
       }
     } else if (preset.steamEffect === 'tea_complex') {
-      // Bolsita piramidal de té suspendida con hilo
       ctx.strokeStyle = '#e2e8f0';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -460,7 +447,6 @@
       ctx.closePath();
       ctx.fill();
     } else if (preset.steamEffect === 'botijo_cooling') {
-      // Mini-botijo de arcilla porosa junto al vaso con flechas de evaporación endotérmica (-λw)
       const botX = bx - 54;
       const botY = plateY - 42;
       ctx.fillStyle = '#c2410c';
@@ -470,7 +456,6 @@
       ctx.arc(botX, botY, 22, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      // Sudoración fría de microgotas azules en la pared del botijo
       ctx.fillStyle = '#38bdf8';
       for (let i = 0; i < 4; i++) {
         const ang = videoTimeSec * 2 + i * 1.5;
@@ -500,26 +485,26 @@
     }
 
     // Sonda del pH-metro sumergida por la izquierda
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(bx + 16, by - 20);
     ctx.lineTo(bx + 16, by + bh - 16);
     ctx.stroke();
 
     // Contorno de cristal borosilicato y marcas volumétricas
-    ctx.strokeStyle = 'rgba(226, 232, 240, 0.92)';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(241, 245, 249, 0.88)';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.roundRect(bx, by, bw, bh, [2, 2, 12, 12]);
     ctx.stroke();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = 'bold 9px "JetBrains Mono", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.font = '600 8.5px "SF Mono", "JetBrains Mono", monospace';
     [50, 150, 250].forEach((ml, idx) => {
       const my = by + bh - 24 - idx * 33;
-      ctx.fillRect(bx + bw - 22, my, 12, 1.5);
-      ctx.fillText(`${ml}`, bx + bw - 42, my + 3);
+      ctx.fillRect(bx + bw - 20, my, 10, 1.2);
+      ctx.fillText(`${ml}`, bx + bw - 40, my + 3);
     });
 
     // Animación de matraz Erlenmeyer vertiendo reactivo
@@ -551,27 +536,32 @@
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = '#f8fafc';
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.restore();
     }
 
-    // Pantalla OLED de lectura en vivo (esquina superior derecha)
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+    // Píldora de telemetría pH estilo Dynamic Island (esquina superior derecha)
+    ctx.fillStyle = 'rgba(14, 14, 18, 0.88)';
     ctx.beginPath();
-    ctx.roundRect(w - 150, 10, 138, 54, 10);
+    ctx.roundRect(w - 134, 10, 120, 44, 14);
     ctx.fill();
-    ctx.strokeStyle = ch.simColor;
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-    ctx.fillText('SENSOR pH EN VIVO', w - 138, 25);
+    ctx.fillStyle = ch.simColor;
+    ctx.beginPath();
+    ctx.arc(w - 118, 32, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '600 9px "SF Mono", "JetBrains Mono", monospace';
+    ctx.fillText('pH EN VIVO', w - 106, 24);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px "JetBrains Mono", monospace';
-    ctx.fillText(`pH ${ch.simPh.toFixed(2)}`, w - 138, 50);
+    ctx.font = '700 16px "SF Mono", "JetBrains Mono", monospace';
+    ctx.fillText(ch.simPh.toFixed(2), w - 106, 42);
   }
 
   function handleCustomVideoUpload(e: Event) {
@@ -614,7 +604,7 @@
 {#if labStore.isHomeBookOpen}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
-    class="fixed inset-0 z-50 flex flex-col items-center justify-center p-2 sm:p-5 bg-black/82 backdrop-blur-md select-none"
+    class="fixed inset-0 z-50 flex flex-col items-center justify-center p-2 sm:p-5 bg-black/80 backdrop-blur-xl select-none"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
@@ -623,68 +613,76 @@
     onpointermove={onBookPointerMove}
     onpointerup={onBookPointerUp}
   >
-    <!-- Barra superior flotante con saltos rápidos a Primaria, Secundaria, Mueble 3D y control de sonido -->
-    <div class="w-full max-w-5xl mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-100/95 px-2">
-      <div class="flex items-center gap-2">
-        <BookOpen class="w-4 h-4 text-amber-400 shrink-0" />
-        <span id="physical-book-title" class="font-bold tracking-wide">
-          Manual Correlativo STEAM (Prolongo & Pinto · RSEQ) · Primaria y Secundaria
+    <!-- =========================================================================
+         BARRA DE NAVEGACIÓN FLOTANTE DEL LIBRO (ESTILO APPLE BOOKS / VISIONOS)
+         ========================================================================= -->
+    <div class="w-full max-w-4xl mb-3 flex items-center justify-between gap-2 apple-island rounded-full px-3.5 py-1.5">
+      <div class="flex items-center gap-2.5 min-w-0 pl-1">
+        <BookOpen class="w-4 h-4 text-white/75 shrink-0" />
+        <span id="physical-book-title" class="text-xs font-semibold tracking-[-0.015em] text-white truncate">
+          Manual Experimental SymbioLab
+        </span>
+        <span class="font-mono-numbers text-[11px] text-white/45 hidden sm:inline">
+          {currentSpread === 0
+            ? 'Portada'
+            : `Págs. ${currentSpread * 2 - 1}–${currentSpread * 2} de ${MAX_SPREAD * 2}`}
         </span>
       </div>
 
-      <div class="flex flex-wrap items-center gap-1.5">
+      <!-- Control segmentado estilo Apple Books para saltar entre secciones -->
+      <div class="flex items-center bg-white/[0.07] p-0.5 rounded-full border border-white/[0.08]">
         <button
           type="button"
           onclick={() => goToSpread(1)}
-          class="px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer transition-colors {currentSpread >= 1 && currentSpread <= 4 ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-900/90 text-emerald-300 border-emerald-500/40 hover:bg-emerald-950'}"
+          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium cursor-pointer {currentSpread >= 1 && currentSpread <= 4
+            ? 'bg-white text-black font-semibold shadow-xs'
+            : 'text-white/65 hover:text-white'}"
         >
-          🎒 Primaria (Págs. 2–9)
+          Primaria
         </button>
-
         <button
           type="button"
           onclick={() => goToSpread(5)}
-          class="px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer transition-colors {currentSpread >= 5 && currentSpread <= 8 ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-900/90 text-indigo-300 border-indigo-500/40 hover:bg-indigo-950'}"
+          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium cursor-pointer {currentSpread >= 5 && currentSpread <= 8
+            ? 'bg-white text-black font-semibold shadow-xs'
+            : 'text-white/65 hover:text-white'}"
         >
-          🔬 Secundaria (Págs. 10–17)
+          Secundaria
         </button>
-
         <button
           type="button"
           onclick={() => goToSpread(MAX_SPREAD)}
-          class="px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer transition-colors {currentSpread === MAX_SPREAD ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-slate-900/90 text-amber-300 border-amber-500/40 hover:bg-amber-950'}"
+          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium cursor-pointer {currentSpread === MAX_SPREAD
+            ? 'bg-white text-black font-semibold shadow-xs'
+            : 'text-white/65 hover:text-white'}"
         >
-          🗄️ Mueble 3D (Pág. 18)
+          Estantería 3D
         </button>
+      </div>
 
+      <div class="flex items-center gap-1.5">
         <button
           type="button"
           onclick={() => labStore.toggleSound()}
-          class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-200 hover:bg-amber-900/80 flex items-center gap-1 cursor-pointer"
-          title="Activar o silenciar el sonido de las hojas al pasar de página"
+          class="lab-btn w-7 h-7 rounded-full bg-white/[0.07] hover:bg-white/[0.14] flex items-center justify-center text-white/75 hover:text-white cursor-pointer"
+          title={labStore.soundEnabled ? 'Sonido de páginas activado' : 'Sonido de páginas silenciado'}
+          aria-label="Alternar sonido de páginas"
         >
           {#if labStore.soundEnabled}
-            <Volume2 class="w-3.5 h-3.5 text-amber-400" />
-            <span class="hidden sm:inline">Sonido: ON</span>
+            <Volume2 class="w-3.5 h-3.5" />
           {:else}
-            <VolumeX class="w-3.5 h-3.5 text-slate-400" />
-            <span class="hidden sm:inline">Silenciado</span>
+            <VolumeX class="w-3.5 h-3.5 text-white/40" />
           {/if}
         </button>
-
-        <span class="font-mono-numbers text-[11px] bg-slate-900/90 border border-slate-700 px-2.5 py-1 rounded-lg text-amber-300">
-          {currentSpread === 0
-            ? 'Portada'
-            : `Págs. ${currentSpread * 2 - 1}–${currentSpread * 2} / ${MAX_SPREAD * 2}`}
-        </span>
 
         <button
           type="button"
           onclick={closeBookWithAnimation}
-          class="lab-btn bg-slate-900/90 hover:bg-rose-950 text-slate-200 hover:text-rose-200 border border-slate-700 px-3 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+          class="lab-btn w-7 h-7 rounded-full bg-white/[0.08] hover:bg-white/[0.18] flex items-center justify-center text-white/80 hover:text-white cursor-pointer"
+          title="Cerrar manual (Esc)"
+          aria-label="Cerrar manual"
         >
-          <X class="w-4 h-4" />
-          <span>Cerrar</span>
+          <X class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -698,7 +696,7 @@
     />
 
     <!-- ESCENARIO 3D DEL LIBRO REAL CON CANTO DE HOJAS Y ANIMACIÓN DE CURVATURA -->
-    <div class="book-stage relative w-full max-w-5xl aspect-16/10 max-h-[83vh] {turningDirection ? `turning-${turningDirection}` : ''}">
+    <div class="book-stage relative w-full max-w-5xl aspect-16/10 max-h-[82vh] {turningDirection ? `turning-${turningDirection}` : ''}">
       <!-- Cubierta trasera izquierda y canto de páginas apiladas -->
       <div
         class="book-back-board left-board"
@@ -714,96 +712,123 @@
       ></div>
 
       <!-- =========================================================================
-           HOJA 0: PORTADA DURA (FRENTE) / PÁGINA 1: ÍNDICE GENERAL STEAM (REVERSO)
+           HOJA 0: PORTADA DURA EDITORIAL (FRENTE) / PÁGINA 1: ÍNDICE GENERAL (REVERSO)
            ========================================================================= -->
       <div
         class="book-sheet"
         style={getSheetStyle(0)}
       >
-        <!-- FRENTE DE HOJA 0: PORTADA DURA DEL LIBRO -->
-        <div class="sheet-face sheet-front book-hardcover flex flex-col items-center justify-between p-8 text-center">
-          <div class="w-full border-2 border-amber-400/50 rounded-2xl p-6 flex-1 flex flex-col items-center justify-between bg-gradient-to-br from-amber-950/70 via-slate-950/85 to-amber-950/70 shadow-inner">
-            <div class="text-amber-300/90 text-xs font-bold tracking-[0.22em] uppercase">
-              SymbioLab 2.0 · Edición STEAM (Prolongo & Pinto · RSEQ / Scientix)
+        <!-- FRENTE DE HOJA 0: PORTADA DURA ESTILO MONOGRAFÍA APPLE / TASCHEN -->
+        <div class="sheet-face sheet-front book-hardcover flex flex-col justify-between p-8 sm:p-10 text-left">
+          <div class="w-full h-full border border-white/12 rounded-2xl p-6 sm:p-8 flex flex-col justify-between bg-gradient-to-b from-white/[0.03] to-transparent">
+            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+              <span class="text-[10px] font-semibold tracking-[0.2em] uppercase text-white/55">
+                SymbioLab Press · Edición STEAM
+              </span>
+              <span class="font-mono-numbers text-[10px] text-white/40">
+                RSEQ / Scientix
+              </span>
             </div>
 
-            <div class="my-auto flex flex-col items-center gap-3.5">
-              <div class="w-20 h-20 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center shadow-lg">
-                <FlaskConical class="w-10 h-10 text-amber-300" />
+            <div class="my-auto flex flex-col gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-white/[0.07] border border-white/15 flex items-center justify-center">
+                <FlaskConical class="w-6 h-6 text-white/90" />
               </div>
-              <h1 class="font-serif text-2xl sm:text-4xl font-extrabold text-amber-100 tracking-tight leading-tight">
-                GRAN MANUAL DE<br />EXPERIMENTOS STEAM
-              </h1>
-              <div class="flex flex-wrap items-center justify-center gap-2">
-                <span class="px-3 py-1 rounded-full bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 text-xs font-bold">
-                  🎒 4 Prácticas Primaria
-                </span>
-                <span class="px-3 py-1 rounded-full bg-indigo-500/25 border border-indigo-400/50 text-indigo-200 text-xs font-bold">
-                  🔬 4 Prácticas Secundaria
-                </span>
-                <span class="px-3 py-1 rounded-full bg-amber-500/25 border border-amber-400/50 text-amber-200 text-xs font-bold">
-                  🗄️ Mueble 3D Clasificado
-                </span>
+
+              <div>
+                <p class="text-xs font-medium text-white/50 tracking-wide mb-1">
+                  Monografía Interactiva de Laboratorio
+                </p>
+                <h1 class="text-2xl sm:text-4xl font-semibold text-white tracking-[-0.03em] leading-[1.1]">
+                  Manual de Ciencias<br />y Experimentación
+                </h1>
               </div>
-              <p class="text-xs sm:text-sm text-amber-200/85 max-w-sm font-medium">
-                Experimentos con materiales caseros y de laboratorio: Camaleón Redox con Chupa Chups, Antiburbujas LNP, Hielo en Salmuera, Complejos del Té y Cerámica Porosa
+
+              <p class="text-xs sm:text-[13px] text-white/60 max-w-sm leading-relaxed">
+                Ocho prácticas correlativas de Primaria y Secundaria basadas en materiales cotidianos, reacciones redox, termodinámica y química analítica.
               </p>
+
+              <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                <span class="px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-white/75 text-[10px] font-medium">
+                  01–04 Primaria
+                </span>
+                <span class="px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-white/75 text-[10px] font-medium">
+                  05–08 Secundaria
+                </span>
+                <span class="px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/10 text-white/75 text-[10px] font-medium">
+                  Estantería 3D
+                </span>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onclick={() => goToSpread(1)}
-              class="lab-btn px-6 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs uppercase tracking-wider cursor-pointer shadow-lg"
-            >
-              Abrir Libro →
-            </button>
+            <div class="flex items-center justify-between pt-4 border-t border-white/10">
+              <span class="text-[11px] text-white/45">
+                18 páginas correlativas
+              </span>
+              <button
+                type="button"
+                onclick={() => goToSpread(1)}
+                class="lab-btn px-5 py-2 rounded-full bg-white hover:bg-white/90 text-black font-semibold text-xs tracking-[-0.01em] cursor-pointer shadow-md"
+              >
+                Abrir Manual →
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- REVERSO DE HOJA 0: PÁGINA 1 (ÍNDICE GENERAL DE LOS 8 EXPERIMENTOS + MUEBLE 3D) -->
-        <div class="sheet-face sheet-back book-paper-left p-4 sm:p-5 flex flex-col justify-between">
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between border-b-2 border-amber-900/25 pb-1">
-              <span class="text-[10px] font-bold uppercase tracking-widest text-amber-900">
-                Índice Correlativo STEAM · 8 Experimentos
+        <!-- REVERSO DE HOJA 0: PÁGINA 1 (ÍNDICE EDITORIAL CORRELATIVO) -->
+        <div class="sheet-face sheet-back book-paper-left p-5 sm:p-6 flex flex-col justify-between">
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between border-b border-stone-900/12 pb-2">
+              <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+                Índice General
               </span>
-              <span class="text-[10px] font-serif italic text-stone-600">Prolongo & Pinto (RSEQ / UPM)</span>
+              <span class="text-[10px] font-medium text-stone-400">
+                Prolongo & Pinto · RSEQ
+              </span>
             </div>
 
-            <!-- SECCIÓN PRIMARIA EN EL ÍNDICE (EXP 1 A 4) -->
-            <div class="rounded-xl bg-emerald-950/10 border border-emerald-800/25 p-2 flex flex-col gap-1">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-extrabold text-emerald-900 uppercase tracking-wide">
-                  🎒 Sección I · Nivel Primaria (Págs. 2–9)
+            <!-- SECCIÓN PRIMARIA EN EL ÍNDICE (EXP 01 A 04) -->
+            <div class="flex flex-col gap-1">
+              <div class="flex items-center justify-between py-0.5">
+                <span class="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500">
+                  I · Nivel Primaria (Págs. 02–09)
                 </span>
-                <span class="text-[9px] font-bold bg-emerald-700 text-white px-2 py-0.5 rounded-full">Materiales Caseros</span>
+                <span class="text-[10px] text-stone-400">3.° a 6.° Grado</span>
               </div>
 
               {#each primariaPresets as p, idx}
                 <button
                   type="button"
                   onclick={() => goToSpread(idx + 1)}
-                  class="group text-left px-2 py-1 rounded-lg bg-white/85 hover:bg-emerald-50 border border-emerald-900/15 transition-all cursor-pointer flex items-center justify-between gap-2"
+                  class="group text-left px-2.5 py-1.5 rounded-xl bg-stone-900/[0.03] hover:bg-stone-900/[0.08] border border-stone-900/[0.06] transition-colors cursor-pointer flex items-center justify-between gap-2"
                 >
-                  <div class="truncate">
-                    <span class="font-serif font-bold text-stone-900 text-[11px] group-hover:text-emerald-800">
-                      Exp. {idx + 1} · {p.title}
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="font-mono-numbers text-[10px] font-semibold text-stone-400">
+                      0{idx + 1}
+                    </span>
+                    <span
+                      class="w-2 h-2 rounded-full shrink-0"
+                      style="background-color: {p.acidReagent.colorHex};"
+                    ></span>
+                    <span class="font-semibold text-stone-900 text-xs truncate group-hover:text-black">
+                      {p.title}
                     </span>
                   </div>
-                  <span class="font-mono-numbers font-bold text-[10px] text-emerald-900 shrink-0">
-                    Pág. {(idx + 1) * 2}
+                  <span class="font-mono-numbers text-[11px] font-medium text-stone-500 shrink-0">
+                    Pág. 0{(idx + 1) * 2}
                   </span>
                 </button>
               {/each}
             </div>
 
-            <!-- SECCIÓN SECUNDARIA EN EL ÍNDICE (EXP 5 A 8) -->
-            <div class="rounded-xl bg-indigo-950/10 border border-indigo-800/25 p-2 flex flex-col gap-1">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-extrabold text-indigo-900 uppercase tracking-wide">
-                  🔬 Sección II · Nivel Secundaria (Págs. 10–17)
+            <!-- SECCIÓN SECUNDARIA EN EL ÍNDICE (EXP 05 A 08) -->
+            <div class="flex flex-col gap-1 pt-1">
+              <div class="flex items-center justify-between py-0.5">
+                <span class="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500">
+                  II · Nivel Secundaria (Págs. 10–17)
                 </span>
-                <span class="text-[9px] font-bold bg-indigo-700 text-white px-2 py-0.5 rounded-full">Rigor Analítico y Redox</span>
+                <span class="text-[10px] text-stone-400">1.° a 5.° Secundaria</span>
               </div>
 
               {#each secundariaPresets as p, idx}
@@ -811,14 +836,21 @@
                 <button
                   type="button"
                   onclick={() => goToSpread(spreadNum)}
-                  class="group text-left px-2 py-1 rounded-lg bg-white/85 hover:bg-indigo-50 border border-indigo-900/15 transition-all cursor-pointer flex items-center justify-between gap-2"
+                  class="group text-left px-2.5 py-1.5 rounded-xl bg-stone-900/[0.03] hover:bg-stone-900/[0.08] border border-stone-900/[0.06] transition-colors cursor-pointer flex items-center justify-between gap-2"
                 >
-                  <div class="truncate">
-                    <span class="font-serif font-bold text-stone-900 text-[11px] group-hover:text-indigo-800">
-                      Exp. {spreadNum} · {p.title}
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="font-mono-numbers text-[10px] font-semibold text-stone-400">
+                      0{spreadNum}
+                    </span>
+                    <span
+                      class="w-2 h-2 rounded-full shrink-0"
+                      style="background-color: {p.acidReagent.colorHex};"
+                    ></span>
+                    <span class="font-semibold text-stone-900 text-xs truncate group-hover:text-black">
+                      {p.title}
                     </span>
                   </div>
-                  <span class="font-mono-numbers font-bold text-[10px] text-indigo-900 shrink-0">
+                  <span class="font-mono-numbers text-[11px] font-medium text-stone-500 shrink-0">
                     Pág. {spreadNum * 2}
                   </span>
                 </button>
@@ -827,19 +859,19 @@
               <button
                 type="button"
                 onclick={() => goToSpread(MAX_SPREAD)}
-                class="group text-left px-2 py-1 rounded-lg bg-amber-900/15 hover:bg-amber-900/25 border border-amber-900/25 transition-all cursor-pointer flex items-center justify-between"
+                class="group text-left px-2.5 py-1.5 mt-0.5 rounded-xl bg-stone-900 text-white hover:bg-stone-800 transition-colors cursor-pointer flex items-center justify-between"
               >
-                <span class="font-serif font-bold text-amber-950 text-[11px]">
-                  🗄️ Anexo: Mueble 3D Clasificado de Componentes STEAM
+                <span class="font-medium text-xs">
+                  III · Catálogo de la Estantería 3D STEAM
                 </span>
-                <span class="font-mono-numbers font-bold text-[10px] text-amber-900">Pág. {MAX_SPREAD * 2}</span>
+                <span class="font-mono-numbers text-[11px] text-white/70">Pág. {MAX_SPREAD * 2}</span>
               </button>
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-1 border-t border-amber-900/15 text-[10px] text-stone-600">
-            <span class="font-serif font-bold text-stone-800">Pág. 1</span>
-            <span class="italic">Desliza o haz clic en las esquinas para hojear con sonido 🔊</span>
+          <div class="flex items-center justify-between pt-2 border-t border-stone-900/10 text-[10px] text-stone-500">
+            <span class="font-mono-numbers font-semibold text-stone-700">01</span>
+            <span>Desliza o pulsa las esquinas para pasar de hoja</span>
           </div>
         </div>
       </div>
@@ -859,39 +891,52 @@
           style={getSheetStyle(sheetIdx)}
         >
           <!-- FRENTE DE LA HOJA (PÁGINA PAR): FUNDAMENTO CIENTÍFICO, MATERIALES Y VIDEO SIMULADO -->
-          <div class="sheet-face sheet-front book-paper-right p-4 sm:p-5 flex flex-col justify-between">
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center justify-between border-b-2 {isPrimaria ? 'border-emerald-900/25' : 'border-indigo-900/25'} pb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-widest {isPrimaria ? 'text-emerald-800' : 'text-indigo-900'}">
-                  {isPrimaria ? '🎒 Nivel Primaria' : '🔬 Nivel Secundaria'} · Experimento #{sheetIdx}
-                </span>
-                <span class="text-[10px] font-serif italic text-stone-600">{preset.gradeRange}</span>
+          <div class="sheet-face sheet-front book-paper-right p-5 sm:p-6 flex flex-col justify-between">
+            <div class="flex flex-col gap-2.5">
+              <!-- Encabezado editorial limpio -->
+              <div class="flex items-center justify-between border-b border-stone-900/12 pb-1.5">
+                <div class="flex items-center gap-2">
+                  <span
+                    class="w-2 h-2 rounded-full"
+                    style="background-color: {preset.acidReagent.colorHex};"
+                  ></span>
+                  <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-500">
+                    {isPrimaria ? 'Sección I · Primaria' : 'Sección II · Secundaria'} · Práctica 0{sheetIdx}
+                  </span>
+                </div>
+                <span class="text-[10px] font-medium text-stone-400">{preset.gradeRange}</span>
               </div>
 
               <div>
-                <h2 class="font-serif text-base sm:text-lg font-extrabold text-stone-900 leading-tight">
+                <h2 class="text-base sm:text-lg font-semibold tracking-[-0.02em] text-stone-950 leading-snug">
                   {preset.title}
                 </h2>
-                <p class="text-[11px] text-stone-700 mt-0.5 leading-snug">
+                <p class="text-[11px] text-stone-600 mt-0.5 leading-relaxed">
                   {preset.summary}
                 </p>
               </div>
 
-              <!-- Materiales clasificados (disponibles en la mesa y en el Mueble 3D) -->
+              <!-- Materiales clasificados (diseño limpio sin emojis) -->
               <div class="grid grid-cols-2 gap-1.5">
-                {#each preset.householdMaterials as item}
-                  <div class="bg-white/85 border border-stone-300/80 rounded-lg p-1.5 flex items-center gap-1.5">
-                    <span class="text-sm shrink-0">{item.icon}</span>
+                {#each preset.householdMaterials as item, mIdx}
+                  <div class="bg-stone-900/[0.035] border border-stone-900/[0.07] rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+                    <span class="font-mono-numbers text-[10px] font-semibold text-stone-400 shrink-0">
+                      0{mIdx + 1}
+                    </span>
                     <div class="min-w-0">
-                      <div class="text-[10px] font-bold text-stone-900 leading-tight truncate">{item.name}</div>
-                      <div class="text-[9.5px] text-stone-600 leading-tight truncate">{item.role}</div>
+                      <div class="text-[11px] font-semibold text-stone-900 leading-tight truncate">
+                        {item.name}
+                      </div>
+                      <div class="text-[9.5px] text-stone-500 leading-tight truncate">
+                        {item.role}
+                      </div>
                     </div>
                   </div>
                 {/each}
               </div>
 
-              <!-- Reproductor de Video Científico Integrado en la Página Par -->
-              <div class="rounded-xl overflow-hidden border-2 border-stone-800 bg-slate-950 shadow-md">
+              <!-- Reproductor de Video Científico estilo Apple Keynote -->
+              <div class="rounded-2xl overflow-hidden border border-stone-900/15 bg-[#090a0f] shadow-md">
                 <div class="relative aspect-16/9 w-full">
                   {#if customVideoUrl}
                     <video src={customVideoUrl} controls class="w-full h-full object-cover">
@@ -905,26 +950,26 @@
                       class="w-full h-full object-cover"
                     ></canvas>
                   {/if}
-                  <div class="absolute bottom-1.5 left-2 right-2 bg-slate-950/90 px-2.5 py-1 rounded-lg border border-slate-700/80">
-                    <div class="text-[10px] font-bold {isPrimaria ? 'text-emerald-400' : 'text-indigo-400'}">
+                  <div class="absolute bottom-2 left-2.5 right-2.5 bg-black/75 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
+                    <div class="text-[10px] font-semibold text-white">
                       {ch.title}
                     </div>
-                    <p class="text-[9.5px] text-slate-200 leading-snug">{ch.caption}</p>
+                    <p class="text-[9.5px] text-white/70 leading-snug">{ch.caption}</p>
                   </div>
                 </div>
-                <div class="px-2.5 py-1 bg-stone-900 text-amber-100 flex items-center justify-between text-[10px]">
+                <div class="px-3 py-1.5 bg-[#121318] text-white flex items-center justify-between text-[10px]">
                   <div class="flex items-center gap-1.5">
                     <button
                       type="button"
                       onclick={togglePlay}
-                      class="px-2 py-0.5 rounded {isPrimaria ? 'bg-emerald-500 text-slate-950' : 'bg-indigo-500 text-white'} font-bold flex items-center gap-1 cursor-pointer"
+                      class="lab-btn px-2.5 py-1 rounded-full bg-white text-black font-semibold flex items-center gap-1 cursor-pointer"
                     >
-                      {#if isPlaying}<Pause class="w-3 h-3" /> Pausar{:else}<Play class="w-3 h-3" /> Ver Video{/if}
+                      {#if isPlaying}<Pause class="w-3 h-3" /> Pausar{:else}<Play class="w-3 h-3" /> Reproducir{/if}
                     </button>
                     <button
                       type="button"
                       onclick={restartVideo}
-                      class="p-1 rounded bg-stone-800 hover:bg-stone-700 cursor-pointer"
+                      class="lab-btn w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer"
                       title="Reiniciar demostración"
                     >
                       <RotateCcw class="w-3 h-3" />
@@ -933,102 +978,124 @@
                   <button
                     type="button"
                     onclick={() => fileInputEl?.click()}
-                    class="text-[10px] underline text-amber-300 cursor-pointer"
+                    class="text-[10px] font-medium text-white/60 hover:text-white cursor-pointer flex items-center gap-1"
                   >
-                    Subir MP4
+                    <Upload class="w-3 h-3" /> Subir MP4
                   </button>
                 </div>
               </div>
             </div>
 
-            <div class="flex items-center justify-between pt-1 border-t border-amber-900/15">
-              <span class="text-[10px] text-stone-500 italic">Práctica y Reto en Pág. {oddPage} →</span>
+            <div class="flex items-center justify-between pt-1.5 border-t border-stone-900/10">
+              <span class="font-mono-numbers text-[11px] font-semibold text-stone-700">
+                {evenPage < 10 ? `0${evenPage}` : evenPage}
+              </span>
               <button type="button" onclick={nextPage} class="page-corner-btn right-corner">
-                <span>Pág. {evenPage} · Siguiente</span>
-                <ChevronRight class="w-4 h-4" />
+                <span>Protocolo · Pág. {oddPage < 10 ? `0${oddPage}` : oddPage}</span>
+                <ChevronRight class="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
           <!-- REVERSO DE LA HOJA (PÁGINA IMPAR): PROTOCOLO PRÁCTICO, METAS EN VIVO Y EVALUACIÓN -->
-          <div class="sheet-face sheet-back book-paper-left p-4 sm:p-5 flex flex-col justify-between">
-            <div class="flex flex-col gap-2">
-              <div class="flex items-center justify-between border-b-2 {isPrimaria ? 'border-emerald-900/25' : 'border-indigo-900/25'} pb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-widest {isPrimaria ? 'text-emerald-800' : 'text-indigo-900'}">
-                  {isPrimaria ? '🎒 Primaria' : '🔬 Secundaria'} · Protocolo Práctico #{sheetIdx}
+          <div class="sheet-face sheet-back book-paper-left p-5 sm:p-6 flex flex-col justify-between">
+            <div class="flex flex-col gap-2.5">
+              <div class="flex items-center justify-between border-b border-stone-900/12 pb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-500">
+                  Protocolo Experimental · 0{sheetIdx}
                 </span>
-                <span class="text-[10px] font-serif italic text-stone-600">{preset.subtitle}</span>
+                <span class="text-[10px] font-medium text-stone-400 truncate max-w-[180px]">
+                  {preset.subtitle}
+                </span>
               </div>
 
-              <!-- Principio Científico STEAM y cita a Prolongo & Pinto -->
-              <div class="{isPrimaria ? 'bg-emerald-950/10 border-emerald-800/25' : 'bg-indigo-950/10 border-indigo-900/25'} border p-2 rounded-xl text-[11px] text-stone-800 leading-snug">
-                <strong class="{isPrimaria ? 'text-emerald-950' : 'text-indigo-950'} block mb-0.5">
-                  🔬 Fundamento Científico en tu Mesa y Mueble 3D:
-                </strong>
+              <!-- Fundamento Científico STEAM -->
+              <div class="bg-stone-900/[0.04] border border-stone-900/[0.08] p-3 rounded-2xl text-[11px] text-stone-700 leading-relaxed">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-stone-900 block mb-0.5">
+                  Fundamento Científico
+                </span>
                 {preset.scientificPrinciple}
               </div>
 
               <!-- Metas interactivas verificadas en tiempo real con el vaso 3D -->
-              <div class="flex flex-col gap-1">
-                <span class="text-[10px] font-extrabold text-stone-900 uppercase tracking-wider">
-                  ⭐ Pasos Experimentales en el Laboratorio 3D:
+              <div class="flex flex-col gap-1.5">
+                <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
+                  Secuencia de Laboratorio
                 </span>
                 {#each preset.interactiveGoals as goal, i}
                   {@const done = labStore.activePresetId === preset.id && goal.checkFn(labStore.beaker)}
                   <div
-                    class="p-2 rounded-xl border flex items-start gap-2 text-[11px]
+                    class="px-3 py-2 rounded-xl border flex items-start gap-2.5 text-[11px] transition-colors
                     {done
-                      ? 'bg-emerald-100 border-emerald-600 text-emerald-950 font-semibold'
-                      : 'bg-white/85 border-stone-300 text-stone-800'}"
+                      ? 'bg-emerald-950/[0.08] border-emerald-700/35 text-stone-950 font-medium'
+                      : 'bg-white/75 border-stone-900/10 text-stone-700'}"
                   >
-                    <CheckCircle2 class="w-3.5 h-3.5 shrink-0 mt-0.5 {done ? 'text-emerald-700' : 'text-stone-400'}" />
-                    <span><strong>Paso {i + 1}:</strong> {goal.description}</span>
+                    <span
+                      class="w-4 h-4 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-[10px] {done
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-stone-900/10 text-stone-600 font-mono-numbers font-semibold'}"
+                    >
+                      {#if done}
+                        <Check class="w-2.5 h-2.5 stroke-[3]" />
+                      {:else}
+                        {i + 1}
+                      {/if}
+                    </span>
+                    <span class="leading-snug">{goal.description}</span>
                   </div>
                 {/each}
               </div>
 
               <!-- Pregunta de Autoevaluación -->
-              <div class="bg-amber-100/70 border border-amber-900/20 p-2 rounded-xl flex flex-col gap-1">
-                <span class="text-[11px] font-bold text-amber-950">✍️ Autoevaluación STEAM:</span>
-                <p class="text-[10.5px] text-stone-800 font-semibold leading-snug">{preset.quizQuestion.question}</p>
-                {#each preset.quizQuestion.options as opt, qIdx}
-                  {@const picked = quizAnswers[preset.id] === qIdx}
-                  {@const isOk = qIdx === preset.quizQuestion.correctIndex}
-                  <button
-                    type="button"
-                    onclick={() => (quizAnswers[preset.id] = qIdx)}
-                    class="text-left px-2 py-1 rounded-lg border text-[10.5px] cursor-pointer flex justify-between items-center gap-1
-                    {picked
-                      ? isOk
-                        ? 'bg-emerald-700 text-white border-emerald-800 font-bold'
-                        : 'bg-rose-700 text-white border-rose-800 font-bold'
-                      : 'bg-white/90 border-stone-300 text-stone-800 hover:bg-amber-50'}"
-                  >
-                    <span class="leading-tight">{opt}</span>
-                    {#if picked}<span>{isOk ? '✓' : '✗'}</span>{/if}
-                  </button>
-                {/each}
+              <div class="bg-stone-900/[0.035] border border-stone-900/[0.08] p-3 rounded-2xl flex flex-col gap-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                  Verificación de Concepto
+                </span>
+                <p class="text-[11px] text-stone-900 font-semibold leading-snug">
+                  {preset.quizQuestion.question}
+                </p>
+                <div class="flex flex-col gap-1 pt-0.5">
+                  {#each preset.quizQuestion.options as opt, qIdx}
+                    {@const picked = quizAnswers[preset.id] === qIdx}
+                    {@const isOk = qIdx === preset.quizQuestion.correctIndex}
+                    <button
+                      type="button"
+                      onclick={() => (quizAnswers[preset.id] = qIdx)}
+                      class="text-left px-2.5 py-1.5 rounded-xl border text-[10.5px] cursor-pointer flex justify-between items-center gap-2 transition-colors
+                      {picked
+                        ? isOk
+                          ? 'bg-stone-900 text-white border-stone-900 font-semibold'
+                          : 'bg-rose-900 text-white border-rose-900 font-semibold'
+                        : 'bg-white/85 border-stone-900/10 text-stone-700 hover:bg-white'}"
+                    >
+                      <span class="leading-tight">{opt}</span>
+                      {#if picked}
+                        <span class="text-[10px] font-mono-numbers shrink-0">
+                          {isOk ? 'Correcto' : 'Revisar'}
+                        </span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
               </div>
 
               <button
                 type="button"
                 onclick={() => launchExperimentFromPage(preset.id)}
-                class="lab-btn w-full py-2 px-3 rounded-xl {isPrimaria ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-700 hover:bg-indigo-600'} text-white font-extrabold text-[11px] uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                class="lab-btn w-full py-2.5 px-4 rounded-full bg-stone-950 hover:bg-stone-800 text-white font-semibold text-xs tracking-[-0.01em] flex items-center justify-center gap-2 cursor-pointer shadow-sm"
               >
-                <FlaskConical class="w-4 h-4 shrink-0" />
-                <span>¡Equipar Laboratorio y Mueble 3D para este Experimento!</span>
+                <span>Equipar práctica en el laboratorio 3D</span>
+                <ArrowUpRight class="w-3.5 h-3.5" />
               </button>
             </div>
 
-            <div class="flex items-center justify-between pt-1 border-t border-amber-900/15">
+            <div class="flex items-center justify-between pt-1.5 border-t border-stone-900/10">
               <button type="button" onclick={prevPage} class="page-corner-btn left-corner">
-                <ChevronLeft class="w-4 h-4" />
-                <span>Anterior · Pág. {oddPage}</span>
+                <ChevronLeft class="w-3.5 h-3.5" />
+                <span>Anterior</span>
               </button>
-              <span class="text-[10px] text-stone-500 italic">
-                {sheetIdx < EXPERIMENT_PRESETS.length
-                  ? `Sigue Exp. #${sheetIdx + 1} en Pág. ${oddPage + 1} →`
-                  : `Catálogo Mueble 3D en Pág. ${oddPage + 1} →`}
+              <span class="font-mono-numbers text-[11px] font-semibold text-stone-700">
+                {oddPage < 10 ? `0${oddPage}` : oddPage}
               </span>
             </div>
           </div>
@@ -1036,82 +1103,86 @@
       {/each}
 
       <!-- =========================================================================
-           HOJA 9: PÁGINA 18 (CATÁLOGO DEL MUEBLE 3D CLASIFICADO DE COMPONENTES STEAM)
+           HOJA 9: PÁGINA 18 (CATÁLOGO DE LA ESTANTERÍA 3D CLASIFICADA DE COMPONENTES STEAM)
            ========================================================================= -->
       <div
         class="book-sheet"
         style={getSheetStyle(MAX_SPREAD)}
       >
-        <div class="sheet-face sheet-front book-paper-right p-4 sm:p-5 flex flex-col justify-between">
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between border-b-2 border-amber-900/25 pb-1">
-              <span class="text-[10px] font-extrabold uppercase tracking-widest text-amber-900 flex items-center gap-1">
-                <Package class="w-3.5 h-3.5" />
-                Mueble 3D Clasificado de Componentes STEAM
+        <div class="sheet-face sheet-front book-paper-right p-5 sm:p-6 flex flex-col justify-between">
+          <div class="flex flex-col gap-2.5">
+            <div class="flex items-center justify-between border-b border-stone-900/12 pb-1.5">
+              <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-500">
+                Anexo III · Estantería 3D STEAM
               </span>
-              <span class="text-[10px] font-serif italic text-stone-600">Estantería Derecha del Laboratorio</span>
+              <span class="text-[10px] font-medium text-stone-400">
+                9 Componentes Clasificados
+              </span>
             </div>
 
             <div>
-              <h2 class="font-serif text-base sm:text-lg font-extrabold text-stone-900 leading-tight">
-                Componentes Clasificados y Nombrados en el Mueble 3D
+              <h2 class="text-base sm:text-lg font-semibold tracking-[-0.02em] text-stone-950 leading-snug">
+                Componentes Clasificados en la Estantería 3D
               </h2>
-              <p class="text-[10.5px] text-stone-700">
-                Haz clic en cualquier componente aquí o directamente en las 3 repisas del <strong>Mueble Clasificador 3D</strong> situado a la derecha de la mesa para cargarlo en tu experimento:
+              <p class="text-[11px] text-stone-600 mt-0.5">
+                Selecciona cualquier reactivo aquí o directamente en las tres repisas de la estantería situada a la derecha de la mesa:
               </p>
             </div>
 
             <div class="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[52vh] pr-1">
               {#each CABINET_COMPONENTS as comp}
-                <div class="bg-white/90 border border-stone-300 rounded-xl p-2 flex items-start justify-between gap-2 shadow-xs">
-                  <div class="flex items-start gap-2 min-w-0">
-                    <span class="text-lg shrink-0 mt-0.5">{comp.icon}</span>
+                <div class="bg-white/85 border border-stone-900/10 rounded-xl p-2.5 flex items-start justify-between gap-2.5">
+                  <div class="flex items-start gap-2.5 min-w-0">
+                    <span
+                      class="w-2.5 h-2.5 rounded-full shrink-0 mt-1"
+                      style="background-color: {comp.colorHex};"
+                    ></span>
                     <div class="text-[10.5px] leading-snug">
-                      <div class="font-bold text-stone-900 flex flex-wrap items-center gap-1">
+                      <div class="font-semibold text-stone-950 flex flex-wrap items-center gap-1.5">
                         <span>{comp.name}</span>
-                        <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                          Estante {comp.shelfIndex + 1}: {comp.formulaOrSpec}
+                        <span class="text-[9.5px] font-mono-numbers px-2 py-0.5 rounded-full bg-stone-900/[0.06] text-stone-600">
+                          Estante {comp.shelfIndex + 1} · {comp.formulaOrSpec}
                         </span>
                       </div>
-                      <p class="text-stone-700 mt-0.5">{comp.description}</p>
+                      <p class="text-stone-600 mt-0.5 leading-relaxed">{comp.description}</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onclick={() => equipCabinetComponentFromBook(comp.id)}
-                    class="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[10px] uppercase tracking-wider cursor-pointer shadow-xs"
+                    class="lab-btn shrink-0 px-3 py-1.5 rounded-full bg-stone-950 hover:bg-stone-800 text-white font-semibold text-[10px] cursor-pointer"
                   >
-                    Usar en 3D
+                    Equipar
                   </button>
                 </div>
               {/each}
 
-              <!-- Resumen rápido de instrumentos de escala real -->
-              <div class="mt-1 pt-1.5 border-t border-stone-300">
-                <div class="text-[10px] font-extrabold uppercase tracking-wider text-stone-700 mb-1">
-                  🛠️ Instrumentos de Escala Real en la Mesa Principal:
+              <!-- Resumen de instrumentación de escala real -->
+              <div class="mt-2 pt-2 border-t border-stone-900/10">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+                  Instrumentación de Escala Real en la Mesa
                 </div>
                 {#each Object.values(LAB_TOOLS_CATALOG) as tool}
-                  <div class="bg-stone-100/90 border border-stone-300/80 rounded-lg p-1.5 mb-1 flex items-center gap-2 text-[10px]">
-                    <span class="text-base">{tool.icon}</span>
-                    <div>
-                      <strong class="text-stone-900">{tool.name}</strong> ({tool.levelBadge})
-                    </div>
+                  <div class="bg-stone-900/[0.03] border border-stone-900/[0.06] rounded-xl px-2.5 py-1.5 mb-1 flex items-center justify-between text-[10.5px]">
+                    <span class="font-semibold text-stone-900">{tool.name}</span>
+                    <span class="text-[9.5px] text-stone-500">{tool.levelBadge}</span>
                   </div>
                 {/each}
               </div>
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-1.5 border-t border-amber-900/15">
+          <div class="flex items-center justify-between pt-2 border-t border-stone-900/10">
             <button
               type="button"
               onclick={() => goToSpread(1)}
-              class="text-xs font-bold text-amber-900 hover:underline cursor-pointer"
+              class="text-xs font-semibold text-stone-700 hover:text-black cursor-pointer"
             >
-              ← Volver al Índice General (Pág. 1)
+              ← Volver al Índice (Pág. 01)
             </button>
-            <span class="font-serif font-bold text-xs text-stone-800">Pág. {MAX_SPREAD * 2} · Fin del Manual</span>
+            <span class="font-mono-numbers font-semibold text-[11px] text-stone-700">
+              {MAX_SPREAD * 2}
+            </span>
           </div>
         </div>
       </div>
@@ -1126,47 +1197,47 @@
     transform-style: preserve-3d;
   }
 
-  /* Tapas traseras de cuero con cantos de hojas apiladas (situadas físicamente detrás en Z) */
+  /* Tapas traseras editoriales en grafito/obsidiana con cantos de hojas de papel marfil */
   .book-back-board {
     position: absolute;
-    top: -1.5%;
-    bottom: -1.5%;
-    width: 50.8%;
-    background: linear-gradient(145deg, #451a03 0%, #270e02 55%, #1c0a01 100%);
-    border: 3px solid #92400e;
-    box-shadow: 0 28px 65px rgba(0, 0, 0, 0.85);
+    top: -1.4%;
+    bottom: -1.4%;
+    width: 50.6%;
+    background: linear-gradient(145deg, #1c1d22 0%, #121317 60%, #0b0c0e 100%);
+    border: 2px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.85);
     transform: translateZ(-22px);
     z-index: 1;
   }
 
   .book-back-board.left-board {
-    left: -0.8%;
+    left: -0.6%;
     border-radius: 18px 4px 4px 18px;
     box-shadow:
-      inset 10px 0 0 #fef3c7,
-      inset 13px 0 0 #d6d3d1,
-      inset 16px 0 0 #fef3c7,
-      0 28px 65px rgba(0, 0, 0, 0.85);
+      inset 10px 0 0 #f4f1ea,
+      inset 13px 0 0 #ded9ce,
+      inset 16px 0 0 #f4f1ea,
+      0 30px 70px rgba(0, 0, 0, 0.85);
   }
 
   .book-back-board.right-board {
-    right: -0.8%;
+    right: -0.6%;
     border-radius: 4px 18px 18px 4px;
     box-shadow:
-      inset -10px 0 0 #fef3c7,
-      inset -13px 0 0 #d6d3d1,
-      inset -16px 0 0 #fef3c7,
-      0 28px 65px rgba(0, 0, 0, 0.85);
+      inset -10px 0 0 #f4f1ea,
+      inset -13px 0 0 #ded9ce,
+      inset -16px 0 0 #f4f1ea,
+      0 30px 70px rgba(0, 0, 0, 0.85);
   }
 
-  /* Lomo central cosido (detrás del eje de giro de las hojas para no atravesarlas) */
+  /* Lomo central minimalista en grafito anodizado */
   .book-spine {
     position: absolute;
-    top: -1.8%;
-    bottom: -1.8%;
+    top: -1.6%;
+    bottom: -1.6%;
     left: calc(50% - 14px);
     width: 28px;
-    background: linear-gradient(90deg, #1c0a01 0%, #78350f 30%, #b45309 50%, #78350f 70%, #1c0a01 100%);
+    background: linear-gradient(90deg, #0b0c0e 0%, #23252c 35%, #32353e 50%, #23252c 65%, #0b0c0e 100%);
     border-radius: 6px;
     transform: translateZ(-18px);
     z-index: 5;
@@ -1183,7 +1254,7 @@
     width: 50%;
     transform-origin: left center;
     transform-style: preserve-3d;
-    transition: transform 720ms cubic-bezier(0.34, 0.08, 0.18, 1);
+    transition: transform 720ms cubic-bezier(0.32, 0.72, 0, 1);
     will-change: transform;
   }
 
@@ -1206,61 +1277,57 @@
     border-radius: 14px 3px 3px 14px;
   }
 
-  /* Portada dura de cuero repujado */
+  /* Portada dura editorial estilo "Designed by Apple in California" (Lino Grafito Oscuro) */
   .book-hardcover {
-    background: radial-gradient(circle at 30% 25%, #78350f 0%, #451a03 55%, #1c0a01 100%);
-    border: 3px solid #b45309;
+    background: radial-gradient(circle at 25% 20%, #24262d 0%, #15161b 55%, #0d0e12 100%);
+    border: 2px solid rgba(255, 255, 255, 0.16);
     box-shadow:
-      inset 0 0 35px rgba(0, 0, 0, 0.8),
+      inset 0 0 40px rgba(0, 0, 0, 0.75),
       -10px 0 25px rgba(0, 0, 0, 0.6);
   }
 
-  /* Papel pergamino cálido 100% opaco con sombreado suave hacia el pliegue central */
+  /* Papel editorial marfil cálido (Apple Books Ivory) 100% opaco con sombreado sutil hacia el pliegue central */
   .book-paper-right {
-    background-color: #fdf8e7;
-    background-image: linear-gradient(90deg, #dfd0b5 0%, #f2e8d2 5%, #fdf8e7 12%, #fefce8 92%, #f3e6ca 100%);
-    border-right: 4px solid #d6c7a7;
-    border-top: 1px solid #e7dcc3;
-    border-bottom: 2px solid #cbb994;
-    box-shadow: inset 12px 0 18px -10px rgba(69, 26, 3, 0.22);
+    background-color: #faf8f5;
+    background-image: linear-gradient(90deg, #e2ddd3 0%, #f1ede4 5%, #faf8f5 13%, #fcfbf9 92%, #f2eee6 100%);
+    border-right: 3px solid #ded8cc;
+    border-top: 1px solid #ebe6dc;
+    border-bottom: 2px solid #d5cfc2;
+    box-shadow: inset 14px 0 20px -12px rgba(15, 15, 18, 0.18);
   }
 
   .book-paper-left {
-    background-color: #fdf8e7;
-    background-image: linear-gradient(-90deg, #dfd0b5 0%, #f2e8d2 5%, #fdf8e7 12%, #fefce8 92%, #f3e6ca 100%);
-    border-left: 4px solid #d6c7a7;
-    border-top: 1px solid #e7dcc3;
-    border-bottom: 2px solid #cbb994;
-    box-shadow: inset -12px 0 18px -10px rgba(69, 26, 3, 0.22);
+    background-color: #faf8f5;
+    background-image: linear-gradient(-90deg, #e2ddd3 0%, #f1ede4 5%, #faf8f5 13%, #fcfbf9 92%, #f2eee6 100%);
+    border-left: 3px solid #ded8cc;
+    border-top: 1px solid #ebe6dc;
+    border-bottom: 2px solid #d5cfc2;
+    box-shadow: inset -14px 0 20px -12px rgba(15, 15, 18, 0.18);
   }
 
-  /* Esquinas inferiores interactivas con efecto de pliegue de hoja */
+  /* Botones de paso de página minimalistas estilo editorial */
   .page-corner-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    padding: 0.35rem 0.78rem;
-    border-radius: 0.65rem;
-    background: linear-gradient(135deg, rgba(180, 83, 9, 0.14) 0%, rgba(180, 83, 9, 0.28) 100%);
-    color: #78350f;
-    font-family: 'Outfit', sans-serif;
-    font-weight: 800;
-    font-size: 0.7rem;
-    border: 1px solid rgba(180, 83, 9, 0.35);
+    padding: 0.32rem 0.75rem;
+    border-radius: 9999px;
+    background: rgba(28, 25, 23, 0.06);
+    color: #1c1917;
+    font-weight: 600;
+    font-size: 0.68rem;
+    border: 1px solid rgba(28, 25, 23, 0.12);
     cursor: pointer;
-    transition: all 180ms ease;
-    box-shadow: 0 2px 6px rgba(69, 26, 3, 0.12);
+    transition:
+      transform 160ms var(--ease-out-strong),
+      background-color 160ms ease-out;
   }
 
-  .page-corner-btn.right-corner:hover {
-    background: rgba(180, 83, 9, 0.32);
-    transform: translate(-3px, -2px) rotate(-1.5deg);
-    box-shadow: 4px 4px 10px rgba(69, 26, 3, 0.22);
+  .page-corner-btn:hover {
+    background: rgba(28, 25, 23, 0.12);
   }
 
-  .page-corner-btn.left-corner:hover {
-    background: rgba(180, 83, 9, 0.32);
-    transform: translate(3px, -2px) rotate(1.5deg);
-    box-shadow: -4px 4px 10px rgba(69, 26, 3, 0.22);
+  .page-corner-btn:active {
+    transform: scale(0.96);
   }
 </style>

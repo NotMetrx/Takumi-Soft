@@ -8,6 +8,7 @@
   import NotebookDrawer from '$lib/ui/NotebookDrawer.svelte';
   import CameraCalibrationModal from '$lib/ui/CameraCalibrationModal.svelte';
   import HomeExperimentsBookModal from '$lib/ui/HomeExperimentsBookModal.svelte';
+  import MicroscopeWorkstation from '$lib/ui/MicroscopeWorkstation.svelte';
 </script>
 
 {#if labStore.isExplorationMode}
@@ -23,9 +24,14 @@
   </div>
 
   <!-- Dosificador de Precisión (Esquina inferior derecha) -->
-  <div class="absolute bottom-5 right-5 z-20 pointer-events-auto">
-    <AccessibleControls />
-  </div>
+  {#if !labStore.isMicroscopeActive}
+    <div class="absolute bottom-5 right-5 z-20 pointer-events-auto">
+      <AccessibleControls />
+    </div>
+  {/if}
+
+  <!-- Estación Óptica Binocular del Microscopio 3D -->
+  <MicroscopeWorkstation />
 
   <!-- Modales Globales -->
   <TutorModal />
