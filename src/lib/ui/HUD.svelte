@@ -1,356 +1,657 @@
 <script lang="ts">
-  import { labStore, EXPERIMENT_PRESETS } from '$lib/interaction/lab_store.svelte';
+  import {
+    labStore,
+    EXPERIMENT_PRESETS,
+    CABINET_COMPONENTS,
+    type EducationLevel
+  } from '$lib/interaction/lab_store.svelte';
   import { labSound } from '$lib/audio/lab_sound';
   import {
     FlaskConical,
     BookOpen,
     RotateCcw,
     Video,
-    MousePointer,
-    Lightbulb,
+    Compass,
     Activity,
-    BookMarked,
-    CheckCircle2,
-    ChevronRight,
-    ChevronLeft,
+    Check,
+    ChevronDown,
+    ChevronUp,
     Volume2,
     VolumeX,
     X,
-    Compass,
     Layers,
-    Sparkles,
-    Beaker
+    SlidersHorizontal,
+    Plus
   } from '@lucide/svelte';
 
   const result = $derived(labStore.beaker.currentResult);
   const band = $derived(result?.indicatorBand);
   const activePreset = $derived(labStore.activePreset);
+
+  // Estado de la Dynamic Island superior y los popovers del Dock inferior
+  let isIslandExpanded = $state<boolean>(false);
+  let activeDockSheet = $state<'experiments' | 'cabinet' | null>(null);
+  let sheetLevelFilter = $state<'all' | EducationLevel>('all');
+  let activeShelfTab = $state<0 | 1 | 2>(0);
+
+  // Progreso de metas del experimento activo
+  const completedGoalsCount = $derived(
+    activePreset.interactiveGoals.filter((g) => g.checkFn(labStore.beaker)).length
+  );
+  const totalGoalsCount = $derived(activePreset.interactiveGoals.length);
+
+  const filteredPresets = $derived(
+    sheetLevelFilter === 'all'
+      ? EXPERIMENT_PRESETS
+      : EXPERIMENT_PRESETS.filter((p) => p.level === sheetLevelFilter)
+  );
+
+  const shelfComponents = $derived(
+    CABINET_COMPONENTS.filter((c) => c.shelfIndex === activeShelfTab)
+  );
+
+  function toggleDockSheet(sheet: 'experiments' | 'cabinet') {
+    labSound.playInstrumentClick();
+    if (activeDockSheet === sheet) {
+      activeDockSheet = null;
+    } else {
+      activeDockSheet = sheet;
+      sheetLevelFilter = labStore.educationLevel;
+    }
+  }
+
+  function switchLevelMode(level: EducationLevel) {
+    labSound.playInstrumentClick();
+    labStore.isExplorationMode = false;
+    labStore.educationLevel = level;
+    const currentPreset = EXPERIMENT_PRESETS.find((p) => p.id === labStore.activePresetId);
+    if (!currentPreset || currentPreset.level !== level) {
+      const firstForLevel = EXPERIMENT_PRESETS.find((p) => p.level === level);
+      if (firstForLevel) {
+        labStore.loadExperimentPreset(firstForLevel.id);
+      }
+    }
+  }
 </script>
 
-<!-- 1. PESTAÑA LATERAL IZQUIERDA DESPLEGABLE (NAVEGACIÓN Y FUNCIONES DEL PROYECTO) -->
-<aside
-  class="fixed top-0 left-0 bottom-0 z-30 flex items-center pointer-events-none"
-  aria-label="Menú lateral de funciones del laboratorio"
->
-  <!-- Cajón lateral izquierdo (se despliega suavemente al abrir la pestaña) -->
+<!-- Fondo invisible para cerrar popovers del Dock al hacer clic fuera -->
+{#if activeDockSheet !== null}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="pointer-events-auto h-full w-80 bg-slate-950/92 backdrop-blur-xl border-r border-slate-800/90 shadow-2xl flex flex-col justify-between p-4 transition-transform duration-300 ease-out
-    {labStore.isLeftSidebarOpen ? 'translate-x-0' : '-translate-x-full'}"
+    class="fixed inset-0 z-20 bg-black/20 backdrop-blur-[2px]"
+    onclick={() => (activeDockSheet = null)}
+  ></div>
+{/if}
+
+<!-- ===========================================================================
+     1. DYNAMIC LAB ISLAND (CÁPSULA SUPERIOR ADAPTATIVA ESTILO APPLE)
+     =========================================================================== -->
+<header
+  class="fixed top-4 left-1/2 -translate-x-1/2 z-30 w-[94vw] max-w-3xl pointer-events-none flex flex-col items-center"
+  aria-label="Telemetría y control de nivel de SymbioLab"
+>
+  <div
+    class="pointer-events-auto apple-island w-full {isIslandExpanded
+      ? 'rounded-[28px] p-3.5'
+      : 'rounded-full px-3.5 py-2'}"
   >
-    <div class="flex flex-col gap-4 overflow-y-auto pr-1">
-      <!-- Encabezado de la Pestaña Izquierda -->
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div class="flex items-center gap-2.5">
-          <div class="bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 p-2 rounded-xl">
-            <FlaskConical class="w-5 h-5" />
-          </div>
-          <div>
-            <div class="flex items-center gap-1.5">
-              <h1 class="font-bold text-sm tracking-tight text-white">SymbioLab 3D</h1>
-              <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                Local
-              </span>
-            </div>
-            <p class="text-[11px] text-slate-400">Centro de Funciones y Módulos</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onclick={() => (labStore.isLeftSidebarOpen = false)}
-          class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
-          title="Ocultar pestaña izquierda"
-        >
-          <ChevronLeft class="w-4 h-4" />
-        </button>
-      </div>
-
-      <!-- SECCIÓN A: NIVEL EDUCATIVO Y EXPERIMENTOS (PRIMARIA / SECUNDARIA / EXPLORACIÓN) -->
-      <div class="flex flex-col gap-2">
-        <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-          <Compass class="w-3.5 h-3.5 text-amber-400" />
-          Niveles y Modos de Laboratorio
-        </span>
-
-        <button
-          type="button"
-          onclick={() => {
-            labStore.isLeftSidebarOpen = false;
-            labSound.playBookOpen();
-            labStore.isHomeBookOpen = true;
-          }}
-          class="lab-btn w-full p-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-200 font-extrabold text-xs flex items-center justify-between cursor-pointer"
-        >
-          <span class="flex items-center gap-2">
-            <BookMarked class="w-4 h-4 text-amber-400" />
-            Abrir Libro 3D (Primaria/Secundaria)
+    <!-- Fila principal siempre visible en la Dynamic Island -->
+    <div class="flex items-center justify-between gap-2 sm:gap-4">
+      <!-- Identidad de marca + Experimento activo -->
+      <button
+        type="button"
+        onclick={() => toggleDockSheet('experiments')}
+        class="lab-btn flex items-center gap-2.5 min-w-0 text-left group cursor-pointer pl-1"
+        title="Cambiar práctica experimental"
+      >
+        <span
+          class="w-2.5 h-2.5 rounded-full shrink-0 transition-transform duration-200 group-hover:scale-125"
+          style="background-color: {band?.colorHex || '#10b981'}; box-shadow: 0 0 12px {band?.colorHex || '#10b981'};"
+        ></span>
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="font-semibold text-[13px] tracking-[-0.02em] text-white shrink-0">
+            SymbioLab
           </span>
-          <ChevronRight class="w-4 h-4" />
-        </button>
+          <span class="text-white/20 text-xs hidden sm:inline">/</span>
+          <span class="text-[12px] text-white/70 font-medium truncate hidden sm:inline max-w-[190px] group-hover:text-white transition-colors">
+            {activePreset.title}
+          </span>
+        </div>
+      </button>
 
+      <!-- Control Segmentado Estilo macOS / visionOS (Primaria | Secundaria | Libre) -->
+      <div
+        class="flex items-center bg-white/[0.07] p-0.5 rounded-full border border-white/[0.08] shrink-0"
+        role="group"
+        aria-label="Selector de nivel educativo"
+      >
+        <button
+          type="button"
+          onclick={() => switchLevelMode('primaria')}
+          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] cursor-pointer {!labStore.isExplorationMode && labStore.educationLevel === 'primaria'
+            ? 'bg-white text-black font-semibold shadow-sm'
+            : 'text-white/65 hover:text-white'}"
+        >
+          Primaria
+        </button>
+        <button
+          type="button"
+          onclick={() => switchLevelMode('secundaria')}
+          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] cursor-pointer {!labStore.isExplorationMode && labStore.educationLevel === 'secundaria'
+            ? 'bg-white text-black font-semibold shadow-sm'
+            : 'text-white/65 hover:text-white'}"
+        >
+          Secundaria
+        </button>
         <button
           type="button"
           onclick={() => {
-            labStore.isLeftSidebarOpen = false;
+            labSound.playInstrumentClick();
             labStore.enterExploration();
           }}
-          class="lab-btn w-full p-2.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 border border-teal-500/50 text-teal-200 font-extrabold text-xs flex items-center justify-between cursor-pointer"
+          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] cursor-pointer {labStore.isExplorationMode
+            ? 'bg-white text-black font-semibold shadow-sm'
+            : 'text-white/65 hover:text-white'}"
         >
-          <span class="flex items-center gap-2">
-            <Beaker class="w-4 h-4 text-teal-400" />
-            Modo Exploración Libre (Catálogo + AR)
-          </span>
-          <ChevronRight class="w-4 h-4" />
-        </button>
-
-        <div class="grid grid-cols-1 gap-1.5 pt-1">
-          {#each EXPERIMENT_PRESETS as preset}
-            {@const isCurrent = labStore.activePresetId === preset.id}
-            <button
-              type="button"
-              onclick={() => {
-                labStore.loadExperimentPreset(preset.id);
-                labStore.isLeftSidebarOpen = false;
-              }}
-              class="text-left p-2 rounded-xl border text-xs transition-all cursor-pointer flex items-center justify-between
-              {isCurrent
-                ? 'bg-indigo-950/70 border-indigo-500/70 text-white font-bold'
-                : 'bg-slate-900/70 border-slate-800/80 text-slate-300 hover:bg-slate-800/70'}"
-            >
-              <div class="truncate pr-2">
-                <span class="text-[9px] uppercase font-extrabold block {preset.level === 'primaria' ? 'text-emerald-400' : 'text-indigo-400'}">
-                  {preset.level === 'primaria' ? '🎒 Primaria' : '🔬 Secundaria'}
-                </span>
-                <span class="truncate block text-[11px]">{preset.title}</span>
-              </div>
-              {#if isCurrent}
-                <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-              {/if}
-            </button>
-          {/each}
-        </div>
-      </div>
-
-      <!-- SECCIÓN B: FUNCIONES PRINCIPALES DEL LABORATORIO -->
-      <div class="flex flex-col gap-1.5 pt-2 border-t border-slate-800/80">
-        <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-          <Sparkles class="w-3.5 h-3.5 text-indigo-400" />
-          Herramientas y Asistentes
-        </span>
-
-        <button
-          type="button"
-          onclick={() => {
-            labStore.isLeftSidebarOpen = false;
-            labStore.isHypothesisModalOpen = true;
-          }}
-          class="lab-btn w-full px-3 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-between cursor-pointer"
-        >
-          <span class="flex items-center gap-2">
-            <Lightbulb class="w-4 h-4 text-amber-400" />
-            Tutor Socrático IA
-          </span>
-          {#if labStore.session.hypothesisText}
-            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-          {/if}
-        </button>
-
-        <button
-          type="button"
-          onclick={() => {
-            labStore.isLeftSidebarOpen = false;
-            labStore.isNotebookOpen = true;
-          }}
-          class="lab-btn w-full px-3 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-between cursor-pointer"
-        >
-          <span class="flex items-center gap-2">
-            <BookOpen class="w-4 h-4 text-indigo-400" />
-            Cuaderno de Datos (CSV/JSON)
-          </span>
-          {#if labStore.session.trials.length > 0}
-            <span class="bg-indigo-500 text-white text-[10px] font-mono-numbers font-bold px-1.5 py-0.5 rounded-md">
-              {labStore.session.trials.length}
-            </span>
-          {/if}
-        </button>
-
-        <button
-          type="button"
-          onclick={() => {
-            labStore.isLeftSidebarOpen = false;
-            labStore.isCameraModalOpen = true;
-          }}
-          class="lab-btn w-full px-3 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-between cursor-pointer"
-        >
-          <span class="flex items-center gap-2">
-            {#if labStore.isCameraActive}
-              <Video class="w-4 h-4 text-amber-400 animate-pulse" />
-              <span>Manos AR Activas</span>
-            {:else}
-              <MousePointer class="w-4 h-4 text-sky-400" />
-              <span>Control con Manos (AR MediaPipe)</span>
-            {/if}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onclick={() => labStore.toggleSound()}
-          class="lab-btn w-full px-3 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-between cursor-pointer"
-        >
-          <span class="flex items-center gap-2">
-            {#if labStore.soundEnabled}
-              <Volume2 class="w-4 h-4 text-emerald-400" />
-              <span>Sonidos del Laboratorio: ON</span>
-            {:else}
-              <VolumeX class="w-4 h-4 text-slate-500" />
-              <span>Sonidos del Laboratorio: OFF</span>
-            {/if}
-          </span>
+          Libre
         </button>
       </div>
 
-      <!-- SECCIÓN C: NAVEGACIÓN DE PRÓXIMAS FUNCIONES / MÓDULOS EXPANDIBLES -->
-      <div class="flex flex-col gap-1.5 pt-2 border-t border-slate-800/80">
-        <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-          <Layers class="w-3.5 h-3.5 text-emerald-400" />
-          Espacio para Nuevas Funciones
-        </span>
-        <div class="p-2.5 rounded-xl bg-slate-900/50 border border-dashed border-slate-700/80 text-[11px] text-slate-400 flex flex-col gap-1.5">
-          <p class="leading-relaxed">
-            Esta pestaña lateral está lista para alojar las nuevas funciones y módulos que agregues al proyecto.
-          </p>
-          <div class="grid grid-cols-2 gap-1.5 pt-1">
-            <span class="px-2 py-1 rounded bg-slate-900 border border-slate-800 text-[10px] text-slate-300 text-center">
-              + Nuevo Módulo 1
-            </span>
-            <span class="px-2 py-1 rounded bg-slate-900 border border-slate-800 text-[10px] text-slate-300 text-center">
-              + Nuevo Módulo 2
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Pie de la Pestaña Izquierda: Reiniciar Estación -->
-    <div class="pt-3 border-t border-slate-800">
+      <!-- Telemetría Óptica en Vivo (pH · Temp · Progreso) + Botón expandir -->
       <button
         type="button"
         onclick={() => {
-          labStore.resetExperiment();
-          labStore.isLeftSidebarOpen = false;
+          labSound.playInstrumentClick();
+          isIslandExpanded = !isIslandExpanded;
         }}
-        class="lab-btn w-full py-2.5 px-3 rounded-xl bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/40 text-rose-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+        class="lab-btn flex items-center gap-2.5 bg-white/[0.06] hover:bg-white/[0.11] border border-white/[0.08] px-3 py-1 rounded-full cursor-pointer shrink-0"
+        title={isIslandExpanded ? 'Contraer telemetría' : 'Desplegar telemetría y pasos del experimento'}
       >
-        <RotateCcw class="w-4 h-4" />
-        <span>Reiniciar Mesa 3D</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- Solapa / Pestaña vertical pegada al borde izquierdo para abrir/cerrar sin estorbar la vista 3D -->
-  <button
-    type="button"
-    onclick={() => (labStore.isLeftSidebarOpen = !labStore.isLeftSidebarOpen)}
-    class="pointer-events-auto -ml-px py-4 px-2.5 rounded-r-2xl bg-slate-950/90 hover:bg-indigo-950/95 text-slate-200 border border-l-0 border-slate-700/80 shadow-xl flex flex-col items-center gap-2 cursor-pointer transition-transform duration-300 ease-out
-    {labStore.isLeftSidebarOpen ? 'translate-x-0' : '-translate-x-80'}"
-    title={labStore.isLeftSidebarOpen ? 'Ocultar pestaña de funciones' : 'Abrir pestaña de funciones y navegación'}
-  >
-    {#if labStore.isLeftSidebarOpen}
-      <ChevronLeft class="w-4 h-4 text-indigo-400" />
-    {:else}
-      <ChevronRight class="w-4 h-4 text-amber-400" />
-    {/if}
-    <span class="text-[10px] font-extrabold uppercase tracking-widest [writing-mode:vertical-lr] rotate-180 text-slate-200">
-      Funciones
-    </span>
-  </button>
-</aside>
-
-<!-- 2. FICHA CONTEXTUAL: SENSOR DIGITAL DE pH (SOLO APARECE CUANDO EL USUARIO USA EL MATERIAL O EL pH-METRO) -->
-{#if labStore.isSensorCardVisible}
-  <div class="fixed top-4 right-4 z-20 pointer-events-auto w-76 animate-in fade-in duration-200">
-    <div class="lab-panel p-4 flex flex-col gap-2.5 border border-slate-700/80 shadow-2xl">
-      <div class="flex items-center justify-between">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-          <Activity class="w-3.5 h-3.5 text-indigo-400" />
-          Sensor Digital de pH
-        </span>
-        <div class="flex items-center gap-1.5">
-          <span
-            class="text-[10px] font-bold px-2 py-0.5 rounded-md text-white"
-            style="background-color: {band?.colorHex || '#10b981'}"
-          >
-            {band?.name || 'Neutro'}
-          </span>
-          <button
-            type="button"
-            onclick={() => (labStore.isSensorCardVisible = false)}
-            class="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
-            title="Ocultar ficha de Sensor Digital"
-          >
-            <X class="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div class="flex items-baseline justify-between">
-        <div class="flex items-baseline gap-1.5">
-          <span class="font-mono-numbers text-3xl font-extrabold tracking-tight text-white">
+        <div class="flex items-baseline gap-1">
+          <span class="text-[10px] font-medium text-white/50 uppercase">pH</span>
+          <span class="font-mono-numbers text-[13px] font-semibold text-white">
             {result?.pH.toFixed(2) ?? '7.00'}
           </span>
-          <span class="text-xs font-bold text-slate-400">pH</span>
         </div>
-        <div class="text-right">
-          <span class="text-[10px] text-slate-400 block uppercase font-semibold">Temp / Vol</span>
-          <span class="font-mono-numbers text-xs font-bold text-slate-200">
-            {labStore.beaker.temperatureC}°C · {labStore.totalVolumeMl} mL
-          </span>
-        </div>
-      </div>
 
-      <!-- Escala de Indicador Universal 0 - 14 -->
-      <div>
-        <div class="h-2 w-full rounded-full overflow-hidden flex border border-slate-700/80">
-          <div class="h-full w-[21.4%] bg-red-500" title="0 - 3: Muy ácido"></div>
-          <div class="h-full w-[21.4%] bg-amber-400" title="3 - 6: Ácido"></div>
-          <div class="h-full w-[14.4%] bg-emerald-500" title="6 - 8: Neutro"></div>
-          <div class="h-full w-[21.4%] bg-blue-500" title="8 - 11: Básico"></div>
-          <div class="h-full w-[21.4%] bg-purple-600" title="11 - 14: Muy básico"></div>
-        </div>
-        <div class="relative w-full h-2 mt-0.5">
-          <div
-            class="absolute top-0 -translate-x-1/2 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-white transition-[left] duration-200 ease-out"
-            style="left: {((result?.pH ?? 7) / 14) * 100}%"
-          ></div>
-        </div>
-      </div>
+        <span class="w-px h-3 bg-white/15 hidden sm:inline-block"></span>
 
-      <!-- Balance Volumétrico en el Vaso -->
-      <div class="grid grid-cols-3 gap-1.5 text-center text-[10px] pt-1 border-t border-slate-800/80">
-        <div class="bg-slate-800/80 py-1 px-1.5 rounded-lg">
-          <span class="text-slate-400 block text-[9px] font-bold">H₂O</span>
-          <span class="font-mono-numbers font-bold text-sky-300">{labStore.beaker.waterMl} mL</span>
-        </div>
-        <div class="bg-rose-950/40 border border-rose-500/30 py-1 px-1.5 rounded-lg">
-          <span class="text-rose-300/70 block text-[9px] font-bold truncate">{labStore.reagents[0].formula.split(' ')[0]}</span>
-          <span class="font-mono-numbers font-bold text-rose-300">{labStore.beaker.acidVolumeMl} mL</span>
-        </div>
-        <div class="bg-violet-950/40 border border-violet-500/30 py-1 px-1.5 rounded-lg">
-          <span class="text-violet-300/70 block text-[9px] font-bold truncate">{labStore.reagents[1].formula.split(' ')[0]}</span>
-          <span class="font-mono-numbers font-bold text-violet-300">{labStore.beaker.baseVolumeMl} mL</span>
-        </div>
-      </div>
+        <span class="font-mono-numbers text-[11px] text-white/70 hidden sm:inline">
+          {labStore.beaker.temperatureC}°C
+        </span>
 
-      <!-- Objetivos rápidos del experimento actual -->
-      <div class="pt-1.5 border-t border-slate-800/80 flex flex-col gap-1">
-        {#each activePreset.interactiveGoals as goal}
-          {@const done = goal.checkFn(labStore.beaker)}
-          <div class="flex items-start gap-1.5 text-[10px] {done ? 'text-emerald-300' : 'text-slate-300'}">
-            <CheckCircle2 class="w-3 h-3 shrink-0 mt-0.5 {done ? 'text-emerald-400' : 'text-slate-600'}" />
-            <span class="leading-tight {done ? 'line-through opacity-80' : ''}">{goal.description}</span>
+        <span class="w-px h-3 bg-white/15"></span>
+
+        <span class="font-mono-numbers text-[11px] font-medium text-white/80">
+          {completedGoalsCount}/{totalGoalsCount}
+        </span>
+
+        {#if isIslandExpanded}
+          <ChevronUp class="w-3.5 h-3.5 text-white/60" />
+        {:else}
+          <ChevronDown class="w-3.5 h-3.5 text-white/60" />
+        {/if}
+      </button>
+    </div>
+
+    <!-- =======================================================================
+         CONTENIDO EXPANDIDO DE LA DYNAMIC ISLAND (TELEMETRÍA + DOSIFICACIÓN + METAS)
+         ======================================================================= -->
+    {#if isIslandExpanded}
+      <div class="mt-3.5 pt-3.5 border-t border-white/[0.08] flex flex-col gap-3.5 animate-in fade-in duration-150">
+        <!-- Fila 1: Espectro óptico continuo de pH (0 - 14) y estado químico -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between text-[11px]">
+            <div class="flex items-center gap-2">
+              <span class="text-white/50 font-medium">Estado de la disolución</span>
+              <span
+                class="px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                style="background-color: {band?.colorHex || '#10b981'}33; border: 1px solid {band?.colorHex || '#10b981'}66;"
+              >
+                {band?.name || 'Neutro'}
+              </span>
+            </div>
+            <span class="font-mono-numbers text-white/65">
+              Volumen total: <strong class="text-white font-semibold">{labStore.totalVolumeMl} mL</strong> / 250 mL
+            </span>
           </div>
-        {/each}
+
+          <!-- Barra de espectro continuo estilo Apple Weather -->
+          <div class="relative h-2 w-full rounded-full overflow-hidden bg-white/10">
+            <div
+              class="absolute inset-0 opacity-85"
+              style="background: linear-gradient(90deg, #ef4444 0%, #f59e0b 28%, #10b981 50%, #3b82f6 72%, #8b5cf6 100%);"
+            ></div>
+            <div
+              class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md border-2 border-black transition-[left] duration-200 ease-out"
+              style="left: {Math.max(2, Math.min(98, ((result?.pH ?? 7) / 14) * 100))}%"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Fila 2: Composición volumétrica y micro-dosificación rápida (+5 mL) -->
+        <div class="grid grid-cols-3 gap-2">
+          <div class="apple-card-inner rounded-2xl p-2.5 flex items-center justify-between">
+            <div>
+              <span class="text-[10px] text-white/50 block font-medium">Medio Base (H₂O)</span>
+              <span class="font-mono-numbers text-sm font-semibold text-white">
+                {labStore.beaker.waterMl} mL
+              </span>
+            </div>
+            <button
+              type="button"
+              onclick={() => labStore.cycleTemperature()}
+              class="lab-btn px-2.5 py-1 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-[10px] font-medium text-white/85 cursor-pointer"
+              title="Alternar temperatura de la placa"
+            >
+              {labStore.beaker.temperatureC}°C
+            </button>
+          </div>
+
+          <div class="apple-card-inner rounded-2xl p-2.5 flex items-center justify-between gap-1">
+            <div class="min-w-0">
+              <span class="text-[10px] text-white/50 block font-medium truncate">
+                {labStore.reagents[0].name}
+              </span>
+              <span class="font-mono-numbers text-sm font-semibold text-white">
+                {labStore.beaker.acidVolumeMl} mL
+              </span>
+            </div>
+            <button
+              type="button"
+              onclick={() => labStore.triggerAnimatedPour('hcl', 5)}
+              class="lab-btn shrink-0 px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
+            >
+              <Plus class="w-3 h-3" /> 5 mL
+            </button>
+          </div>
+
+          <div class="apple-card-inner rounded-2xl p-2.5 flex items-center justify-between gap-1">
+            <div class="min-w-0">
+              <span class="text-[10px] text-white/50 block font-medium truncate">
+                {labStore.reagents[1].name}
+              </span>
+              <span class="font-mono-numbers text-sm font-semibold text-white">
+                {labStore.beaker.baseVolumeMl} mL
+              </span>
+            </div>
+            <button
+              type="button"
+              onclick={() => labStore.triggerAnimatedPour('naoh', 5)}
+              class="lab-btn shrink-0 px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
+            >
+              <Plus class="w-3 h-3" /> 5 mL
+            </button>
+          </div>
+        </div>
+
+        <!-- Fila 3: Pasos de la práctica actual -->
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-medium text-white/45 uppercase tracking-wider">
+              Protocolo activo · {activePreset.title}
+            </span>
+            <button
+              type="button"
+              onclick={() => {
+                isIslandExpanded = false;
+                labSound.playBookOpen();
+                labStore.isHomeBookOpen = true;
+              }}
+              class="text-[11px] font-medium text-white/75 hover:text-white underline underline-offset-2 cursor-pointer"
+            >
+              Abrir teoría en el Manual 3D
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {#each activePreset.interactiveGoals as goal, idx}
+              {@const done = goal.checkFn(labStore.beaker)}
+              <div
+                class="px-3 py-2 rounded-xl border text-[11px] flex items-start gap-2 transition-colors {done
+                  ? 'bg-emerald-500/12 border-emerald-500/30 text-white'
+                  : 'bg-white/[0.03] border-white/[0.06] text-white/75'}"
+              >
+                <span
+                  class="w-4 h-4 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-[10px] {done
+                    ? 'bg-emerald-500 text-black'
+                    : 'border border-white/25 text-white/40 font-mono-numbers'}"
+                >
+                  {#if done}
+                    <Check class="w-2.5 h-2.5 stroke-[3]" />
+                  {:else}
+                    {idx + 1}
+                  {/if}
+                </span>
+                <span class="leading-snug">{goal.description}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/if}
+  </div>
+</header>
+
+<!-- ===========================================================================
+     2. POPOVER SHEETS ANCLADOS AL DOCK (PRÁCTICAS Y ESTANTERÍA 3D STEAM)
+     =========================================================================== -->
+{#if activeDockSheet === 'experiments'}
+  <section
+    class="fixed bottom-22 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-2xl apple-glass rounded-[28px] p-5 apple-popover-enter"
+    aria-label="Selector de prácticas de laboratorio"
+  >
+    <div class="flex items-center justify-between gap-2 pb-3.5 mb-3.5 border-b border-white/[0.08]">
+      <div>
+        <h2 class="text-sm font-semibold tracking-[-0.02em] text-white">
+          Prácticas de Laboratorio
+        </h2>
+        <p class="text-[11px] text-white/55">
+          Selecciona un experimento para equipar los reactivos e instrumentos 3D
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="flex items-center bg-white/[0.07] p-0.5 rounded-full border border-white/[0.08]">
+          <button
+            type="button"
+            onclick={() => (sheetLevelFilter = 'all')}
+            class="px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer {sheetLevelFilter === 'all'
+              ? 'bg-white text-black font-semibold'
+              : 'text-white/65 hover:text-white'}"
+          >
+            Todas
+          </button>
+          <button
+            type="button"
+            onclick={() => (sheetLevelFilter = 'primaria')}
+            class="px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer {sheetLevelFilter === 'primaria'
+              ? 'bg-white text-black font-semibold'
+              : 'text-white/65 hover:text-white'}"
+          >
+            Primaria
+          </button>
+          <button
+            type="button"
+            onclick={() => (sheetLevelFilter = 'secundaria')}
+            class="px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer {sheetLevelFilter === 'secundaria'
+              ? 'bg-white text-black font-semibold'
+              : 'text-white/65 hover:text-white'}"
+          >
+            Secundaria
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onclick={() => (activeDockSheet = null)}
+          class="w-7 h-7 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-white/70 hover:text-white cursor-pointer"
+          aria-label="Cerrar selector de prácticas"
+        >
+          <X class="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
-  </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[52vh] overflow-y-auto pr-1">
+      {#each filteredPresets as preset (preset.id)}
+        {@const isCurrent = !labStore.isExplorationMode && labStore.activePresetId === preset.id}
+        <button
+          type="button"
+          onclick={() => {
+            labSound.playInstrumentClick();
+            labStore.isExplorationMode = false;
+            labStore.loadExperimentPreset(preset.id);
+            activeDockSheet = null;
+          }}
+          class="lab-btn text-left p-3.5 rounded-2xl border flex flex-col justify-between gap-2 cursor-pointer {isCurrent
+            ? 'bg-white/[0.14] border-white/35 shadow-sm'
+            : 'apple-card-inner'}"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span
+                class="w-2.5 h-2.5 rounded-full shrink-0"
+                style="background-color: {preset.acidReagent.colorHex};"
+              ></span>
+              <span class="text-[10px] font-medium text-white/50">
+                {preset.level === 'primaria' ? 'Primaria' : 'Secundaria'} · {preset.gradeRange}
+              </span>
+            </div>
+            {#if isCurrent}
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-black">
+                Activa
+              </span>
+            {/if}
+          </div>
+
+          <div>
+            <div class="text-[13px] font-semibold tracking-[-0.015em] text-white leading-snug">
+              {preset.title}
+            </div>
+            <p class="text-[11px] text-white/55 line-clamp-2 mt-0.5 leading-relaxed">
+              {preset.summary}
+            </p>
+          </div>
+        </button>
+      {/each}
+    </div>
+  </section>
 {/if}
+
+{#if activeDockSheet === 'cabinet'}
+  <section
+    class="fixed bottom-22 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-2xl apple-glass rounded-[28px] p-5 apple-popover-enter"
+    aria-label="Mueble 3D de componentes STEAM"
+  >
+    <div class="flex items-center justify-between gap-2 pb-3.5 mb-3.5 border-b border-white/[0.08]">
+      <div>
+        <h2 class="text-sm font-semibold tracking-[-0.02em] text-white">
+          Estantería 3D de Componentes STEAM
+        </h2>
+        <p class="text-[11px] text-white/55">
+          Selecciona un reactivo o material clasificado para activarlo en la mesa 3D
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onclick={() => (activeDockSheet = null)}
+        class="w-7 h-7 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-white/70 hover:text-white cursor-pointer"
+        aria-label="Cerrar estantería 3D"
+      >
+        <X class="w-3.5 h-3.5" />
+      </button>
+    </div>
+
+    <!-- Pestañas de los 3 estantes del Mueble 3D -->
+    <div class="grid grid-cols-3 gap-1.5 bg-white/[0.05] p-1 rounded-2xl border border-white/[0.07] mb-3.5">
+      {#each [
+        { idx: 0 as const, label: 'Estante 1 · Caseros STEAM' },
+        { idx: 1 as const, label: 'Estante 2 · Redox y Complejos' },
+        { idx: 2 as const, label: 'Estante 3 · Termodinámica' }
+      ] as tab}
+        <button
+          type="button"
+          onclick={() => (activeShelfTab = tab.idx)}
+          class="lab-btn py-1.5 px-2 rounded-xl text-[11px] font-medium truncate cursor-pointer {activeShelfTab === tab.idx
+            ? 'bg-white text-black font-semibold shadow-xs'
+            : 'text-white/65 hover:text-white'}"
+        >
+          {tab.label}
+        </button>
+      {/each}
+    </div>
+
+    <!-- Los 3 componentes del estante seleccionado -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      {#each shelfComponents as comp (comp.id)}
+        {@const isSelected = labStore.selectedCabinetComponentId === comp.id}
+        <button
+          type="button"
+          onclick={() => {
+            labSound.playInstrumentClick();
+            labStore.selectCabinetComponent(comp.id);
+            activeDockSheet = null;
+          }}
+          class="lab-btn text-left p-3.5 rounded-2xl border flex flex-col justify-between gap-2.5 cursor-pointer {isSelected
+            ? 'bg-white/[0.15] border-white/40'
+            : 'apple-card-inner'}"
+        >
+          <div class="flex items-center justify-between">
+            <span
+              class="w-3 h-3 rounded-full"
+              style="background-color: {comp.colorHex}; box-shadow: 0 0 10px {comp.colorHex}88;"
+            ></span>
+            <span class="font-mono-numbers text-[10px] text-white/50 truncate max-w-[120px]">
+              {comp.formulaOrSpec}
+            </span>
+          </div>
+
+          <div>
+            <div class="text-[13px] font-semibold tracking-[-0.01em] text-white leading-snug">
+              {comp.name}
+            </div>
+            <p class="text-[11px] text-white/55 line-clamp-3 mt-1 leading-relaxed">
+              {comp.description}
+            </p>
+          </div>
+
+          <span class="text-[11px] font-medium text-white/85 pt-1 border-t border-white/[0.06] flex items-center justify-between">
+            <span>Equipar en mesa 3D</span>
+            <span>→</span>
+          </span>
+        </button>
+      {/each}
+    </div>
+  </section>
+{/if}
+
+<!-- ===========================================================================
+     3. DOCK INFERIOR FLOTANTE ESTILO APPLE visionOS / macOS
+     =========================================================================== -->
+<nav
+  class="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
+  aria-label="Dock principal del laboratorio"
+>
+  <div class="apple-glass rounded-full px-2 py-1.5 flex items-center gap-1 sm:gap-1.5">
+    <!-- 1. Selector de Prácticas -->
+    <button
+      type="button"
+      onclick={() => toggleDockSheet('experiments')}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium flex items-center gap-2 cursor-pointer {activeDockSheet === 'experiments'
+        ? 'bg-white text-black font-semibold'
+        : 'text-white/85 hover:bg-white/[0.09] hover:text-white'}"
+    >
+      <FlaskConical class="w-4 h-4 shrink-0" />
+      <span>Prácticas</span>
+    </button>
+
+    <!-- 2. Estantería 3D de Componentes STEAM -->
+    <button
+      type="button"
+      onclick={() => toggleDockSheet('cabinet')}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium flex items-center gap-2 cursor-pointer {activeDockSheet === 'cabinet'
+        ? 'bg-white text-black font-semibold'
+        : 'text-white/85 hover:bg-white/[0.09] hover:text-white'}"
+    >
+      <Layers class="w-4 h-4 shrink-0" />
+      <span>Estantería</span>
+    </button>
+
+    <!-- 3. Manual / Libro 3D Correlativo -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        labSound.playBookOpen();
+        labStore.isHomeBookOpen = true;
+      }}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium text-white/85 hover:bg-white/[0.09] hover:text-white flex items-center gap-2 cursor-pointer"
+    >
+      <BookOpen class="w-4 h-4 shrink-0" />
+      <span>Manual</span>
+    </button>
+
+    <!-- 4. Tutor Socrático / Hipótesis -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        labStore.isHypothesisModalOpen = true;
+      }}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium text-white/85 hover:bg-white/[0.09] hover:text-white flex items-center gap-2 cursor-pointer relative"
+    >
+      <Compass class="w-4 h-4 shrink-0" />
+      <span class="hidden sm:inline">Tutor</span>
+      {#if labStore.session.hypothesisText}
+        <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+      {/if}
+    </button>
+
+    <!-- 5. Cuaderno de Datos -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        labStore.isNotebookOpen = true;
+      }}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium text-white/85 hover:bg-white/[0.09] hover:text-white flex items-center gap-2 cursor-pointer"
+    >
+      <Activity class="w-4 h-4 shrink-0" />
+      <span class="hidden sm:inline">Datos</span>
+      {#if labStore.session.trials.length > 0}
+        <span class="font-mono-numbers text-[10px] px-1.5 py-0.2 rounded-full bg-white/15 text-white">
+          {labStore.session.trials.length}
+        </span>
+      {/if}
+    </button>
+
+    <!-- 6. Control Gestual por Cámara AR -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        labStore.isCameraModalOpen = true;
+      }}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium flex items-center gap-2 cursor-pointer {labStore.isCameraActive
+        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/35'
+        : 'text-white/85 hover:bg-white/[0.09] hover:text-white'}"
+      title="Control con manos por cámara (MediaPipe AR)"
+    >
+      <Video class="w-4 h-4 shrink-0" />
+      <span class="hidden md:inline">{labStore.isCameraActive ? 'AR Activo' : 'Manos AR'}</span>
+    </button>
+
+    <div class="w-px h-5 bg-white/12 mx-0.5"></div>
+
+    <!-- Controles rápidos de sistema (Sonido y Reiniciar) -->
+    <button
+      type="button"
+      onclick={() => labStore.toggleSound()}
+      class="lab-btn w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:bg-white/[0.09] hover:text-white cursor-pointer"
+      title={labStore.soundEnabled ? 'Silenciar sonidos del laboratorio' : 'Activar sonidos del laboratorio'}
+      aria-label="Alternar sonido"
+    >
+      {#if labStore.soundEnabled}
+        <Volume2 class="w-4 h-4" />
+      {:else}
+        <VolumeX class="w-4 h-4 text-white/40" />
+      {/if}
+    </button>
+
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        labStore.resetExperiment();
+      }}
+      class="lab-btn w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:bg-white/[0.09] hover:text-white cursor-pointer"
+      title="Reiniciar estación 3D"
+      aria-label="Reiniciar estación 3D"
+    >
+      <RotateCcw class="w-4 h-4" />
+    </button>
+  </div>
+</nav>

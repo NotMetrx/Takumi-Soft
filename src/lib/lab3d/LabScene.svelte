@@ -7,7 +7,13 @@
   import { Timer } from 'three/addons/misc/Timer.js';
   import { flaskFluid, pourRate, streamHitsBeaker } from './fluid';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
-  import { labStore, LAB_TOOLS_CATALOG, type LabToolInfo } from '$lib/interaction/lab_store.svelte';
+  import {
+    labStore,
+    LAB_TOOLS_CATALOG,
+    CABINET_COMPONENTS,
+    type LabToolInfo,
+    type CabinetComponentInfo
+  } from '$lib/interaction/lab_store.svelte';
   import { labSound } from '$lib/audio/lab_sound';
 
   let { resetViewRevision = 0 }: { resetViewRevision?: number } = $props();
@@ -72,9 +78,23 @@
   let bookGroup: THREE.Group;
   let bookGlowRing: THREE.Mesh;
   let interactiveToolGroups: THREE.Object3D[] = [];
+  let cabinetItemGroups: THREE.Object3D[] = [];
+
+  // Grupos 3D de los Efectos STEAM en el Vaso Central (Prolongo & Pinto · RSEQ)
+  let steamChupaChupsGroup: THREE.Group;
+  let steamLollipopRotor: THREE.Group;
+  let steamAntibubblesGroup: THREE.Group;
+  let antibubbleOrbs: THREE.Group[] = [];
+  let steamIceConvectionGroup: THREE.Group;
+  let iceCubeMesh: THREE.Mesh;
+  let icePlumeParticles: THREE.Points;
+  let icePlumeGeo: THREE.BufferGeometry;
+  let steamTeaComplexGroup: THREE.Group;
+  let steamBotijoGroup: THREE.Group;
 
   let isBookHovered = $state<boolean>(false);
   let hoveredToolId = $state<LabToolInfo['id'] | null>(null);
+  let hoveredCabinetId = $state<string | null>(null);
 
   let pourStreamMesh: THREE.Mesh;
   let pourStreamMat: THREE.MeshBasicMaterial;
@@ -217,14 +237,43 @@
       );
       drawThermometerScreen(r.temperatureC ?? 25);
     } else if (result) {
-      targetLiquidColor.set(result.indicatorBand.colorHex);
-      drawPhMeterScreen(
-        result.pH,
-        tempC,
-        result.indicatorBand.name,
-        result.indicatorBand.colorHex,
-        totalVolume
-      );
+      let displayHex = result.indicatorBand.colorHex;
+      let displayBand = result.indicatorBand.name;
+
+      // Colorimetría Redox real para el Camaleón Químico con Chupa Chups (Caso 1 PDF Prolongo & Pinto)
+      if (labStore.activePresetId === 'steam-chupachups-redox') {
+        const kmno4Ml = labStore.beaker.acidVolumeMl;
+        const glucoseMl = labStore.beaker.baseVolumeMl;
+        if (kmno4Ml > 0.5) {
+          const ratio = glucoseMl / Math.max(1, kmno4Ml);
+          if (ratio < 0.25) {
+            displayHex = '#9333ea'; // Púrpura MnO4- (+7)
+            displayBand = 'MnO₄⁻ (+7) Púrpura';
+          } else if (ratio < 0.7) {
+            displayHex = '#2563eb'; // Azul MnO4(3-) (+5)
+            displayBand = 'MnO₄³⁻ (+5) Azul';
+          } else if (ratio < 1.35) {
+            displayHex = '#10b981'; // Verde MnO4(2-) (+6)
+            displayBand = 'MnO₄²⁻ (+6) Verde';
+          } else {
+            displayHex = '#f59e0b'; // Amarillo-naranja coloidal MnO2 (+4)
+            displayBand = 'MnO₂ (+4) Ámbar';
+          }
+        }
+      } else if (labStore.activePresetId === 'steam-tea-complexes-redox') {
+        const feMl = labStore.beaker.acidVolumeMl;
+        const dithioniteMl = labStore.beaker.baseVolumeMl;
+        if (feMl > 2 && dithioniteMl < feMl * 0.8) {
+          displayHex = '#312e81'; // Complejo negro-azulado de taninos con Fe3+
+          displayBand = 'Complejo Fe³⁺-Tanino';
+        } else if (dithioniteMl >= feMl * 0.8 && dithioniteMl > 2) {
+          displayHex = '#eab308'; // Decoloración redox por ditionita
+          displayBand = 'Redox Ditionita';
+        }
+      }
+
+      targetLiquidColor.set(displayHex);
+      drawPhMeterScreen(result.pH, tempC, displayBand, displayHex, totalVolume);
       drawThermometerScreen(tempC);
     }
   });
@@ -700,7 +749,7 @@
 
     // Gradilla de 5 Tubos de Ensayo (altura 0.34 u, proporcional frente al microscopio de 1.50 u)
     const rack = new THREE.Group();
-    rack.position.set(1.06, 0, -0.82);
+    rack.position.set(0.76, 0, -0.88);
     rack.userData = { toolId: 'test_rack' };
 
     const rackMat = new THREE.MeshStandardMaterial({ color: 0xc2ccca, roughness: 0.4, metalness: 0.25 });
@@ -1429,7 +1478,610 @@
     steamParticles.visible = false;
     station.add(steamParticles);
 
+    // =========================================================================
+    // EFECTOS 3D EN EL VASO CENTRAL PARA LOS EXPERIMENTOS STEAM (PROLONGO & PINTO)
+    // =========================================================================
+
+    // 1. Caso 1: Chupa Chups giratorio sumergido en el vaso (Camaleón Químico Redox)
+    steamChupaChupsGroup = new THREE.Group();
+    steamChupaChupsGroup.visible = false;
+    station.add(steamChupaChupsGroup);
+
+    const clampHolder = roundedBox(
+      0.16,
+      0.032,
+      0.05,
+      0.008,
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.6 })
+    );
+    clampHolder.position.set(0.08, 1.12, 0);
+    steamChupaChupsGroup.add(clampHolder);
+
+    steamLollipopRotor = new THREE.Group();
+    steamLollipopRotor.position.set(0.02, 0.72, 0);
+    steamChupaChupsGroup.add(steamLollipopRotor);
+
+    const lollipopStick = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.009, 0.009, 0.76, 16),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 })
+    );
+    lollipopStick.position.y = 0.06;
+    steamLollipopRotor.add(lollipopStick);
+
+    const candySphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.062, 28, 28),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xe11d48,
+        roughness: 0.14,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.08
+      })
+    );
+    candySphere.position.y = -0.32;
+    steamLollipopRotor.add(candySphere);
+
+    const candyBand = new THREE.Mesh(
+      new THREE.TorusGeometry(0.061, 0.011, 12, 32),
+      new THREE.MeshStandardMaterial({ color: 0xfda4af, roughness: 0.25 })
+    );
+    candyBand.rotation.x = Math.PI / 2;
+    candyBand.position.y = -0.32;
+    steamLollipopRotor.add(candyBand);
+
+    // 2. Caso 2: Antiburbujas esféricas con película de aire refractiva + capa de Sirope de Agave
+    steamAntibubblesGroup = new THREE.Group();
+    steamAntibubblesGroup.visible = false;
+    station.add(steamAntibubblesGroup);
+
+    const agaveLayer = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.372, 0.368, 0.14, 40),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xd97706,
+        transmission: 0.45,
+        transparent: true,
+        opacity: 0.85,
+        roughness: 0.15
+      })
+    );
+    agaveLayer.position.y = beakerYOffset + 0.09;
+    steamAntibubblesGroup.add(agaveLayer);
+
+    const strawPipette = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.008, 0.55, 20),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xe0f2fe,
+        transmission: 0.8,
+        transparent: true,
+        opacity: 0.85,
+        roughness: 0.1
+      })
+    );
+    strawPipette.position.set(0.06, 0.96, 0.04);
+    strawPipette.rotation.z = -0.14;
+    steamAntibubblesGroup.add(strawPipette);
+
+    antibubbleOrbs = [];
+    for (let i = 0; i < 9; i++) {
+      const orbGroup = new THREE.Group();
+      const angle = (i / 9) * Math.PI * 2;
+      const rad = 0.08 + (i % 3) * 0.075;
+      orbGroup.position.set(
+        Math.cos(angle) * rad,
+        beakerYOffset + 0.22 + (i % 4) * 0.09,
+        Math.sin(angle) * rad
+      );
+
+      const innerDrop = new THREE.Mesh(
+        new THREE.SphereGeometry(0.025, 20, 20),
+        new THREE.MeshPhysicalMaterial({
+          color: i % 2 === 0 ? 0x0284c7 : 0x38bdf8,
+          transmission: 0.35,
+          transparent: true,
+          opacity: 0.92,
+          roughness: 0.1
+        })
+      );
+      orbGroup.add(innerDrop);
+
+      const airShell = new THREE.Mesh(
+        new THREE.SphereGeometry(0.033, 24, 24),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xf0f9ff,
+          transmission: 0.88,
+          transparent: true,
+          opacity: 0.65,
+          roughness: 0.04,
+          ior: 1.05,
+          side: THREE.DoubleSide
+        })
+      );
+      orbGroup.add(airShell);
+
+      antibubbleOrbs.push(orbGroup);
+      steamAntibubblesGroup.add(orbGroup);
+    }
+
+    // 3. Caso 4: Bloque de Hielo Teñido flotante y penachos convectivos (Agua pura vs Salmuera)
+    steamIceConvectionGroup = new THREE.Group();
+    steamIceConvectionGroup.visible = false;
+    station.add(steamIceConvectionGroup);
+
+    iceCubeMesh = new THREE.Mesh(
+      new RoundedBoxGeometry(0.16, 0.11, 0.16, 3, 0.022),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xe11d48,
+        transmission: 0.55,
+        transparent: true,
+        opacity: 0.88,
+        roughness: 0.15,
+        ior: 1.31
+      })
+    );
+    iceCubeMesh.position.set(0, 0.45, 0);
+    steamIceConvectionGroup.add(iceCubeMesh);
+
+    const plumeCount = 36;
+    const plumePos = new Float32Array(plumeCount * 3);
+    for (let i = 0; i < plumeCount; i++) {
+      plumePos[i * 3] = (Math.random() - 0.5) * 0.18;
+      plumePos[i * 3 + 1] = 0.18 + Math.random() * 0.28;
+      plumePos[i * 3 + 2] = (Math.random() - 0.5) * 0.18;
+    }
+    icePlumeGeo = new THREE.BufferGeometry();
+    icePlumeGeo.setAttribute('position', new THREE.BufferAttribute(plumePos, 3));
+    icePlumeParticles = new THREE.Points(
+      icePlumeGeo,
+      new THREE.PointsMaterial({
+        color: 0xf43f5e,
+        size: 0.026,
+        transparent: true,
+        opacity: 0.85
+      })
+    );
+    steamIceConvectionGroup.add(icePlumeParticles);
+
+    // 4. Caso 3: Bolsita piramidal de Té (Antocianinas y Taninos)
+    steamTeaComplexGroup = new THREE.Group();
+    steamTeaComplexGroup.visible = false;
+    station.add(steamTeaComplexGroup);
+
+    const teaThread = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.003, 0.003, 0.58, 8),
+      new THREE.MeshBasicMaterial({ color: 0xf8fafc })
+    );
+    teaThread.position.set(-0.04, 0.72, 0.04);
+    steamTeaComplexGroup.add(teaThread);
+
+    const pyramidTeaBag = new THREE.Mesh(
+      new THREE.ConeGeometry(0.095, 0.14, 4),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xfef3c7,
+        transmission: 0.55,
+        transparent: true,
+        opacity: 0.82,
+        roughness: 0.4
+      })
+    );
+    pyramidTeaBag.position.set(-0.04, 0.40, 0.04);
+    steamTeaComplexGroup.add(pyramidTeaBag);
+
+    // 5. Caso 5: Botijo de Cerámica Porosa / Sistema Pot-in-Pot junto al vaso central
+    steamBotijoGroup = new THREE.Group();
+    steamBotijoGroup.position.set(0.58, 0.01, 0.42);
+    steamBotijoGroup.visible = false;
+    station.add(steamBotijoGroup);
+
+    const terracottaMat = new THREE.MeshStandardMaterial({
+      color: 0xc2410c,
+      roughness: 0.78,
+      metalness: 0.05
+    });
+    const botijoBody = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 28, 24),
+      terracottaMat
+    );
+    botijoBody.scale.set(1, 1.12, 1);
+    botijoBody.position.y = 0.16;
+    botijoBody.castShadow = true;
+    steamBotijoGroup.add(botijoBody);
+
+    const botijoFoot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.095, 0.04, 24),
+      terracottaMat
+    );
+    botijoFoot.position.y = 0.02;
+    steamBotijoGroup.add(botijoFoot);
+
+    const botijoHandle = new THREE.Mesh(
+      new THREE.TorusGeometry(0.065, 0.014, 12, 28, Math.PI),
+      terracottaMat
+    );
+    botijoHandle.position.set(0, 0.30, 0);
+    steamBotijoGroup.add(botijoHandle);
+
+    const botijoSpout = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.024, 0.09, 16),
+      terracottaMat
+    );
+    botijoSpout.position.set(-0.09, 0.28, 0.04);
+    botijoSpout.rotation.z = 0.55;
+    steamBotijoGroup.add(botijoSpout);
+
+    const botijoMouth = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.026, 0.022, 0.06, 16),
+      terracottaMat
+    );
+    botijoMouth.position.set(0.08, 0.27, -0.02);
+    botijoMouth.rotation.z = -0.35;
+    steamBotijoGroup.add(botijoMouth);
+
     return station;
+  }
+
+  /**
+   * Construye el Mueble 3D Clasificado de Componentes STEAM (Prolongo & Pinto · RSEQ / Scientix)
+   * con 3 repisas categorizadas y 9 componentes modelados en 3D y etiquetados individualmente.
+   */
+  function buildClassifiedComponentsCabinet(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
+    const cabinet = new THREE.Group();
+    cabinet.position.set(1.76, 0, -0.44);
+    cabinet.rotation.y = -0.46;
+
+    const woodDarkMat = new THREE.MeshStandardMaterial({
+      color: 0x3b1d0a,
+      roughness: 0.52,
+      metalness: 0.12
+    });
+    const woodShelfMat = new THREE.MeshStandardMaterial({
+      color: 0x5c2d10,
+      roughness: 0.45,
+      metalness: 0.1
+    });
+    const steelTrimMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.28,
+      metalness: 0.8
+    });
+
+    // Estructura del mueble: paneles laterales, respaldo, zócalo y cornisa superior
+    const sideLeft = roundedBox(0.036, 1.46, 0.34, 0.008, woodDarkMat);
+    sideLeft.position.set(-0.54, 0.73, 0);
+    cabinet.add(sideLeft);
+
+    const sideRight = roundedBox(0.036, 1.46, 0.34, 0.008, woodDarkMat);
+    sideRight.position.set(0.54, 0.73, 0);
+    cabinet.add(sideRight);
+
+    const backBoard = roundedBox(1.10, 1.46, 0.022, 0.006, woodDarkMat);
+    backBoard.position.set(0, 0.73, -0.16);
+    cabinet.add(backBoard);
+
+    const topCrown = roundedBox(1.14, 0.06, 0.38, 0.012, woodDarkMat);
+    topCrown.position.set(0, 1.46, 0.01);
+    cabinet.add(topCrown);
+
+    // Letrero principal del Mueble 3D en la cornisa superior
+    const mainHeader = textPlate(
+      'MUEBLE 3D · COMPONENTES CLASIFICADOS STEAM',
+      1.08,
+      0.088,
+      '#fef3c7',
+      '#451a03'
+    );
+    mainHeader.position.set(0, 1.46, 0.205);
+    cabinet.add(mainHeader);
+
+    // Alturas de las 3 repisas clasificadas
+    // Estante 1 (Superior): y = 0.96 | Estante 2 (Medio): y = 0.50 | Estante 3 (Inferior): y = 0.04
+    const shelvesConfig = [
+      {
+        shelfIndex: 1,
+        y: 0.96,
+        title: 'ESTANTE 1 · REACTIVOS CASEROS STEAM',
+        ink: '#a7f3d0',
+        bg: '#064e3b'
+      },
+      {
+        shelfIndex: 2,
+        y: 0.50,
+        title: 'ESTANTE 2 · REDOX Y COMPLEJOS',
+        ink: '#ddd6fe',
+        bg: '#3b0764'
+      },
+      {
+        shelfIndex: 3,
+        y: 0.04,
+        title: 'ESTANTE 3 · FÍSICA Y TERMODINÁMICA',
+        ink: '#bae6fd',
+        bg: '#0c4a6e'
+      }
+    ];
+
+    shelvesConfig.forEach((sh) => {
+      const board = roundedBox(1.06, 0.028, 0.32, 0.006, woodShelfMat);
+      board.position.set(0, sh.y, 0);
+      cabinet.add(board);
+
+      // Riel frontal metálico de seguridad y placa de categoría
+      const rail = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.005, 0.005, 1.04, 12),
+        steelTrimMat
+      );
+      rail.rotation.z = Math.PI / 2;
+      rail.position.set(0, sh.y + 0.036, 0.15);
+      cabinet.add(rail);
+
+      const catPlate = textPlate(sh.title, 1.02, 0.034, sh.ink, sh.bg);
+      catPlate.position.set(0, sh.y - 0.002, 0.165);
+      cabinet.add(catPlate);
+    });
+
+    // Construir los 9 componentes 3D clasificados y sus etiquetas individuales
+    cabinetItemGroups = [];
+    const slotX = [-0.33, 0.0, 0.33];
+
+    CABINET_COMPONENTS.forEach((comp) => {
+      const shY = comp.shelfIndex === 0 ? 0.975 : comp.shelfIndex === 1 ? 0.515 : 0.055;
+      const xPos = slotX[comp.slotIndex] ?? 0;
+
+      const itemGroup = new THREE.Group();
+      itemGroup.position.set(xPos, shY, 0.01);
+      itemGroup.userData = { cabinetComponentId: comp.id };
+
+      // Peana circular bajo cada componente
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.095, 0.105, 0.014, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
+      );
+      pad.position.y = 0.007;
+      itemGroup.add(pad);
+
+      // Modelo 3D específico según el componente clasificado
+      if (comp.id === 'chupachups_glucose') {
+        // Soporte con Chupa Chups esférico rojo/rosa
+        const holder = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.035, 0.045, 0.06, 20),
+          steelTrimMat
+        );
+        holder.position.y = 0.04;
+        itemGroup.add(holder);
+
+        const stick = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.007, 0.007, 0.18, 12),
+          new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        stick.position.y = 0.13;
+        itemGroup.add(stick);
+
+        const candy = new THREE.Mesh(
+          new THREE.SphereGeometry(0.048, 24, 24),
+          new THREE.MeshPhysicalMaterial({ color: 0xe11d48, roughness: 0.15, clearcoat: 1 })
+        );
+        candy.position.y = 0.23;
+        itemGroup.add(candy);
+
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.047, 0.008, 10, 24),
+          new THREE.MeshStandardMaterial({ color: 0xfda4af })
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.23;
+        itemGroup.add(ring);
+      } else if (comp.id === 'antibubble_kit') {
+        // Vaso con agua jabonosa cian y pajita dosificadora
+        const cup = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.055, 0.048, 0.17, 24, 1, true),
+          glassMaterial
+        );
+        cup.position.y = 0.10;
+        itemGroup.add(cup);
+
+        const soapLiq = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.05, 0.044, 0.12, 20),
+          new THREE.MeshPhysicalMaterial({
+            color: 0x06b6d4,
+            transmission: 0.5,
+            transparent: true,
+            opacity: 0.88
+          })
+        );
+        soapLiq.position.y = 0.075;
+        itemGroup.add(soapLiq);
+
+        const straw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, 0.24, 12),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a })
+        );
+        straw.position.set(0.015, 0.16, 0);
+        straw.rotation.z = -0.25;
+        itemGroup.add(straw);
+      } else if (comp.id === 'blue_tea_infusion') {
+        // Frasco de infusión de Té Azul / Negro con bolsita piramidal
+        const jar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.058, 0.058, 0.18, 24),
+          new THREE.MeshPhysicalMaterial({
+            color: 0x4f46e5,
+            transmission: 0.45,
+            transparent: true,
+            opacity: 0.9,
+            roughness: 0.15
+          })
+        );
+        jar.position.y = 0.105;
+        itemGroup.add(jar);
+
+        const pyramid = new THREE.Mesh(
+          new THREE.ConeGeometry(0.038, 0.06, 4),
+          new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.5 })
+        );
+        pyramid.position.set(0, 0.22, 0);
+        itemGroup.add(pyramid);
+      } else if (comp.id === 'kmno4_reagent') {
+        // Frasco reactivo violeta oscuro de KMnO4
+        const bottle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.056, 0.056, 0.19, 24),
+          new THREE.MeshPhysicalMaterial({
+            color: 0x7e22ce,
+            roughness: 0.2,
+            metalness: 0.1,
+            clearcoat: 0.8
+          })
+        );
+        bottle.position.y = 0.11;
+        itemGroup.add(bottle);
+
+        const neck = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.026, 0.032, 0.05, 18),
+          new THREE.MeshStandardMaterial({ color: 0x3b0764 })
+        );
+        neck.position.y = 0.225;
+        itemGroup.add(neck);
+      } else if (comp.id === 'fe3_tannin') {
+        // Par de viales: Sal Férrica Fe3+ (ámbar) y Ditionita (blanco)
+        const vialFe = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.036, 0.036, 0.17, 20),
+          new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.25 })
+        );
+        vialFe.position.set(-0.032, 0.10, 0);
+        itemGroup.add(vialFe);
+
+        const vialDith = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.036, 0.036, 0.15, 20),
+          new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35 })
+        );
+        vialDith.position.set(0.035, 0.09, 0.01);
+        itemGroup.add(vialDith);
+      } else if (comp.id === 'agave_syrup') {
+        // Bote dosificador dorado de Sirope de Agave
+        const syrupBottle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.048, 0.058, 0.18, 24),
+          new THREE.MeshPhysicalMaterial({
+            color: 0xf59e0b,
+            transmission: 0.4,
+            transparent: true,
+            opacity: 0.92,
+            roughness: 0.18
+          })
+        );
+        syrupBottle.position.y = 0.105;
+        itemGroup.add(syrupBottle);
+
+        const nozzleCap = new THREE.Mesh(
+          new THREE.ConeGeometry(0.028, 0.06, 18),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a })
+        );
+        nozzleCap.position.y = 0.225;
+        itemGroup.add(nozzleCap);
+      } else if (comp.id === 'dyed_ice_block') {
+        // Cubo de hielo teñido de rojo carmín sobre cristalizador
+        const dish = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.075, 0.07, 0.035, 24),
+          glassMaterial
+        );
+        dish.position.y = 0.032;
+        itemGroup.add(dish);
+
+        const ice = new THREE.Mesh(
+          new RoundedBoxGeometry(0.085, 0.085, 0.085, 3, 0.014),
+          new THREE.MeshPhysicalMaterial({
+            color: 0xe11d48,
+            transmission: 0.65,
+            transparent: true,
+            opacity: 0.9,
+            roughness: 0.12
+          })
+        );
+        ice.position.y = 0.085;
+        ice.rotation.y = 0.35;
+        itemGroup.add(ice);
+      } else if (comp.id === 'nacl_brine') {
+        // Matraz de Salmuera Saturada NaCl con cristales blancos en el fondo
+        const brineJar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.055, 0.055, 0.18, 24),
+          new THREE.MeshPhysicalMaterial({
+            color: 0x38bdf8,
+            transmission: 0.6,
+            transparent: true,
+            opacity: 0.85,
+            roughness: 0.15
+          })
+        );
+        brineJar.position.y = 0.105;
+        itemGroup.add(brineJar);
+
+        const saltDeposit = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.052, 0.052, 0.035, 20),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
+        );
+        saltDeposit.position.y = 0.032;
+        itemGroup.add(saltDeposit);
+      } else if (comp.id === 'ceramic_botijo') {
+        // Botijo de arcilla porosa rojiza tradicional
+        const clayMat = new THREE.MeshStandardMaterial({
+          color: 0xc2410c,
+          roughness: 0.78
+        });
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.068, 24, 20), clayMat);
+        body.scale.set(1, 1.15, 1);
+        body.position.y = 0.095;
+        itemGroup.add(body);
+
+        const handle = new THREE.Mesh(
+          new THREE.TorusGeometry(0.034, 0.008, 10, 20, Math.PI),
+          clayMat
+        );
+        handle.position.y = 0.175;
+        itemGroup.add(handle);
+
+        const spout = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.007, 0.014, 0.05, 12),
+          clayMat
+        );
+        spout.position.set(-0.048, 0.16, 0.02);
+        spout.rotation.z = 0.55;
+        itemGroup.add(spout);
+      }
+
+      // Etiqueta 3D individual con el nombre y fórmula de cada componente
+      const shortName =
+        comp.id === 'chupachups_glucose'
+          ? 'CHUPA CHUPS'
+          : comp.id === 'antibubble_kit'
+            ? 'ANTIBURBUJAS'
+            : comp.id === 'blue_tea_infusion'
+              ? 'TÉ AZUL/NEGRO'
+              : comp.id === 'kmno4_reagent'
+                ? 'KMnO₄ + NaOH'
+                : comp.id === 'fe3_tannin'
+                  ? 'Fe³⁺ / DITIONITA'
+                  : comp.id === 'agave_syrup'
+                    ? 'SIROPE AGAVE'
+                    : comp.id === 'dyed_ice_block'
+                      ? 'HIELO TEÑIDO'
+                      : comp.id === 'nacl_brine'
+                        ? 'SALMUERA NaCl'
+                        : 'BOTIJO POROSO';
+
+      const namePlate = textPlate(shortName, 0.30, 0.042, '#fef3c7', '#1e293b');
+      namePlate.position.set(0, 0.032, 0.135);
+      namePlate.rotation.x = -0.22;
+      namePlate.userData = { cabinetComponentId: comp.id };
+      itemGroup.add(namePlate);
+
+      // Hitbox invisible para selección cómoda con ratón o pantalla táctil
+      const hitProxy = new THREE.Mesh(
+        new THREE.BoxGeometry(0.30, 0.34, 0.28),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      hitProxy.position.y = 0.17;
+      hitProxy.userData = { cabinetComponentId: comp.id };
+      itemGroup.add(hitProxy);
+
+      cabinetItemGroups.push(itemGroup);
+      cabinet.add(itemGroup);
+    });
+
+    return cabinet;
   }
 
   function buildErlenmeyerFlask(
@@ -1871,6 +2523,10 @@
     bookGroup = buildInteractiveHomeBook();
     scene.add(bookGroup);
 
+    // Mueble 3D Clasificado de Componentes STEAM (Prolongo & Pinto · RSEQ / Scientix)
+    const componentsCabinet = buildClassifiedComponentsCabinet(borosilicateGlassMat);
+    scene.add(componentsCabinet);
+
     const lid = new THREE.Mesh(
       new THREE.CylinderGeometry(0.415, 0.415, 0.018, 48),
       new THREE.MeshStandardMaterial({
@@ -1983,10 +2639,17 @@
       | { type: 'flask'; id: 'hcl' | 'naoh' }
       | { type: 'book' }
       | { type: 'tool'; toolId: LabToolInfo['id'] }
+      | { type: 'cabinet'; compId: string }
       | null {
       updatePointer(e);
       raycaster.setFromCamera(pointer, camera);
-      const targets = [flasks.hcl.group, flasks.naoh.group, bookGroup, ...interactiveToolGroups];
+      const targets = [
+        flasks.hcl.group,
+        flasks.naoh.group,
+        bookGroup,
+        ...interactiveToolGroups,
+        ...cabinetItemGroups
+      ];
       const hits = raycaster.intersectObjects(targets, true);
       if (hits.length === 0) return null;
 
@@ -1995,6 +2658,8 @@
         if (curr.userData?.flaskId) return { type: 'flask', id: curr.userData.flaskId };
         if (curr.userData?.isHomeBook) return { type: 'book' };
         if (curr.userData?.toolId) return { type: 'tool', toolId: curr.userData.toolId };
+        if (curr.userData?.cabinetComponentId)
+          return { type: 'cabinet', compId: curr.userData.cabinetComponentId };
         curr = curr.parent;
       }
       return null;
@@ -2019,6 +2684,12 @@
 
       if (hit.type === 'tool') {
         handleToolInteraction(hit.toolId);
+        return;
+      }
+
+      if (hit.type === 'cabinet') {
+        labSound.playInstrumentClick();
+        labStore.selectCabinetComponent(hit.compId as CabinetComponentInfo['id']);
         return;
       }
 
@@ -2057,21 +2728,31 @@
         hoveredFlaskId = hit.id;
         isBookHovered = false;
         hoveredToolId = null;
+        hoveredCabinetId = null;
         renderer!.domElement.style.cursor = 'grab';
       } else if (hit?.type === 'book') {
         hoveredFlaskId = null;
         isBookHovered = true;
         hoveredToolId = null;
+        hoveredCabinetId = null;
         renderer!.domElement.style.cursor = 'pointer';
       } else if (hit?.type === 'tool') {
         hoveredFlaskId = null;
         isBookHovered = false;
         hoveredToolId = hit.toolId;
+        hoveredCabinetId = null;
+        renderer!.domElement.style.cursor = 'pointer';
+      } else if (hit?.type === 'cabinet') {
+        hoveredFlaskId = null;
+        isBookHovered = false;
+        hoveredToolId = null;
+        hoveredCabinetId = hit.compId;
         renderer!.domElement.style.cursor = 'pointer';
       } else {
         hoveredFlaskId = null;
         isBookHovered = false;
         hoveredToolId = null;
+        hoveredCabinetId = null;
         renderer!.domElement.style.cursor = 'default';
       }
     }
@@ -2234,6 +2915,73 @@
         const pulseScale = isBookHovered ? 1.12 : 1.0 + Math.sin(elapsed * 3) * 0.04;
         bookGlowRing.scale.setScalar(pulseScale);
         (bookGlowRing.material as THREE.MeshBasicMaterial).opacity = isBookHovered ? 0.95 : 0.45;
+      }
+
+      // Realce 3D suave en los componentes clasificados del Mueble 3D al pasar el ratón o seleccionarlos
+      cabinetItemGroups.forEach((grp) => {
+        const cid = grp.userData?.cabinetComponentId;
+        const isHot = cid === hoveredCabinetId || cid === labStore.selectedCabinetComponentId;
+        const targetScale = isHot ? 1.16 : 1.0;
+        grp.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), dt * 10);
+      });
+
+      // Animación 3D en vivo de los Efectos STEAM en el Vaso Central (Prolongo & Pinto)
+      const steamEff = labStore.isExplorationMode ? 'none' : labStore.activeSteamEffect;
+      if (steamChupaChupsGroup) {
+        steamChupaChupsGroup.visible = steamEff === 'chupachups';
+        if (steamChupaChupsGroup.visible && steamLollipopRotor && !isReducedMotion) {
+          steamLollipopRotor.rotation.y += dt * 7.5;
+          steamLollipopRotor.position.x = Math.sin(elapsed * 5) * 0.03;
+          steamLollipopRotor.position.z = Math.cos(elapsed * 5) * 0.03;
+        }
+      }
+
+      if (steamAntibubblesGroup) {
+        steamAntibubblesGroup.visible = steamEff === 'antibubbles';
+        if (steamAntibubblesGroup.visible && !isReducedMotion) {
+          const maxLiqY = Math.max(0.28, 0.12 + 0.8 * currentFillRatio - 0.05);
+          antibubbleOrbs.forEach((orb, idx) => {
+            const baseH = 0.24 + ((idx * 0.065) % Math.max(0.12, maxLiqY - 0.24));
+            orb.position.y = baseH + Math.sin(elapsed * 2.2 + idx * 1.1) * 0.025;
+            orb.rotation.y = elapsed * 0.8 + idx;
+          });
+        }
+      }
+
+      if (steamIceConvectionGroup) {
+        steamIceConvectionGroup.visible = steamEff === 'ice_convection';
+        if (steamIceConvectionGroup.visible && iceCubeMesh && icePlumeGeo) {
+          const meniscusY = 0.12 + 0.8 * currentFillRatio;
+          iceCubeMesh.position.y = Math.max(0.22, meniscusY - 0.025) + Math.sin(elapsed * 2.5) * 0.008;
+          iceCubeMesh.rotation.y = elapsed * 0.25;
+
+          const brineMl = labStore.beaker.baseVolumeMl;
+          const pAttr = icePlumeGeo.getAttribute('position') as THREE.BufferAttribute;
+          for (let i = 0; i < pAttr.count; i++) {
+            if (brineMl > 8) {
+              // En salmuera saturada (NaCl), el agua fundida fría flota atrapada arriba (estratificación)
+              const topBandY = Math.max(0.20, meniscusY - 0.02 - ((i % 5) * 0.015));
+              pAttr.setY(i, topBandY);
+            } else {
+              // En agua pura, penachos convectivos rojos descienden hasta el fondo
+              let py = pAttr.getY(i) - dt * 0.18;
+              if (py < 0.14) py = Math.max(0.22, meniscusY - 0.04);
+              pAttr.setY(i, py);
+            }
+          }
+          pAttr.needsUpdate = true;
+        }
+      }
+
+      if (steamTeaComplexGroup) {
+        steamTeaComplexGroup.visible = steamEff === 'tea_complex';
+        if (steamTeaComplexGroup.visible && !isReducedMotion) {
+          steamTeaComplexGroup.position.y = Math.sin(elapsed * 2) * 0.015;
+        }
+      }
+
+      if (steamBotijoGroup) {
+        steamBotijoGroup.visible = steamEff === 'botijo_cooling';
       }
 
       const hand = labStore.gestureInput;
@@ -2500,104 +3248,179 @@
     ></div>
   {/if}
 
-  <!-- Etiqueta flotante contextual (solo aparece cuando apuntas directamente a un material en 3D) -->
+  <!-- Píldora espacial contextual (estilo Apple visionOS Look Pill, sin colores chillones ni emojis) -->
   {#if isBookHovered}
-    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none bg-amber-500 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-2">
-      <span>📖 Haz clic para abrir el Manual Interactivo de Experimentos (Primaria y Secundaria)</span>
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none apple-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 text-xs shadow-xl">
+      <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+      <span class="font-semibold text-white">Manual Correlativo 3D</span>
+      <span class="text-white/45">·</span>
+      <span class="text-white/65">Clic para abrir páginas</span>
     </div>
   {:else if hoveredFlaskId}
     {@const r = labStore.reagents.find((item) => item.reagentId === hoveredFlaskId)}
-    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none bg-indigo-500 text-white font-extrabold text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-2">
-      <span>🧪 {r?.name} ({r?.formula}) — Arrastra al vaso o haz clic para dosificar</span>
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none apple-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 text-xs shadow-xl">
+      <span class="w-2 h-2 rounded-full" style="background-color: {r?.colorHex || '#38bdf8'};"></span>
+      <span class="font-semibold text-white">{r?.name}</span>
+      <span class="font-mono-numbers text-white/50 text-[11px]">{r?.formula}</span>
+      <span class="text-white/45">·</span>
+      <span class="text-white/65">Arrastra hacia el vaso central</span>
+    </div>
+  {:else if hoveredCabinetId && CABINET_COMPONENTS.find((c) => c.id === hoveredCabinetId)}
+    {@const comp = CABINET_COMPONENTS.find((c) => c.id === hoveredCabinetId)!}
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none apple-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 text-xs shadow-xl">
+      <span class="w-2 h-2 rounded-full" style="background-color: {comp.colorHex};"></span>
+      <span class="font-semibold text-white">{comp.name}</span>
+      <span class="text-white/45">·</span>
+      <span class="text-white/65">Estante {comp.shelfIndex + 1} · Clic para equipar</span>
     </div>
   {:else if hoveredToolId}
     {@const tool = LAB_TOOLS_CATALOG[hoveredToolId]}
-    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none bg-sky-500 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-2">
-      <span>{tool.icon} {tool.name} — Haz clic para usar este material</span>
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none apple-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 text-xs shadow-xl">
+      <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+      <span class="font-semibold text-white">{tool.name}</span>
+      <span class="text-white/45">·</span>
+      <span class="text-white/65">Clic para utilizar</span>
     </div>
   {/if}
 
-  <!-- FICHA DIDÁCTICA INTERACTIVA (SOLO APARECE CUANDO EL USUARIO USA EL INSTRUMENTO) -->
-  {#if labStore.inspectedTool && labStore.inspectedTool.id !== 'ph_meter'}
-    {@const tool = labStore.inspectedTool}
-    <div class="absolute bottom-6 left-6 z-20 w-full max-w-sm pointer-events-auto animate-in fade-in duration-200">
-      <div class="glass-panel rounded-2xl p-4 border border-sky-500/40 shadow-2xl flex flex-col gap-2.5 bg-slate-950/92">
+  <!-- INSPECTOR ESPACIAL DE COMPONENTE STEAM (ESTILO AIRPODS / VISIONOS) -->
+  {#if labStore.selectedCabinetComponent}
+    {@const comp = labStore.selectedCabinetComponent}
+    <div class="fixed bottom-22 left-6 z-20 w-full max-w-[340px] pointer-events-auto apple-popover-enter">
+      <div class="apple-glass rounded-[26px] p-4 flex flex-col gap-3">
         <div class="flex items-start justify-between gap-2">
-          <div class="flex items-center gap-2.5">
-            <span class="text-2xl">{tool.icon}</span>
-            <div>
-              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                {tool.levelBadge}
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span
+                class="w-2.5 h-2.5 rounded-full shrink-0"
+                style="background-color: {comp.colorHex}; box-shadow: 0 0 10px {comp.colorHex};"
+              ></span>
+              <span class="text-[11px] font-medium text-white/50 truncate">
+                Estante {comp.shelfIndex + 1} · {comp.formulaOrSpec}
               </span>
-              <h3 class="text-xs font-extrabold text-white mt-0.5">{tool.name}</h3>
             </div>
+            <h3 class="text-[15px] font-semibold tracking-[-0.02em] text-white mt-0.5 leading-snug">
+              {comp.name}
+            </h3>
           </div>
           <button
             type="button"
-            onclick={() => labStore.inspectTool(null)}
-            class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800/80 cursor-pointer"
+            onclick={() => (labStore.selectedCabinetComponentId = null)}
+            class="w-7 h-7 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-white/65 hover:text-white text-xs cursor-pointer shrink-0"
+            aria-label="Cerrar inspector"
           >
             ✕
           </button>
         </div>
 
-        <div class="grid grid-cols-1 gap-1.5 text-[11px]">
-          <div class="p-2 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-emerald-100">
-            <strong class="text-emerald-300 block text-[10px] uppercase tracking-wider">
-              🎒 Primaria:
-            </strong>
-            {tool.primariaExplain}
-          </div>
-          <div class="p-2 rounded-xl bg-indigo-950/50 border border-indigo-500/30 text-indigo-100">
-            <strong class="text-indigo-300 block text-[10px] uppercase tracking-wider">
-              🔬 Secundaria:
-            </strong>
-            {tool.secundariaExplain}
+        <p class="text-[12px] text-white/75 leading-relaxed bg-white/[0.04] border border-white/[0.06] rounded-2xl p-3">
+          {comp.description}
+        </p>
+
+        <div class="flex items-center justify-between gap-2 pt-0.5">
+          <button
+            type="button"
+            onclick={() => {
+              labSound.playBookOpen();
+              labStore.isHomeBookOpen = true;
+            }}
+            class="lab-btn px-3 py-2 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-white/85 text-[11px] font-medium cursor-pointer"
+          >
+            Ver en Manual
+          </button>
+
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              onclick={() => labStore.triggerAnimatedPour('hcl', 5)}
+              class="lab-btn px-3 py-2 rounded-full bg-white/[0.12] hover:bg-white/[0.2] text-white text-[11px] font-semibold cursor-pointer"
+            >
+              +5 mL A
+            </button>
+            <button
+              type="button"
+              onclick={() => labStore.triggerAnimatedPour('naoh', 5)}
+              class="lab-btn px-3.5 py-2 rounded-full bg-white text-black hover:bg-white/90 text-[11px] font-semibold cursor-pointer"
+            >
+              +5 mL B
+            </button>
           </div>
         </div>
+      </div>
+    </div>
+  {:else if labStore.inspectedTool && labStore.inspectedTool.id !== 'ph_meter'}
+    {@const tool = labStore.inspectedTool}
+    <div class="fixed bottom-22 left-6 z-20 w-full max-w-[340px] pointer-events-auto apple-popover-enter">
+      <div class="apple-glass rounded-[26px] p-4 flex flex-col gap-3">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <span class="text-[11px] font-medium text-white/50 block">
+              Instrumentación · {labStore.educationLevel === 'primaria' ? 'Modo Primaria' : 'Modo Secundaria'}
+            </span>
+            <h3 class="text-[15px] font-semibold tracking-[-0.02em] text-white mt-0.5">
+              {tool.name}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onclick={() => labStore.inspectTool(null)}
+            class="w-7 h-7 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-white/65 hover:text-white text-xs cursor-pointer shrink-0"
+            aria-label="Cerrar inspector de instrumento"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Explicación adaptativa según el nivel seleccionado en la Dynamic Island -->
+        <p class="text-[12px] text-white/75 leading-relaxed bg-white/[0.04] border border-white/[0.06] rounded-2xl p-3">
+          {labStore.educationLevel === 'primaria' ? tool.primariaExplain : tool.secundariaExplain}
+        </p>
 
         {#if tool.id === 'ph_strips' && labStore.lastTestedStripPh !== null}
-          <div class="flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs">
-            <span class="text-slate-300">Tira reactiva medida:</span>
-            <span class="font-mono-numbers font-bold flex items-center gap-1.5" style="color: {labStore.lastTestedStripColor}">
-              <span class="w-3 h-3 rounded-sm inline-block" style="background: {labStore.lastTestedStripColor}"></span>
+          <div class="flex items-center justify-between px-3 py-2 rounded-2xl bg-white/[0.05] border border-white/[0.08] text-xs">
+            <span class="text-white/65">Lectura colorimétrica</span>
+            <span class="font-mono-numbers font-semibold text-white flex items-center gap-2">
+              <span
+                class="w-2.5 h-2.5 rounded-full inline-block"
+                style="background: {labStore.lastTestedStripColor}; box-shadow: 0 0 8px {labStore.lastTestedStripColor};"
+              ></span>
               pH {labStore.lastTestedStripPh.toFixed(2)}
             </span>
           </div>
         {/if}
 
-        <div class="flex items-center justify-end gap-2 pt-0.5">
+        <div class="flex items-center justify-end pt-0.5">
           {#if tool.id === 'burette'}
             <button
               type="button"
               onclick={() => labStore.doseFromBurette(1.0)}
-              class="lab-btn px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer"
+              class="lab-btn w-full py-2.5 px-4 rounded-full bg-white text-black hover:bg-white/90 text-xs font-semibold cursor-pointer"
             >
-              🧪 {tool.actionLabel}
+              {tool.actionLabel}
             </button>
           {:else if tool.id === 'thermometer'}
             <button
               type="button"
               onclick={() => labStore.cycleTemperature()}
-              class="lab-btn px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold cursor-pointer"
+              class="lab-btn w-full py-2.5 px-4 rounded-full bg-white text-black hover:bg-white/90 text-xs font-semibold cursor-pointer"
             >
-              🌡️ {tool.actionLabel} ({tempC.toFixed(0)}°C)
+              {tool.actionLabel} · {tempC.toFixed(0)}°C
             </button>
           {:else if tool.id === 'ph_strips'}
             <button
               type="button"
               onclick={() => labStore.dipPhPaperStrip()}
-              class="lab-btn px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer"
+              class="lab-btn w-full py-2.5 px-4 rounded-full bg-white text-black hover:bg-white/90 text-xs font-semibold cursor-pointer"
             >
-              🎗️ {tool.actionLabel}
+              {tool.actionLabel}
             </button>
           {:else if tool.id === 'dropper'}
             <button
               type="button"
               onclick={() => labStore.squeezeIndicatorDropper()}
-              class="lab-btn px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+              class="lab-btn w-full py-2.5 px-4 rounded-full bg-white text-black hover:bg-white/90 text-xs font-semibold cursor-pointer"
             >
-              💧 {tool.actionLabel} ({labStore.indicatorDropsCount} gotas)
+              {tool.actionLabel} ({labStore.indicatorDropsCount})
             </button>
           {/if}
         </div>
