@@ -13,6 +13,7 @@
   let phase = $state<'open' | 'closed' | 'ready'>('open');
   let sampling = $state(false);
   let paused = $state(false);
+  let previewExpanded = $state(true);
   let sampleStart = 0;
   let samples: HandSample[] = [];
   let openSample: HandSample | null = null;
@@ -53,10 +54,11 @@
         samples.push(sample);
         if (now - sampleStart >= 1000 && samples.length >= 8) {
           const median = (key: keyof HandSample) => samples.map(s => s[key]).sort((a, b) => a - b)[Math.floor(samples.length / 2)];
-          const measured = { x: median('x'), y: median('y'), pinch: median('pinch'), angle: median('angle') };
+          const measured = { x: median('x'), y: median('y'), pinch: median('pinch'), angle: median('angle'), palmSize: median('palmSize') };
           if (phase === 'open') { openSample = measured; phase = 'closed'; }
           else if (openSample && gestures.calibrate(openSample, measured)) {
             phase = 'ready';
+            previewExpanded = false;
             labStore.gestureStatus = 'Calibración lista. Abre la mano antes de agarrar.';
           } else {
             phase = 'open';
@@ -71,7 +73,6 @@
     if (paused) { labStore.gestureInput = null; return; }
     const state = gestures.update(sample, now);
     labStore.gestureInput = state;
-    if (sample) labStore.gestureStatus = state.pinched ? 'Pinza detectada' : 'Señala un matraz y junta índice y pulgar';
   }
 
   async function requestCamera() {
@@ -80,6 +81,7 @@
     isRequesting = true;
     errorMessage = '';
     phase = 'open';
+    previewExpanded = true;
     paused = false;
     lostSince = null;
     openSample = null;
@@ -147,7 +149,8 @@
         Apagar
       </button>
     </div>
-    <div class="relative rounded-xl overflow-hidden bg-black aspect-4/3 border border-slate-700">
+    {#if phase === 'ready'}<button type="button" onclick={() => previewExpanded = !previewExpanded} aria-expanded={previewExpanded} aria-controls="hand-camera-preview" class="lab-btn min-h-11 text-xs text-amber-200">{previewExpanded ? 'Ocultar video' : 'Mostrar video de la mano'}</button>{/if}
+    <div id="hand-camera-preview" class:hidden={phase === 'ready' && !previewExpanded} class="relative rounded-xl overflow-hidden bg-black aspect-4/3 border border-slate-700">
       <video
         bind:this={videoEl}
         autoplay
@@ -165,8 +168,8 @@
     {:else if paused}
       <button type="button" onclick={() => { paused = false; gestures.reset(); lostSince = null; }} class="lab-btn bg-amber-500 text-slate-950 rounded-lg p-2 text-xs font-bold">Retomar con la mano abierta</button>
     {:else if phase === 'ready'}
-      <p class="text-[11px] text-slate-300">Abre para señalar. Pinza para agarrar y mover. Sobre el vaso, gira la mano para verter. Abre para soltar.</p>
-      <button type="button" onclick={() => { phase = 'open'; gestures.reset(); labStore.gestureInput = null; }} class="text-xs text-amber-300 underline">Recalibrar</button>
+      <p class="text-[11px] text-slate-300">Pinza para agarrar. Sube o baja la mano para elevar o bajar el matraz. Acerca o aleja la mano para cambiar profundidad. Inclina hacia el vaso para verter. Abre para cortar y devolverlo.</p>
+      <button type="button" onclick={() => { phase = 'open'; previewExpanded = true; gestures.reset(); labStore.gestureInput = null; }} class="min-h-11 text-xs text-amber-300 underline">Recalibrar</button>
     {/if}
   </div>
 {/if}

@@ -1,18 +1,19 @@
 export interface HandPoint { x: number; y: number }
-export interface HandSample { x: number; y: number; pinch: number; angle: number }
+export interface HandSample { x: number; y: number; pinch: number; angle: number; palmSize: number }
 export interface GestureState {
-  x: number; y: number; tilt: number; pinched: boolean; pouring: boolean;
+  x: number; y: number; tilt: number; palmSize: number; pinched: boolean; pouring: boolean;
   tracked: boolean; timestampMs: number;
 }
 
 export function measureHand(points: HandPoint[], aspect = 4 / 3): HandSample | null {
-  if (points.length !== 21 || !points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))) return null;
+  if (!Number.isFinite(aspect) || aspect <= 0 || points.length !== 21 || !points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))) return null;
   const distance = (a: HandPoint, b: HandPoint) => Math.hypot((a.x - b.x) * aspect, a.y - b.y);
   const palm = distance(points[0], points[9]);
   if (palm < 0.025) return null;
   return {
     x: 1 - (points[4].x + points[8].x) / 2,
     y: (points[4].y + points[8].y) / 2,
+    palmSize: palm,
     pinch: distance(points[4], points[8]) / palm,
     angle: Math.atan2((points[0].x - points[9].x) * aspect, points[0].y - points[9].y)
   };
@@ -27,7 +28,7 @@ export class HandGestures {
   private lostSince: number | null = null;
   private lastTime = 0;
   private armed = false;
-  private state: GestureState = { x: 0.5, y: 0.5, tilt: 0, pinched: false, pouring: false, tracked: false, timestampMs: 0 };
+  private state: GestureState = { x: 0.5, y: 0.5, tilt: 0, palmSize: 0, pinched: false, pouring: false, tracked: false, timestampMs: 0 };
 
   calibrate(open: HandSample, closed: HandSample) {
     if (open.pinch - closed.pinch < 0.2 || closed.pinch < 0) return false;
@@ -66,11 +67,15 @@ export class HandGestures {
       this.releaseSince ??= now;
       if (now - this.releaseSince >= 100) pinched = false;
     } else this.releaseSince = null;
-    const tilt = Math.atan2(Math.sin(sample.angle - this.neutralAngle), Math.cos(sample.angle - this.neutralAngle));
+    const measuredTilt = Math.atan2(Math.sin(sample.angle - this.neutralAngle), Math.cos(sample.angle - this.neutralAngle));
     const smoothing = this.state.tracked ? 1 - Math.exp(-dt / 65) : 1;
+    const tilt = this.state.tracked ? this.state.tilt + Math.atan2(Math.sin(measuredTilt - this.state.tilt), Math.cos(measuredTilt - this.state.tilt)) * smoothing : measuredTilt;
+    const sizeSmoothing = this.state.tracked ? 1 - Math.exp(-dt / 150) : 1;
+    const workspace = (coordinate: number) => Math.max(0, Math.min(1, (coordinate - 0.15) / 0.7));
     this.state = {
-      x: this.state.x + (sample.x - this.state.x) * smoothing,
-      y: this.state.y + (sample.y - this.state.y) * smoothing,
+      x: this.state.x + (workspace(sample.x) - this.state.x) * smoothing,
+      y: this.state.y + (workspace(sample.y) - this.state.y) * smoothing,
+      palmSize: this.state.palmSize + (sample.palmSize - this.state.palmSize) * sizeSmoothing,
       tilt, pinched, tracked: true, timestampMs: now,
       pouring: pinched && this.releaseSince === null && Math.abs(tilt) > Math.PI / 9
     };

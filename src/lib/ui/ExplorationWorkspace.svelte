@@ -67,7 +67,7 @@
     catalogOpen = false;
   }
   $effect(() => {
-    labStore.isCatalogOpen = catalogOpen;
+    labStore.isCatalogOpen = catalogOpen || guideOpen;
     return () => { labStore.isCatalogOpen = false; };
   });
   $effect(() => {

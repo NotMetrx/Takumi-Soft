@@ -6,6 +6,7 @@
   import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
   import { Timer } from 'three/addons/misc/Timer.js';
   import { flaskFluid, pourRate, streamHitsBeaker } from './fluid';
+  import { handDepthOffset, handDragPlane, handFlaskPose } from './hand_manipulation';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
@@ -143,7 +144,7 @@
 
   // Estado de interacción 3D directa
   let draggedFlaskId = $state<'hcl' | 'naoh' | null>(null);
-  let handCursor = $state<{ x: number; y: number; pinched: boolean } | null>(null);
+  let handCursor = $state<{ x: number; y: number; pinched: boolean; overFlask: boolean } | null>(null);
   let hoveredFlaskId = $state<'hcl' | 'naoh' | null>(null);
   let isOverPourZone = $state<boolean>(false);
   let flowAccumulator = 0;
@@ -422,7 +423,13 @@
     controls.target.set(0, 0.57, 0);
     controls.update();
   }
-
+  function fitCamera(handsActive: boolean) {
+    if (!camera) return;
+    const verticalFov = handsActive ? 62 : 42;
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(verticalFov / 2)) * Math.max(1, 1.45 / camera.aspect)));
+    camera.updateProjectionMatrix();
+  }
+  $effect(() => fitCamera(labStore.isCameraActive && !labStore.isMicroscopeActive));
   $effect(() => {
     const revision = resetViewRevision;
     if (revision > 0 && camera && controls) homeCamera();
@@ -2790,8 +2797,12 @@
     const dragOffset = new THREE.Vector3();
     let activePointerId: number | null = null;
     let gestureFlaskId: 'hcl' | 'naoh' | null = null;
-    let wasPinched = false;
+    let wasPinched = labStore.gestureInput?.pinched ?? false;
     const gestureOffset = new THREE.Vector3();
+    const gesturePlane = new THREE.Plane();
+    let grabbedPalmSize = 0;
+    let handHoveredFlaskId: 'hcl' | 'naoh' | null = null;
+    let lastHandSeen = 0;
 
     function releaseGesture() {
       if (gestureFlaskId) {
@@ -2801,6 +2812,7 @@
         flowAccumulator = 0;
       }
       gestureFlaskId = null;
+      if (!draggedFlaskId) controls.enabled = true;
     }
 
     function moveFlask(rig: FlaskRig, point: THREE.Vector3, tilt: number) {
@@ -3081,7 +3093,9 @@
 
       if (interactionRevision !== labStore.presetRevision) {
         interactionRevision = labStore.presetRevision;
-        cancelInteraction();
+        if (activePointerId !== null) onPointerUp({ pointerId: activePointerId } as PointerEvent);
+        releaseGesture();
+        wasPinched = labStore.gestureInput?.pinched ?? false;
         for (const rig of Object.values(flasks)) {
           rig.targetPos.copy(rig.homePos);
           rig.targetRotZ = 0;
@@ -3231,53 +3245,54 @@
 
       const hand = labStore.gestureInput;
       const handFresh = hand && hand.tracked && performance.now() - hand.timestampMs < 250;
-      const handEnabled =
-        labStore.isCameraActive &&
-        !(labStore.isExplorationMode && explorationStore.pendingSafety) &&
-        !draggedFlaskId &&
-        !labStore.activePourAnim &&
-        !labStore.isCatalogOpen &&
-        !labStore.isCameraModalOpen &&
-        !labStore.isHomeBookOpen &&
-        !labStore.isNotebookOpen &&
-        !labStore.isHypothesisModalOpen;
-      handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched } : null;
+      if (handFresh) lastHandSeen = hand.timestampMs;
+      const handEnabled = labStore.isCameraActive && !labStore.isMicroscopeActive && cameraReturnTimer <= 0 && !(labStore.isExplorationMode && explorationStore.pendingSafety) && !draggedFlaskId && !labStore.activePourAnim
+        && !labStore.isCatalogOpen && !labStore.isCameraModalOpen && !labStore.isHomeBookOpen && !labStore.isNotebookOpen && !labStore.isHypothesisModalOpen;
+      handHoveredFlaskId = null;
       let gestureCanPour = false;
-      if (!handEnabled || !hand || performance.now() - hand.timestampMs >= 1500) {
+      if (!handEnabled || !hand || performance.now() - lastHandSeen >= 1500) {
         releaseGesture();
         wasPinched = hand?.pinched ?? false;
       } else if (handFresh) {
         pointer.set(hand.x * 2 - 1, 1 - hand.y * 2);
         raycaster.setFromCamera(pointer, camera);
-        dragPlane.constant = -0.15;
-        if (hand.pinched && !wasPinched && !gestureFlaskId) {
+        if (!gestureFlaskId) {
+          scene.updateMatrixWorld(true);
           const hits = raycaster.intersectObjects([flasks.hcl.group, flasks.naoh.group], true);
-          let curr: THREE.Object3D | null = hits[0]?.object ?? null;
-          while (curr && !curr.userData?.flaskId) curr = curr.parent;
-          const id = curr?.userData?.flaskId as 'hcl' | 'naoh' | undefined;
-          if (id) {
-            gestureFlaskId = id;
-            labStore.selectReagent(id);
-            flowAccumulator = 0;
-            if (raycaster.ray.intersectPlane(dragPlane, intersectPt)) {
-              gestureOffset.copy(flasks[id].group.position).sub(intersectPt);
-              gestureOffset.y = 0;
+          let object: THREE.Object3D | null = hits[0]?.object ?? null;
+          while (object && !object.userData.flaskId) object = object.parent;
+          handHoveredFlaskId = object?.userData.flaskId ?? null;
+          if (hand.pinched && !wasPinched && handHoveredFlaskId) {
+            const rig = flasks[handHoveredFlaskId];
+            gesturePlane.copy(handDragPlane(camera, rig.group.position));
+            if (raycaster.ray.intersectPlane(gesturePlane, intersectPt)) {
+              gestureFlaskId = handHoveredFlaskId;
+              gestureOffset.copy(rig.group.position).sub(intersectPt);
+              grabbedPalmSize = hand.palmSize;
+              labStore.selectReagent(gestureFlaskId);
+              flowAccumulator = 0;
+              controls.enabled = false;
             }
           }
         }
         if (!hand.pinched) releaseGesture();
-        if (gestureFlaskId && raycaster.ray.intersectPlane(dragPlane, intersectPt)) {
-          intersectPt.add(gestureOffset);
-          const overZone = moveFlask(flasks[gestureFlaskId], intersectPt, Math.abs(hand.tilt));
-          gestureCanPour = overZone && hand.pouring;
-          labStore.gestureStatus = overZone
-            ? hand.pouring
-              ? 'Vertiendo: abre la pinza para detener'
-              : 'Frasco sobre el vaso: gira la mano para verter'
-            : 'Frasco agarrado: muévelo hacia el vaso';
+        if (gestureFlaskId) {
+          const plane = gesturePlane.clone();
+          plane.constant -= handDepthOffset(hand.palmSize, grabbedPalmSize);
+          if (raycaster.ray.intersectPlane(plane, intersectPt)) {
+            const rig = flasks[gestureFlaskId];
+            const pose = handFlaskPose(intersectPt.add(gestureOffset), hand.tilt, rig.group.position.x || rig.homePos.x);
+            rig.targetPos.copy(pose.position);
+            rig.targetRotZ = pose.angle;
+            gestureCanPour = hand.pouring;
+          }
+          labStore.gestureStatus = hand.pouring ? 'Inclinado: coloca la boca por encima de la abertura del vaso' : 'Matraz agarrado: sube o baja la mano; acércala o aléjala para cambiar profundidad';
+        } else {
+          labStore.gestureStatus = handHoveredFlaskId ? `Matraz ${handHoveredFlaskId === 'hcl' ? 'A' : 'B'} al alcance: junta índice y pulgar para agarrar` : 'Señala un matraz y junta índice y pulgar';
         }
         wasPinched = hand.pinched;
       }
+      handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched, overFlask: !!(handHoveredFlaskId || gestureFlaskId) } : null;
 
       if (labStore.isExplorationMode && explorationStore.result.stopped) labStore.activePourAnim = null;
       let flowingRig: FlaskRig | null = null;
@@ -3306,15 +3321,17 @@
         const rig = flasks[id];
         const reagentData = labStore.reagents.find((r) => r.reagentId === id);
         const remRatio = reagentData ? reagentData.remainingMl / reagentData.initialMl : 0;
-        const smoothing = 1 - Math.exp(-8 * dt);
-        const returning = rig.targetPos.y < 0.5;
-        rig.group.rotation.z = THREE.MathUtils.lerp(
-          rig.group.rotation.z,
-          !returning && rig.group.position.y < 1.4 ? 0 : rig.targetRotZ,
-          smoothing
-        );
+        const heldByHand = gestureFlaskId === id;
+        const smoothing = 1 - Math.exp(-(heldByHand ? 14 : 8) * dt);
+        // Elevar primero evita atravesar el vaso al inclinar o devolver el matraz.
+        const returning = !heldByHand && rig.targetPos.y < 0.5;
+        rig.group.rotation.z = THREE.MathUtils.lerp(rig.group.rotation.z,
+          !heldByHand && !returning && rig.group.position.y < 1.4 ? 0 : rig.targetRotZ, smoothing);
         const safeTarget = rig.targetPos.clone();
         if (returning && Math.abs(rig.group.rotation.z) > 0.15) safeTarget.y = 1.65;
+        if (returning && Math.hypot(rig.group.position.x, rig.group.position.z) < 0.76 && rig.group.position.y > 0.9) {
+          safeTarget.y = Math.max(safeTarget.y, rig.group.position.y, 1.04);
+        }
         rig.group.position.lerp(safeTarget, smoothing);
         const key = `${rig.group.rotation.z.toFixed(3)}:${remRatio.toFixed(4)}`;
         if (key !== rig.fluidKey) {
@@ -3335,7 +3352,7 @@
           buretteLiquidMesh.scale.set(1, Math.max(0.05, remRatio), 1);
         }
 
-        const isSel = selectedId === id || hoveredFlaskId === id || draggedFlaskId === id;
+        const isSel = selectedId === id || hoveredFlaskId === id || handHoveredFlaskId === id || draggedFlaskId === id;
         rig.ringMat.opacity = isSel ? 0.9 : 0.25;
         rig.ringMesh.scale.setScalar(isSel ? 1.08 : 1.0);
       });
@@ -3348,12 +3365,9 @@
       if (flowingRig && streamHitsBeaker(nozzle)) {
         requestedFlow = pourRate(flowingRig.group.rotation.z, flowingRig.fluidHeight) * dt;
       }
-      const reagent = flowingRig && labStore.reagents.find((r) => r.reagentId === flowingRig?.id);
-      const isFlowing =
-        requestedFlow > 0 &&
-        !(labStore.isExplorationMode && (explorationStore.pendingSafety || explorationStore.result.stopped)) &&
-        (reagent?.remainingMl ?? 0) > 0 &&
-        labStore.availableCapacityMl > 0;
+      const reagent = flowingRig && labStore.reagents.find(r => r.reagentId === flowingRig?.id);
+      const isFlowing = requestedFlow > 0 && !(labStore.isExplorationMode && (explorationStore.pendingSafety || explorationStore.result.stopped)) && (reagent?.remainingMl ?? 0) > 0 && labStore.availableCapacityMl > 0;
+      if (gestureFlaskId && gestureCanPour && isFlowing) labStore.gestureStatus = 'Vertiendo: abre la pinza para cortar y devolver el matraz';
       if (isFlowing && flowingRig) {
         flowAccumulator += requestedFlow;
         const amount = Math.min(
@@ -3524,7 +3538,7 @@
         );
       }
 
-      controls.update(dt);
+      if (controls.enabled) controls.update(dt);
       renderer?.render(scene, camera);
     }
 
@@ -3535,10 +3549,7 @@
       const w = container.clientWidth;
       const h = container.clientHeight;
       camera.aspect = w / h;
-      camera.fov = THREE.MathUtils.radToDeg(
-        2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(42 / 2)) * Math.max(1, 1.45 / camera.aspect))
-      );
-      camera.updateProjectionMatrix();
+      fitCamera(labStore.isCameraActive && !labStore.isMicroscopeActive);
       renderer.setSize(w, h);
     });
     resizeObserver.observe(container);
@@ -3592,14 +3603,8 @@
   <div bind:this={container} class="w-full h-full"></div>
 
   {#if handCursor}
-    <div
-      class="absolute z-20 pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg flex items-center justify-center {handCursor.pinched
-        ? 'w-6 h-6 border-amber-200 bg-amber-400/70'
-        : 'w-9 h-9 border-white bg-amber-400/20'}"
-      style:left={`${handCursor.x * 100}%`}
-      style:top={`${handCursor.y * 100}%`}
-      aria-hidden="true"
-    ></div>
+    <div class="absolute z-20 pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg flex items-center justify-center {handCursor.pinched ? 'w-6 h-6 border-amber-200 bg-amber-400/70' : handCursor.overFlask ? 'w-9 h-9 border-emerald-200 bg-emerald-400/30' : 'w-9 h-9 border-white bg-amber-400/20'}"
+      style:left={`${handCursor.x * 100}%`} style:top={`${handCursor.y * 100}%`} aria-hidden="true"></div>
   {/if}
 
   <!-- Píldora espacial contextual (estilo Apple visionOS Look Pill, sin colores chillones ni emojis) -->
