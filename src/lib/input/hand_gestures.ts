@@ -1,8 +1,23 @@
-export interface HandPoint { x: number; y: number }
-export interface HandSample { x: number; y: number; pinch: number; angle: number; palmSize: number }
+export interface HandPoint { x: number; y: number; z?: number; }
+export interface HandSample {
+  x: number;
+  y: number;
+  pinch: number;
+  angle: number;
+  palmSize: number;
+  landmarks?: HandPoint[];
+}
 export interface GestureState {
-  x: number; y: number; tilt: number; palmSize: number; pinched: boolean; pouring: boolean;
-  tracked: boolean; needsOpen: boolean; timestampMs: number;
+  x: number;
+  y: number;
+  tilt: number;
+  palmSize: number;
+  pinched: boolean;
+  pouring: boolean;
+  tracked: boolean;
+  needsOpen: boolean;
+  timestampMs: number;
+  landmarks?: HandPoint[];
 }
 
 export function measureHand(points: HandPoint[], aspect = 4 / 3): HandSample | null {
@@ -15,7 +30,8 @@ export function measureHand(points: HandPoint[], aspect = 4 / 3): HandSample | n
     y: (points[4].y + points[8].y) / 2,
     palmSize: palm,
     pinch: distance(points[4], points[8]) / palm,
-    angle: Math.atan2((points[0].x - points[9].x) * aspect, points[0].y - points[9].y)
+    angle: Math.atan2((points[0].x - points[9].x) * aspect, points[0].y - points[9].y),
+    landmarks: points
   };
 }
 
@@ -77,7 +93,8 @@ export class HandGestures {
       y: this.state.y + (workspace(sample.y) - this.state.y) * smoothing,
       palmSize: this.state.palmSize + (sample.palmSize - this.state.palmSize) * sizeSmoothing,
       tilt, pinched, tracked: true, needsOpen: !this.armed, timestampMs: now,
-      pouring: pinched && this.releaseSince === null && Math.abs(tilt) > Math.PI / 9
+      pouring: pinched && this.releaseSince === null && Math.abs(tilt) > Math.PI / 9,
+      landmarks: sample.landmarks
     };
     return this.state;
   }

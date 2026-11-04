@@ -9,6 +9,8 @@
   import { handDepthOffset, handDragPlane, handFlaskPose } from './hand_manipulation';
   import { buildCompleteLabSafetyInfrastructure, type SafetyInteractiveHit } from './safety_decorations';
   import { FirstPersonController } from './first_person_controller';
+  import { ARHandMeshRig } from './ar_hand_mesh';
+  import { LabSafetyFXSystem } from './safety_fx_particles';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
@@ -88,6 +90,12 @@
   let cabinetItemGroups: THREE.Object3D[] = [];
   let safetyInfrastructureGroup: THREE.Group | null = null;
   let fpController: FirstPersonController | null = null;
+  let arHandRig: ARHandMeshRig | null = null;
+  let safetyFx: LabSafetyFXSystem | null = null;
+  let keyLight: THREE.DirectionalLight | null = null;
+  let lastShowerRev = 0;
+  let lastEyewashRev = 0;
+  let lastExtinguisherRev = 0;
 
   // Referencias 3D articuladas del Microscopio Compuesto Binocular
   let microscopeGroup: THREE.Group;
@@ -421,6 +429,28 @@
           mat.needsUpdate = true;
         }
       });
+    }
+  });
+
+  // Reacciones a eventos de bioseguridad en tiempo real (Ducha, Lavaojos, Extintor)
+  $effect(() => {
+    if (labStore.showerFxRevision > lastShowerRev) {
+      lastShowerRev = labStore.showerFxRevision;
+      safetyFx?.triggerShower();
+    }
+  });
+
+  $effect(() => {
+    if (labStore.eyewashFxRevision > lastEyewashRev) {
+      lastEyewashRev = labStore.eyewashFxRevision;
+      safetyFx?.triggerEyewash();
+    }
+  });
+
+  $effect(() => {
+    if (labStore.extinguisherFxRevision > lastExtinguisherRev) {
+      lastExtinguisherRev = labStore.extinguisherFxRevision;
+      safetyFx?.triggerExtinguisherDischarge();
     }
   });
 
@@ -2760,17 +2790,27 @@
     camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
     camera.position.set(0.08, 1.9, 3.45);
 
-    const basicGraphics = explorationStore.renderQuality === 'basic';
+    const isLowEndDevice = () => {
+      if (typeof navigator === 'undefined') return false;
+      const cores = navigator.hardwareConcurrency ?? 4;
+      const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 4;
+      return cores <= 4 || memory <= 4;
+    };
+    const lowTier = isLowEndDevice();
+
+    const basicGraphics = explorationStore.renderQuality === 'basic' || lowTier;
     renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !lowTier,
       powerPreference: 'high-performance'
     });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, basicGraphics ? 1 : 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowTier ? 1.0 : basicGraphics ? 1.0 : 1.75));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.18;
-    renderer.shadowMap.enabled = !basicGraphics;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.enabled = !lowTier && !basicGraphics;
+    if (renderer.shadowMap.enabled) {
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+    }
 
     renderer.domElement.setAttribute('role', 'img');
     renderer.domElement.setAttribute(
@@ -2819,9 +2859,9 @@
     const ambientLight = new THREE.HemisphereLight(0xd7e9ed, 0x293b43, 1.35);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff5e6, 2.4);
+    keyLight = new THREE.DirectionalLight(0xfff5e6, 2.4);
     keyLight.position.set(2.5, 4.5, 3.0);
-    keyLight.castShadow = true;
+    keyLight.castShadow = !lowTier && !basicGraphics;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.bias = -0.0005;
     scene.add(keyLight);
@@ -3046,6 +3086,14 @@
     const safetyInteractiveItems: { mesh: THREE.Object3D; hit: SafetyInteractiveHit }[] = [];
     safetyInfrastructureGroup = buildCompleteLabSafetyInfrastructure(safetyInteractiveItems);
     scene.add(safetyInfrastructureGroup);
+
+    // Manos 3D Articuladas con MediaPipe y Filtro 1-Euro (Opción 1)
+    arHandRig = new ARHandMeshRig();
+    scene.add(arHandRig.group);
+
+    // Sistema Frugal de Partículas Físicas y Efectos del Laboratorio (Opción 3)
+    safetyFx = new LabSafetyFXSystem();
+    scene.add(safetyFx.group);
 
     const lid = new THREE.Mesh(
       new THREE.CylinderGeometry(0.415, 0.415, 0.018, 48),
@@ -3425,10 +3473,32 @@
     const onMotionChange = (ev: MediaQueryListEvent) => (isReducedMotion = ev.matches);
     mediaQuery.addEventListener('change', onMotionChange);
 
+    // Monitor Adaptativo de Rendimiento (Garantiza 60 FPS en PCs de bajos recursos / Chromebooks)
+    let smoothedFps = 60;
+    let lowFpsStreak = 0;
+    let adaptiveOptimizationActive = lowTier;
+
     function animate(timestamp?: number) {
       timer.update(timestamp);
       const dt = Math.min(timer.getDelta(), 0.1);
       const elapsed = timer.getElapsed();
+
+      // Escalado dinámico de carga gráfica si la tasa de cuadros desciende
+      if (dt > 0 && dt < 0.2) {
+        const instantFps = 1 / dt;
+        smoothedFps = smoothedFps * 0.94 + instantFps * 0.06;
+        if (smoothedFps < 35) {
+          lowFpsStreak++;
+          if (lowFpsStreak > 50 && !adaptiveOptimizationActive && renderer) {
+            adaptiveOptimizationActive = true;
+            renderer.setPixelRatio(1.0);
+            renderer.shadowMap.enabled = false;
+            if (keyLight) keyLight.castShadow = false;
+          }
+        } else {
+          lowFpsStreak = Math.max(0, lowFpsStreak - 1);
+        }
+      }
       if (labStore.isExplorationMode) {
         const r = explorationStore.result;
         lid.visible = explorationStore.state.closed;
@@ -3667,6 +3737,29 @@
       }
       handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched, overFlask: !hand.needsOpen && !!(handHoveredFlaskId || gestureFlaskId) } : null;
 
+      // Actualizar Mano 3D Articulada con MediaPipe y Filtro 1-Euro (Opción 1)
+      if (arHandRig) {
+        if (handEnabled && handFresh && hand && !labStore.isFirstPersonWalking) {
+          let targetPos = intersectPt;
+          if (gestureFlaskId && flasks[gestureFlaskId]) {
+            targetPos = flasks[gestureFlaskId].group.position;
+          } else if (draggedFlaskId && flasks[draggedFlaskId]) {
+            targetPos = flasks[draggedFlaskId].group.position;
+          }
+          arHandRig.updateGloves(labStore.safetyGlovesType);
+          arHandRig.updatePose(
+            hand.landmarks,
+            camera,
+            targetPos,
+            hand.tilt,
+            hand.pinched,
+            performance.now()
+          );
+        } else {
+          arHandRig.hide();
+        }
+      }
+
       if (labStore.isExplorationMode && explorationStore.result.stopped) labStore.activePourAnim = null;
       let flowingRig: FlaskRig | null = null;
       let requestedFlow = 0;
@@ -3801,6 +3894,14 @@
           );
         }
         posAttr.needsUpdate = true;
+      }
+
+      // ===================== EFECTOS DE FLUIDOS Y PARTÍCULAS FÍSICAS (DUCHA, LAVAOJOS, VAPOR, CO2) =====================
+      if (safetyFx) {
+        safetyFx.update(dt);
+        const isVaporActive = labStore.beaker.temperatureC >= 38;
+        const vaporIntensity = Math.min(1.0, Math.max(0.1, (labStore.beaker.temperatureC - 35) / 45));
+        safetyFx.setReactorVapor(isVaporActive, vaporIntensity);
       }
 
       // ===================== CONTROLADOR 1ª PERSONA O CINEMÁTICA DE ESTACIÓN =====================
