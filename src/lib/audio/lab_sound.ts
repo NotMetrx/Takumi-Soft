@@ -178,6 +178,34 @@ class LabSoundEngine {
     osc.start(now);
     osc.stop(now + 0.055);
   }
+
+  /**
+   * Sonido procedimental de pisada sobre suelo de resina epoxi de laboratorio (1ª persona)
+   */
+  playFootstep(isSprint = false) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const duration = isSprint ? 0.065 : 0.085;
+    const pitchJitter = (Math.random() - 0.5) * 24;
+
+    // Contacto sordo del talón en el suelo
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95 + pitchJitter, now);
+    osc.frequency.exponentialRampToValueAtTime(45, now + duration);
+
+    const volume = isSprint ? 0.08 : 0.05;
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.01);
+  }
 }
 
 export const labSound = new LabSoundEngine();

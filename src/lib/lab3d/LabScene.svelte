@@ -3808,7 +3808,24 @@
         if (controls.enabled) controls.enabled = false;
         if (!fpController.enabled) fpController.enable(camera.position);
         fpController.update(dt);
+        fpController.updateCrosshairRaycast([
+          flasks.hcl.group,
+          flasks.naoh.group,
+          bookGroup,
+          ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
+          ...interactiveToolGroups,
+          ...cabinetItemGroups
+        ]);
         labStore.nearbyStationPrompt = fpController.getNearbyStation();
+        labStore.firstPersonTargetPrompt = fpController.focusedTarget
+          ? {
+              title: fpController.focusedTarget.title,
+              actionHint: fpController.focusedTarget.actionHint,
+              icon: fpController.focusedTarget.icon,
+              distanceM: fpController.focusedTarget.distanceM
+            }
+          : null;
+        labStore.firstPersonPointerLocked = fpController.isPointerLocked;
       } else {
         if (fpController?.enabled) fpController.disable();
 

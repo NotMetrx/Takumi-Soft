@@ -1632,6 +1632,13 @@ export class LabStore {
   // Navegación Libre en 1ª Persona (Recorrer el Laboratorio con Movilidad WASD)
   isFirstPersonWalking = $state<boolean>(false);
   nearbyStationPrompt = $state<LabStationId | null>(null);
+  firstPersonTargetPrompt = $state<{
+    title: string;
+    actionHint: string;
+    icon: string;
+    distanceM: number;
+  } | null>(null);
+  firstPersonPointerLocked = $state<boolean>(false);
 
   reagents = $state<Reagent[]>([
     {

@@ -547,11 +547,38 @@
 
 <!-- HUD y Controles de Navegación en 1ª Persona (Paseo por el Laboratorio) -->
 {#if labStore.isFirstPersonWalking}
+  <!-- Retícula Central (Crosshair) para interacción en 1ª Persona -->
+  <div class="pointer-events-none fixed inset-0 z-20 flex items-center justify-center">
+    <div class="relative flex items-center justify-center">
+      {#if labStore.firstPersonTargetPrompt}
+        <!-- Retícula activa cuando apunta a un objeto interactivo -->
+        <div
+          class="w-7 h-7 rounded-full border-2 border-emerald-400 bg-emerald-400/20 animate-pulse flex items-center justify-center shadow-[0_0_16px_rgba(52,211,153,0.6)]"
+        >
+          <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+        </div>
+        <!-- Tarjeta flotante con nombre del objeto e indicación de acción -->
+        <div
+          class="absolute top-6 px-3.5 py-1.5 rounded-xl bg-black/85 backdrop-blur-md border border-emerald-400/60 shadow-2xl flex items-center gap-2 whitespace-nowrap text-white text-xs animate-in fade-in zoom-in-95 duration-100"
+        >
+          <span class="text-sm">{labStore.firstPersonTargetPrompt.icon}</span>
+          <span class="font-semibold text-white">{labStore.firstPersonTargetPrompt.title}</span>
+          <span class="text-white/30">·</span>
+          <span class="text-emerald-300 font-medium">{labStore.firstPersonTargetPrompt.actionHint}</span>
+          <kbd class="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono border border-white/30 text-white font-bold">E</kbd>
+        </div>
+      {:else}
+        <!-- Retícula en reposo (minimal dot) -->
+        <div class="w-2 h-2 rounded-full bg-white/70 shadow-sm border border-black/40"></div>
+      {/if}
+    </div>
+  </div>
+
   <div
     class="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-2.5 animate-in fade-in duration-200"
   >
     <!-- Prompt contextual al acercarse a una mesa -->
-    {#if labStore.nearbyStationPrompt}
+    {#if labStore.nearbyStationPrompt && !labStore.firstPersonTargetPrompt}
       <button
         type="button"
         onclick={() => labStore.enterStationFromWalk(labStore.nearbyStationPrompt!)}
@@ -577,7 +604,7 @@
 
     <!-- Leyenda de Controles First Person -->
     <div
-      class="px-4 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-white/80 text-[11px] flex items-center gap-3 shadow-lg"
+      class="px-4 py-1.5 rounded-full bg-black/75 backdrop-blur-md border border-white/10 text-white/80 text-[11px] flex items-center gap-3 shadow-lg"
     >
       <span class="flex items-center gap-1">
         <kbd class="px-1.5 py-0.5 rounded bg-white/15 text-[9px] font-mono">W A S D</kbd> Caminar
@@ -587,7 +614,13 @@
         <kbd class="px-1.5 py-0.5 rounded bg-white/15 text-[9px] font-mono">Shift</kbd> Correr
       </span>
       <span class="text-white/25">|</span>
-      <span>Ratón: Mirar</span>
+      <span class="flex items-center gap-1">
+        <kbd class="px-1.5 py-0.5 rounded bg-white/15 text-[9px] font-mono">E / Clic</kbd> Interactuar
+      </span>
+      <span class="text-white/25">|</span>
+      <span class="hidden sm:inline">
+        {labStore.firstPersonPointerLocked ? 'Ratón Bloqueado (FPS)' : 'Ratón: Mirar (Clic para fijar)'}
+      </span>
       <span class="text-white/25">|</span>
       <button
         type="button"
