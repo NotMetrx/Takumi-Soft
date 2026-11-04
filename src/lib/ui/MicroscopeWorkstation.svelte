@@ -93,7 +93,7 @@
 
   function renderOcularField(timeMs: number) {
     if (!ocularCanvas || !labStore.isMicroscopeActive) {
-      animFrameId = requestAnimationFrame(renderOcularField);
+      animFrameId = null;
       return;
     }
     const ctx = ocularCanvas.getContext('2d');
@@ -115,7 +115,11 @@
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
       drawOcularReticleAndVignette(ctx, cx, cy, radius, false);
-      animFrameId = requestAnimationFrame(renderOcularField);
+      if (labStore.isMicroscopeActive) {
+        animFrameId = requestAnimationFrame(renderOcularField);
+      } else {
+        animFrameId = null;
+      }
       return;
     }
 
@@ -203,7 +207,11 @@
       mode === 'darkfield' || mode === 'polarized'
     );
 
-    animFrameId = requestAnimationFrame(renderOcularField);
+    if (labStore.isMicroscopeActive) {
+      animFrameId = requestAnimationFrame(renderOcularField);
+    } else {
+      animFrameId = null;
+    }
   }
 
   function drawOnionEpidermis(
@@ -611,8 +619,21 @@
     ctx.restore();
   }
 
-  onMount(() => {
-    animFrameId = requestAnimationFrame(renderOcularField);
+  $effect(() => {
+    if (labStore.isMicroscopeActive && ocularCanvas) {
+      if (animFrameId === null) {
+        animFrameId = requestAnimationFrame(renderOcularField);
+      }
+    } else if (animFrameId !== null) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+    return () => {
+      if (animFrameId !== null) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+      }
+    };
   });
 
   onDestroy(() => {
@@ -652,7 +673,7 @@
         </button>
       </div>
       <p class="text-[11.5px] text-white/75 leading-relaxed">
-        El microscopio se ha elevado al centro de la mesa. Puedes hacer clic directamente en sus <strong class="text-white">piezas 3D</strong> (revólver, objetivos, platina, tornillos o lámpara) o usar el visor binocular.
+        Estás en la <strong class="text-white">Estación de Biología</strong>. Puedes interactuar directamente con las piezas del <strong class="text-white">microscopio 3D</strong> o usar los controles del visor binocular.
       </p>
       <div class="flex items-center justify-between text-[11px] pt-1 border-t border-white/10 text-white/65">
         <span>Pieza activa: <strong class="text-white">{partSpec.name.split(' ')[0]}</strong></span>
@@ -663,7 +684,7 @@
 
   <!-- WORKSTATION BINOCULAR APPLE VISIONOS (DERECHA, DEJANDO EL MICROSCOPIO 3D VISIBLE A LA IZQUIERDA) -->
   <aside
-    class="fixed top-18 right-5 bottom-21 z-30 w-[calc(100vw-2.5rem)] max-w-[720px] pointer-events-auto flex flex-col apple-popover-enter"
+    class="fixed top-18 right-5 bottom-21 z-30 w-[calc(100vw-2.5rem)] max-w-[560px] lg:max-w-[580px] pointer-events-auto flex flex-col apple-popover-enter"
     aria-label="Estación de Microscopía Óptica Compuesta"
   >
     <div class="apple-glass rounded-[30px] p-4 sm:p-5 h-full flex flex-col gap-3.5 overflow-hidden shadow-2xl">

@@ -7,12 +7,15 @@
   import { Timer } from 'three/addons/misc/Timer.js';
   import { flaskFluid, pourRate, streamHitsBeaker } from './fluid';
   import { handDepthOffset, handDragPlane, handFlaskPose } from './hand_manipulation';
+  import { buildCompleteLabSafetyInfrastructure, type SafetyInteractiveHit } from './safety_decorations';
+  import { FirstPersonController } from './first_person_controller';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
     LAB_TOOLS_CATALOG,
     CABINET_COMPONENTS,
     MICROSCOPE_PARTS,
+    type LabStationId,
     type LabToolInfo,
     type CabinetComponentInfo,
     type MicroscopePartId,
@@ -83,6 +86,8 @@
   let bookGlowRing: THREE.Mesh;
   let interactiveToolGroups: THREE.Object3D[] = [];
   let cabinetItemGroups: THREE.Object3D[] = [];
+  let safetyInfrastructureGroup: THREE.Group | null = null;
+  let fpController: FirstPersonController | null = null;
 
   // Referencias 3D articuladas del Microscopio Compuesto Binocular
   let microscopeGroup: THREE.Group;
@@ -99,12 +104,40 @@
   let microscopeLightBeamMat: THREE.MeshBasicMaterial;
   let microscopeProxyMesh: THREE.Object3D | null = null;
 
-  // Posición de reposo (esquina de la mesa) y posición de enfoque (elevado al frente-centro, sobre todo lo demás)
-  const MICROSCOPE_HOME_POS = new THREE.Vector3(-1.62, 0, -0.68);
-  const MICROSCOPE_HOME_ROT_Y = 0.52;
-  const MICROSCOPE_FOCUS_POS = new THREE.Vector3(-0.5, 0.14, 0.86);
-  const MICROSCOPE_FOCUS_ROT_Y = 0.42;
+  // Posición fija realista del Microscopio en la Estación de Biología
+  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-3.5, 0.04, 0.15);
+  const MICROSCOPE_BIOLOGY_ROT_Y = 0.35;
+  const MICROSCOPE_HOME_POS = MICROSCOPE_BIOLOGY_POS;
+  const MICROSCOPE_HOME_ROT_Y = MICROSCOPE_BIOLOGY_ROT_Y;
+  const MICROSCOPE_FOCUS_POS = MICROSCOPE_BIOLOGY_POS;
+  const MICROSCOPE_FOCUS_ROT_Y = MICROSCOPE_BIOLOGY_ROT_Y;
   const MICROSCOPE_REVOLVER_TILT = 0.35;
+
+  // Poses de cámara cinemática para cada una de las 3 estaciones de laboratorio
+  const STATION_VIEW_POSES: Record<LabStationId, { camPos: THREE.Vector3; target: THREE.Vector3 }> = {
+    quimica: {
+      camPos: new THREE.Vector3(0.08, 1.88, 3.42),
+      target: new THREE.Vector3(0, 0.55, 0)
+    },
+    biologia: {
+      camPos: new THREE.Vector3(-3.5, 1.45, 1.95),
+      target: new THREE.Vector3(-3.5, 0.52, 0.15)
+    },
+    steam: {
+      camPos: new THREE.Vector3(3.5, 1.55, 2.15),
+      target: new THREE.Vector3(3.5, 0.55, 0.15)
+    }
+  };
+
+  const BIOLOGY_MICROSCOPE_FOCUS_POSE = {
+    camPos: new THREE.Vector3(-3.18, 0.98, 1.15),
+    target: new THREE.Vector3(-3.5, 0.55, 0.15)
+  };
+
+  let isTransitioningStation = false;
+  let lastStationId: LabStationId = 'quimica';
+  let lastStationRev = 0;
+  let lastMicroscopeActiveState = false;
   const MICROSCOPE_OBJECTIVE_ANGLES: Record<number, number> = {
     4: Math.PI / 2,
     10: Math.PI,
@@ -418,9 +451,18 @@
     );
   }
 
+  function getActiveStationPose(): { camPos: THREE.Vector3; target: THREE.Vector3 } {
+    if (labStore.activeStation === 'biologia' && labStore.isMicroscopeActive) {
+      return BIOLOGY_MICROSCOPE_FOCUS_POSE;
+    }
+    return STATION_VIEW_POSES[labStore.activeStation] ?? STATION_VIEW_POSES.quimica;
+  }
+
   function homeCamera() {
-    camera.position.set(0.08, 1.9, 3.45);
-    controls.target.set(0, 0.57, 0);
+    if (!camera || !controls) return;
+    const pose = getActiveStationPose();
+    camera.position.copy(pose.camPos);
+    controls.target.copy(pose.target);
     controls.update();
   }
   function fitCamera(handsActive: boolean) {
@@ -433,6 +475,21 @@
   $effect(() => {
     const revision = resetViewRevision;
     if (revision > 0 && camera && controls) homeCamera();
+  });
+  $effect(() => {
+    const station = labStore.activeStation;
+    const rev = labStore.stationRevision;
+    const microActive = labStore.isMicroscopeActive;
+    if (
+      station !== lastStationId ||
+      rev !== lastStationRev ||
+      microActive !== lastMicroscopeActiveState
+    ) {
+      lastStationId = station;
+      lastStationRev = rev;
+      lastMicroscopeActiveState = microActive;
+      isTransitioningStation = true;
+    }
   });
 
   function createBeakerGraduationsTexture(): THREE.CanvasTexture {
@@ -522,7 +579,9 @@
     return tex;
   }
 
-  function createSciencePosterTexture(kind: 'ph_scale' | 'lab_rules'): THREE.CanvasTexture {
+  function createSciencePosterTexture(
+    kind: 'ph_scale' | 'lab_rules' | 'biology_cells' | 'steam_physics'
+  ): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 320;
@@ -530,11 +589,12 @@
 
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, 512, 320);
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(6, 6, 500, 308);
 
     if (kind === 'ph_scale') {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(6, 6, 500, 308);
+
       ctx.fillStyle = '#f8fafc';
       ctx.font = 'bold 22px "Outfit", sans-serif';
       ctx.fillText('ESCALA DE pH & INDICADORES', 24, 40);
@@ -554,7 +614,52 @@
       ctx.font = '15px "Plus Jakarta Sans", sans-serif';
       ctx.fillText('• Primaria: Detecta ácidos (limón) y bases (jabón)', 24, 232);
       ctx.fillText('• Secundaria: pH = -log₁₀[H₃O⁺]  |  Kw = 10⁻¹⁴ (25°C)', 24, 264);
+    } else if (kind === 'biology_cells') {
+      ctx.strokeStyle = '#34d399';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(6, 6, 500, 308);
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = 'bold 22px "Outfit", sans-serif';
+      ctx.fillText('BIOLOGÍA & MICROSCOPÍA ÓPTICA', 24, 40);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('• Óptica DIN 160 mm · Oculares WF10x/18 mm', 24, 85);
+      ctx.fillText('• Objetivos: 4x (Rojo) · 10x (Amarillo) · 40x (Azul) · 100x OIL', 24, 122);
+
+      ctx.fillStyle = '#a7f3d0';
+      ctx.font = '14px "JetBrains Mono", monospace';
+      ctx.fillText('Muestras: Cebolla + Lugol · Elodea viva · Halita NaCl', 24, 168);
+      ctx.fillText('Resolución: Límite de Abbe d = λ / (2·NA)', 24, 204);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '13px sans-serif';
+      ctx.fillText('Ajusta foco macrométrico y micrométrico para máxima nitidez.', 24, 255);
+    } else if (kind === 'steam_physics') {
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(6, 6, 500, 308);
+
+      ctx.fillStyle = '#fde68a';
+      ctx.font = 'bold 22px "Outfit", sans-serif';
+      ctx.fillText('CIENCIAS STEAM & FENÓMENOS (RSEQ)', 24, 40);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('• Experimentos didácticos de M. Prolongo y G. Pinto', 24, 85);
+      ctx.fillText('• Termodinámica: Refrigeración evaporativa en botijo cerámico', 24, 122);
+      ctx.fillText('• Convección térmica con plumas coloreadas de agua fría', 24, 160);
+      ctx.fillText('• Tensión superficial y antiburbujas con solución anfifílica', 24, 198);
+
+      ctx.fillStyle = '#fcd34d';
+      ctx.font = '13px "JetBrains Mono", monospace';
+      ctx.fillText('Abre el Libro 3D o la Estantería para equipar cada fenómeno.', 24, 255);
     } else {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(6, 6, 500, 308);
+
       ctx.fillStyle = '#fde047';
       ctx.font = 'bold 22px "Outfit", sans-serif';
       ctx.fillText('MÉTODO CIENTÍFICO EN EL LAB', 24, 40);
@@ -665,9 +770,9 @@
 
   function buildInteractiveHomeBook(): THREE.Group {
     const group = new THREE.Group();
-    group.position.set(1.62, 0.02, 0.48);
+    group.position.set(3.25, 0.02, 0.28);
     group.scale.setScalar(0.72);
-    group.rotation.y = -0.42;
+    group.rotation.y = -0.28;
     group.userData = { isHomeBook: true };
 
     const standGeo = new THREE.BoxGeometry(0.72, 0.06, 0.50);
@@ -750,60 +855,86 @@
   }
 
   /**
-   * Construye la Gradilla de Tubos de Ensayo de Referencia Colorimétrica (pH 2, 5, 7, 9, 12)
-   * y el entorno arquitectónico con pósters didácticos al fondo.
+   * Construye el fondo arquitectónico panorámico que abarca las 3 estaciones de trabajo
+   * (Química, Biología y Ciencias STEAM) con sus respectivos letreros y pósters temáticos.
    */
   function buildLabEnvironmentAndRack(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const group = new THREE.Group();
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x193340, roughness: 0.9 });
-    const wall = roundedBox(5.6, 3.1, 0.12, 0.04, wallMat);
-    wall.position.set(0, 0.95, -1.5);
+    const wall = roundedBox(14.8, 3.6, 0.14, 0.04, wallMat);
+    wall.position.set(0, 1.25, -1.55);
     group.add(wall);
 
     const panelMat = new THREE.MeshStandardMaterial({ color: 0x203e4b, roughness: 0.85 });
-    [-1.7, 0, 1.7].forEach((x) => {
-      const panel = roundedBox(1.62, 2.12, 0.02, 0.01, panelMat);
-      panel.position.set(x, 1.1, -1.425);
+    [-3.5, 0, 3.5].forEach((x) => {
+      const panel = roundedBox(3.4, 2.5, 0.02, 0.01, panelMat);
+      panel.position.set(x, 1.25, -1.47);
       group.add(panel);
     });
 
-    // Pósters científicos en la pared
-    const poster1 = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.15, 0.68),
+    // 1. SECCIÓN DE BIOLOGÍA Y MICROSCOPÍA (IZQUIERDA: x = -3.5)
+    const posterBio = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.25, 0.75),
+      new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('biology_cells') })
+    );
+    posterBio.position.set(-3.5, 1.85, -1.45);
+    group.add(posterBio);
+
+    const signBio = textPlate('SYMBIOLAB  /  2. BIOLOGÍA & MICROSCOPÍA', 1.75, 0.15, '#86efac', '#14532d');
+    signBio.position.set(-3.5, 2.38, -1.45);
+    group.add(signBio);
+
+    // 2. SECCIÓN DE QUÍMICA ANALÍTICA (CENTRO: x = 0)
+    const posterChem1 = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.05, 0.68),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('ph_scale') })
     );
-    poster1.position.set(-1.7, 1.82, -1.405);
-    group.add(poster1);
+    posterChem1.position.set(-0.72, 1.85, -1.45);
+    group.add(posterChem1);
 
-    const poster2 = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.15, 0.68),
+    const posterChem2 = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.05, 0.68),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('lab_rules') })
     );
-    poster2.position.set(1.7, 1.82, -1.405);
-    group.add(poster2);
+    posterChem2.position.set(0.72, 1.85, -1.45);
+    group.add(posterChem2);
 
+    const signChem = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA & REACCIONES', 1.95, 0.15, '#93c5fd', '#1e293b');
+    signChem.position.set(0, 2.38, -1.45);
+    group.add(signChem);
+
+    // Repisa en Química con frascos reactivos
     const shelfMat = new THREE.MeshStandardMaterial({ color: 0x40545c, roughness: 0.45, metalness: 0.35 });
-    const shelf = roundedBox(4.2, 0.04, 0.3, 0.015, shelfMat);
-    shelf.position.set(0, 1.38, -1.27);
+    const shelf = roundedBox(3.2, 0.04, 0.3, 0.015, shelfMat);
+    shelf.position.set(0, 1.38, -1.35);
     group.add(shelf);
     const diffuser = new THREE.Mesh(
-      new THREE.BoxGeometry(3.95, 0.008, 0.016),
+      new THREE.BoxGeometry(3.0, 0.008, 0.016),
       new THREE.MeshBasicMaterial({ color: 0xaddbd7 })
     );
-    diffuser.position.set(0, 1.353, -1.13);
+    diffuser.position.set(0, 1.353, -1.21);
     group.add(diffuser);
     const amber = new THREE.MeshStandardMaterial({ color: 0x5b4630, roughness: 0.3, metalness: 0.1 });
-    [-1.6, -1.3, 1.55].forEach((x) => {
+    [-1.2, -0.9, 0.9, 1.2].forEach((x) => {
       const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.21, 20), amber);
-      bottle.position.set(x, 1.505, -1.28);
+      bottle.position.set(x, 1.505, -1.35);
       group.add(bottle);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.041, 0.041, 0.04, 16), shelfMat);
-      cap.position.set(x, 1.63, -1.28);
+      cap.position.set(x, 1.63, -1.35);
       group.add(cap);
     });
-    const sign = textPlate('SYMBIOLAB  /  OBSERVA Y DESCUBRE', 1.38, 0.16, '#c4d8da', '#203e4b');
-    sign.position.set(0, 1.78, -1.4);
-    group.add(sign);
+
+    // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 3.5)
+    const posterSteam = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.25, 0.75),
+      new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('steam_physics') })
+    );
+    posterSteam.position.set(3.5, 1.85, -1.45);
+    group.add(posterSteam);
+
+    const signSteam = textPlate('SYMBIOLAB  /  3. CIENCIAS STEAM & FÍSICA', 1.75, 0.15, '#fde047', '#713f12');
+    signSteam.position.set(3.5, 2.38, -1.45);
+    group.add(signSteam);
 
     // Gradilla de 5 Tubos de Ensayo (altura 0.34 u, proporcional frente al microscopio de 1.50 u)
     const rack = new THREE.Group();
@@ -868,6 +999,124 @@
 
     interactiveToolGroups.push(rack);
     group.add(rack);
+    return group;
+  }
+
+  /**
+   * Construye el conjunto de instrumentación y reactivos especializados para la Estación de Biología
+   * (Bandeja con 6 portaobjetos, cubreobjetos, tinciones de Lugol/Azul de Metileno, frasco de aceite y placa Petri).
+   */
+  function buildBiologyWorkstationAccessories(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
+    const group = new THREE.Group();
+    group.position.set(-3.5, 0, 0.15);
+
+    // 1. Bandeja de madera pulida con 6 portaobjetos de muestras preparadas
+    const trayGroup = new THREE.Group();
+    trayGroup.position.set(-0.75, 0.015, 0.18);
+    const trayBase = roundedBox(0.48, 0.024, 0.62, 0.01, new THREE.MeshStandardMaterial({ color: 0x2b1d14, roughness: 0.6 }));
+    trayGroup.add(trayBase);
+
+    const slideSpecs: { id: MicroscopeSpecimenId; name: string; color: number }[] = [
+      { id: 'onion_lugol', name: 'Cebolla + Lugol', color: 0xd97706 },
+      { id: 'elodea_chloroplasts', name: 'Elodea (Cloroplastos)', color: 0x16a34a },
+      { id: 'blood_smear', name: 'Frotis Sanguíneo', color: 0xdc2626 },
+      { id: 'tea_microplastics', name: 'Microplásticos Té', color: 0x4c1d95 },
+      { id: 'clay_nacl_crystals', name: 'Halita NaCl & Arcilla', color: 0xc2410c },
+      { id: 'reactor_live', name: 'Reactor Químico Vivo', color: 0x10b981 }
+    ];
+
+    slideSpecs.forEach((spec, i) => {
+      const z = -0.22 + i * 0.088;
+      const slideMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.008, 0.065),
+        glassMaterial
+      );
+      slideMesh.position.set(0, 0.016, z);
+      slideMesh.userData = { toolId: 'microscope_slide', specimenId: spec.id };
+      trayGroup.add(slideMesh);
+
+      const specimenSpot = new THREE.Mesh(
+        new THREE.CircleGeometry(0.018, 16),
+        new THREE.MeshBasicMaterial({ color: spec.color, side: THREE.DoubleSide })
+      );
+      specimenSpot.rotation.x = -Math.PI / 2;
+      specimenSpot.position.set(0.04, 0.021, z);
+      trayGroup.add(specimenSpot);
+
+      const label = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.08, 0.05),
+        new THREE.MeshBasicMaterial({ color: 0xf1f5f9 })
+      );
+      label.rotation.x = -Math.PI / 2;
+      label.position.set(-0.13, 0.021, z);
+      trayGroup.add(label);
+    });
+    group.add(trayGroup);
+
+    // 2. Frasco ámbar de Aceite de Inmersión (n = 1.515)
+    const amberGlassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x451a03,
+      roughness: 0.2,
+      transmission: 0.6,
+      transparent: true,
+      thickness: 0.05
+    });
+    const oilBottle = new THREE.Group();
+    oilBottle.position.set(-0.45, 0.015, -0.45);
+    oilBottle.userData = { toolId: 'immersion_oil' };
+    const bottleBody = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.12, 20), amberGlassMat);
+    bottleBody.position.y = 0.06;
+    oilBottle.add(bottleBody);
+    const dropperCap = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.032, 0.055, 16), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 }));
+    dropperCap.position.y = 0.145;
+    oilBottle.add(dropperCap);
+    const oilLabel = textPlate('ACEITE n=1.515', 0.16, 0.05, '#fef08a', '#1e1b4b');
+    oilLabel.position.set(0, 0.06, 0.044);
+    oilBottle.add(oilLabel);
+    interactiveToolGroups.push(oilBottle);
+    group.add(oilBottle);
+
+    // 3. Frascos de Tinciones Biológicas (Lugol y Azul de Metileno)
+    const lugolBottle = new THREE.Group();
+    lugolBottle.position.set(0.48, 0.015, -0.45);
+    const lugolBody = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.046, 0.13, 20), amberGlassMat);
+    lugolBody.position.y = 0.065;
+    lugolBottle.add(lugolBody);
+    const lugolCap = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.035, 16), new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 }));
+    lugolCap.position.y = 0.145;
+    lugolBottle.add(lugolCap);
+    const lugolLabel = textPlate('LUGOL (I₂/KI)', 0.16, 0.05, '#ffffff', '#78350f');
+    lugolLabel.position.set(0, 0.065, 0.048);
+    lugolBottle.add(lugolLabel);
+    group.add(lugolBottle);
+
+    const methBottle = new THREE.Group();
+    methBottle.position.set(0.72, 0.015, -0.45);
+    const blueMat = new THREE.MeshPhysicalMaterial({ color: 0x1e3a8a, roughness: 0.2, transmission: 0.65, transparent: true, thickness: 0.05 });
+    const methBody = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.046, 0.13, 20), blueMat);
+    methBody.position.y = 0.065;
+    methBottle.add(methBody);
+    const methCap = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.035, 16), new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.5 }));
+    methCap.position.y = 0.145;
+    methBottle.add(methCap);
+    const methLabel = textPlate('AZUL METILENO', 0.16, 0.05, '#ffffff', '#1e3a8a');
+    methLabel.position.set(0, 0.065, 0.048);
+    methBottle.add(methLabel);
+    group.add(methBottle);
+
+    // 4. Placa de Petri de Borosilicato con pinzas finas
+    const petriGroup = new THREE.Group();
+    petriGroup.position.set(0.62, 0.015, 0.25);
+    const petriDish = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.022, 32), glassMaterial);
+    petriDish.position.y = 0.011;
+    petriGroup.add(petriDish);
+    const tweezerMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95, roughness: 0.15 });
+    const tweezers = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.008, 0.22), tweezerMat);
+    tweezers.rotation.y = 0.42;
+    tweezers.position.set(0.04, 0.025, 0);
+    petriGroup.add(tweezers);
+    group.add(petriGroup);
+
     return group;
   }
 
@@ -1853,8 +2102,8 @@
    */
   function buildClassifiedComponentsCabinet(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const cabinet = new THREE.Group();
-    cabinet.position.set(1.76, 0, -0.44);
-    cabinet.rotation.y = -0.46;
+    cabinet.position.set(4.2, 0, -0.32);
+    cabinet.rotation.y = -0.42;
 
     const woodDarkMat = new THREE.MeshStandardMaterial({
       color: 0x3b1d0a,
@@ -2552,6 +2801,20 @@
     controls.enablePan = false;
     controls.update();
 
+    // Controlador de Personaje en Primera Persona (Pasear libremente por el Laboratorio)
+    fpController = new FirstPersonController(camera, renderer.domElement);
+    fpController.attach();
+
+    function onGlobalShortcuts(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'KeyV') {
+        labStore.toggleFirstPersonWalk();
+      } else if (e.code === 'KeyE' && labStore.isFirstPersonWalking && labStore.nearbyStationPrompt) {
+        labStore.enterStationFromWalk(labStore.nearbyStationPrompt);
+      }
+    }
+    window.addEventListener('keydown', onGlobalShortcuts);
+
     // Iluminación
     const ambientLight = new THREE.HemisphereLight(0xd7e9ed, 0x293b43, 1.35);
     scene.add(ambientLight);
@@ -2567,10 +2830,10 @@
     rimLight.position.set(-2.5, 3.0, -2.0);
     scene.add(rimLight);
 
-    // Luz cálida focalizada sobre el Libro 3D a la derecha
-    const bookSpotLight = new THREE.SpotLight(0xfbbf24, 5.5, 5, Math.PI / 4, 0.6);
-    bookSpotLight.position.set(1.6, 1.8, 1.1);
-    bookSpotLight.target.position.set(1.52, 0, 0.34);
+    // Luz cálida focalizada sobre la Estación STEAM
+    const bookSpotLight = new THREE.SpotLight(0xfef3c7, 6.0, 7, Math.PI / 4, 0.5);
+    bookSpotLight.position.set(3.5, 2.4, 1.2);
+    bookSpotLight.target.position.set(3.5, 0.2, 0.2);
     scene.add(bookSpotLight);
     scene.add(bookSpotLight.target);
 
@@ -2578,36 +2841,90 @@
     underGlowLight.position.set(0, 0.25, 0);
     scene.add(underGlowLight);
 
-    // Mesa de laboratorio compuesta
-    const benchMat = new THREE.MeshStandardMaterial({ color: 0x819397, roughness: 0.58, metalness: 0.15 });
-    const bench = roundedBox(5.1, 0.16, 2.65, 0.06, benchMat);
-    bench.position.y = -0.08;
-    scene.add(bench);
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x334c59, roughness: 0.4, metalness: 0.45 });
-    const underside = roundedBox(4.95, 0.08, 2.48, 0.035, trimMat);
-    underside.position.y = -0.2;
-    scene.add(underside);
-    [-2.15, 2.15].forEach((x) => {
-      const leg = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      leg.position.set(x, -0.88, 0.7);
-      scene.add(leg);
+
+    // =========================================================================
+    // 1. MESA CENTRAL: QUÍMICA ANALÍTICA Y REACCIONES (x = 0)
+    // =========================================================================
+    const chemBenchMat = new THREE.MeshStandardMaterial({ color: 0x819397, roughness: 0.58, metalness: 0.15 });
+    const chemBench = roundedBox(3.4, 0.16, 2.2, 0.06, chemBenchMat);
+    chemBench.position.set(0, -0.08, 0);
+    scene.add(chemBench);
+    const chemTrim = roundedBox(3.28, 0.08, 2.08, 0.035, trimMat);
+    chemTrim.position.set(0, -0.2, 0);
+    scene.add(chemTrim);
+    [-1.5, 1.5].forEach((x) => {
+      const legFront = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      legFront.position.set(x, -0.88, 0.7);
+      scene.add(legFront);
+      const legBack = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      legBack.position.set(x, -0.88, -0.7);
+      scene.add(legBack);
     });
-    const mat = roundedBox(
-      4.24,
-      0.008,
-      1.97,
-      0.003,
-      new THREE.MeshStandardMaterial({ color: 0x253d47, roughness: 0.95 })
-    );
-    mat.position.set(0, 0.004, 0.02);
-    scene.add(mat);
-    const matLabel = textPlate('SYMBIOLAB  /  QUÍMICA VIRTUAL', 0.88, 0.055, '#819da7', '#253d47');
-    matLabel.rotation.x = -Math.PI / 2;
-    matLabel.position.set(-1.15, 0.009, -0.86);
-    scene.add(matLabel);
+    const chemMat = roundedBox(3.0, 0.008, 1.8, 0.003, new THREE.MeshStandardMaterial({ color: 0x253d47, roughness: 0.95 }));
+    chemMat.position.set(0, 0.004, 0.02);
+    scene.add(chemMat);
+    const chemLabel = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA', 1.05, 0.055, '#819da7', '#253d47');
+    chemLabel.rotation.x = -Math.PI / 2;
+    chemLabel.position.set(-0.95, 0.009, -0.86);
+    scene.add(chemLabel);
+
+    // =========================================================================
+    // 2. MESA LATERAL IZQUIERDA: BIOLOGÍA Y MICROSCOPÍA ÓPTICA (x = -3.5)
+    // =========================================================================
+    const bioBenchMat = new THREE.MeshStandardMaterial({ color: 0x22332c, roughness: 0.45, metalness: 0.25 });
+    const bioBench = roundedBox(2.8, 0.16, 2.0, 0.06, bioBenchMat);
+    bioBench.position.set(-3.5, -0.08, 0.15);
+    scene.add(bioBench);
+    const bioTrim = roundedBox(2.68, 0.08, 1.88, 0.035, trimMat);
+    bioTrim.position.set(-3.5, -0.2, 0.15);
+    scene.add(bioTrim);
+    [-4.7, -2.3].forEach((x) => {
+      const legFront = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      legFront.position.set(x, -0.88, 0.75);
+      scene.add(legFront);
+      const legBack = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      legBack.position.set(x, -0.88, -0.45);
+      scene.add(legBack);
+    });
+    const bioMat = roundedBox(2.4, 0.008, 1.6, 0.003, new THREE.MeshStandardMaterial({ color: 0x16281e, roughness: 0.95 }));
+    bioMat.position.set(-3.5, 0.004, 0.15);
+    scene.add(bioMat);
+    const bioLabel = textPlate('SYMBIOLAB  /  2. BIOLOGÍA & MICROSCOPÍA', 1.15, 0.055, '#86efac', '#16281e');
+    bioLabel.rotation.x = -Math.PI / 2;
+    bioLabel.position.set(-3.5, 0.009, -0.68);
+    scene.add(bioLabel);
+
+    // =========================================================================
+    // 3. MESA LATERAL DERECHA: CIENCIAS STEAM Y FÍSICA (x = 3.5)
+    // =========================================================================
+    const steamBenchMat = new THREE.MeshStandardMaterial({ color: 0x3d3528, roughness: 0.5, metalness: 0.2 });
+    const steamBench = roundedBox(2.8, 0.16, 2.0, 0.06, steamBenchMat);
+    steamBench.position.set(3.5, -0.08, 0.15);
+    scene.add(steamBench);
+    const steamTrim = roundedBox(2.68, 0.08, 1.88, 0.035, trimMat);
+    steamTrim.position.set(3.5, -0.2, 0.15);
+    scene.add(steamTrim);
+    [2.3, 4.7].forEach((x) => {
+      const legFront = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      legFront.position.set(x, -0.88, 0.75);
+      scene.add(legFront);
+      const legBack = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
+      legBack.position.set(x, -0.88, -0.45);
+      scene.add(legBack);
+    });
+    const steamMat = roundedBox(2.4, 0.008, 1.6, 0.003, new THREE.MeshStandardMaterial({ color: 0x2a2214, roughness: 0.95 }));
+    steamMat.position.set(3.5, 0.004, 0.15);
+    scene.add(steamMat);
+    const steamLabel = textPlate('SYMBIOLAB  /  3. CIENCIAS STEAM & FÍSICA', 1.15, 0.055, '#fde047', '#2a2214');
+    steamLabel.rotation.x = -Math.PI / 2;
+    steamLabel.position.set(3.5, 0.009, -0.68);
+    scene.add(steamLabel);
+
+    // Suelo panorámico del laboratorio
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(30, 30),
-      new THREE.MeshStandardMaterial({ color: 0x172a34, roughness: 1 })
+      new THREE.PlaneGeometry(60, 40),
+      new THREE.MeshStandardMaterial({ color: 0x111c24, roughness: 0.95 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -1.55;
@@ -2662,41 +2979,39 @@
     interactiveToolGroups.push(microscope);
     scene.add(microscope);
 
-    // Pedestal de enfoque (vidrio grafito esmerilado) que aparece bajo el microscopio al elevarlo
+    // Base antivibración permanente bajo el microscopio en la Estación de Biología
     microscopeFocusPedestal = new THREE.Group();
-    microscopeFocusPedestal.position.set(MICROSCOPE_FOCUS_POS.x, 0, MICROSCOPE_FOCUS_POS.z);
+    microscopeFocusPedestal.position.set(MICROSCOPE_BIOLOGY_POS.x, 0, MICROSCOPE_BIOLOGY_POS.z);
     const pedestalTop = roundedBox(
-      0.78,
-      0.04,
-      0.78,
+      0.72,
+      0.03,
+      0.72,
       0.018,
-      new THREE.MeshPhysicalMaterial({ color: 0x1a1c22, roughness: 0.35, metalness: 0.4, clearcoat: 0.8 })
+      new THREE.MeshPhysicalMaterial({ color: 0x16181f, roughness: 0.35, metalness: 0.4, clearcoat: 0.8 })
     );
-    pedestalTop.position.y = MICROSCOPE_FOCUS_POS.y - 0.02;
+    pedestalTop.position.y = 0.015;
     microscopeFocusPedestal.add(pedestalTop);
-    const pedestalColumn = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.16, 0.22, MICROSCOPE_FOCUS_POS.y - 0.04, 40),
-      new THREE.MeshStandardMaterial({ color: 0x2a2d34, roughness: 0.3, metalness: 0.75 })
-    );
-    pedestalColumn.position.y = (MICROSCOPE_FOCUS_POS.y - 0.04) / 2;
-    microscopeFocusPedestal.add(pedestalColumn);
     const pedestalHalo = new THREE.Mesh(
-      new THREE.RingGeometry(0.42, 0.45, 64),
-      new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+      new THREE.RingGeometry(0.40, 0.43, 64),
+      new THREE.MeshBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
     );
     pedestalHalo.rotation.x = -Math.PI / 2;
-    pedestalHalo.position.y = 0.012;
+    pedestalHalo.position.y = 0.032;
     microscopeFocusPedestal.add(pedestalHalo);
-    microscopeFocusPedestal.scale.setScalar(0.001);
-    microscopeFocusPedestal.visible = false;
+    microscopeFocusPedestal.scale.setScalar(1);
+    microscopeFocusPedestal.visible = true;
     scene.add(microscopeFocusPedestal);
 
-    // Luz de estudio suave sobre la estación óptica
-    const microscopeKeyLight = new THREE.SpotLight(0xffffff, 0, 4, Math.PI / 5, 0.6);
-    microscopeKeyLight.position.set(MICROSCOPE_FOCUS_POS.x + 0.6, 2.2, MICROSCOPE_FOCUS_POS.z + 0.9);
-    microscopeKeyLight.target.position.set(MICROSCOPE_FOCUS_POS.x, 0.6, MICROSCOPE_FOCUS_POS.z);
+    // Luz de estudio sobre la estación óptica de Biología
+    const microscopeKeyLight = new THREE.SpotLight(0xf0fdf4, 6.0, 7, Math.PI / 4, 0.5);
+    microscopeKeyLight.position.set(MICROSCOPE_BIOLOGY_POS.x + 0.5, 2.5, MICROSCOPE_BIOLOGY_POS.z + 1.0);
+    microscopeKeyLight.target.position.copy(MICROSCOPE_BIOLOGY_POS);
     scene.add(microscopeKeyLight);
     scene.add(microscopeKeyLight.target);
+
+    // Instrumentación y accesorios especializados de la mesa de Biología
+    const biologyAccessories = buildBiologyWorkstationAccessories(borosilicateGlassMat);
+    scene.add(biologyAccessories);
 
     // Matraces Erlenmeyer (Izquierda y Derecha)
     const hclRig = buildErlenmeyerFlask(
@@ -2726,6 +3041,11 @@
     // Mueble 3D Clasificado de Componentes STEAM (Prolongo & Pinto · RSEQ / Scientix)
     const componentsCabinet = buildClassifiedComponentsCabinet(borosilicateGlassMat);
     scene.add(componentsCabinet);
+
+    // Infraestructura Integral de Bioseguridad y Normativa Oficial (Ducha, Lavaojos, Extintor, Vestidor EPP)
+    const safetyInteractiveItems: { mesh: THREE.Object3D; hit: SafetyInteractiveHit }[] = [];
+    safetyInfrastructureGroup = buildCompleteLabSafetyInfrastructure(safetyInteractiveItems);
+    scene.add(safetyInfrastructureGroup);
 
     const lid = new THREE.Mesh(
       new THREE.CylinderGeometry(0.415, 0.415, 0.018, 48),
@@ -2843,9 +3163,10 @@
     ):
       | { type: 'flask'; id: 'hcl' | 'naoh' }
       | { type: 'book' }
-      | { type: 'tool'; toolId: LabToolInfo['id'] }
+      | { type: 'tool'; toolId: LabToolInfo['id']; specimenId?: MicroscopeSpecimenId }
       | { type: 'cabinet'; compId: string }
       | { type: 'microscopePart'; partId: MicroscopePartId }
+      | { type: 'safety'; safetyHit: SafetyInteractiveHit }
       | null {
       updatePointer(e);
       raycaster.setFromCamera(pointer, camera);
@@ -2857,6 +3178,7 @@
             flasks.hcl.group,
             flasks.naoh.group,
             bookGroup,
+            ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
             ...interactiveToolGroups,
             ...cabinetItemGroups
           ];
@@ -2869,11 +3191,15 @@
       while (curr) {
         if (curr.userData?.microscopePart && microActive)
           return { type: 'microscopePart', partId: curr.userData.microscopePart };
+        if (curr.userData?.specimenId)
+          return { type: 'tool', toolId: 'microscope_slide' as LabToolInfo['id'], specimenId: curr.userData.specimenId };
         if (curr.userData?.flaskId) return { type: 'flask', id: curr.userData.flaskId };
         if (curr.userData?.isHomeBook) return { type: 'book' };
         if (curr.userData?.toolId) return { type: 'tool', toolId: curr.userData.toolId };
         if (curr.userData?.cabinetComponentId)
           return { type: 'cabinet', compId: curr.userData.cabinetComponentId };
+        if (curr.userData?.safetyHit)
+          return { type: 'safety', safetyHit: curr.userData.safetyHit as SafetyInteractiveHit };
         curr = curr.parent;
       }
       return null;
@@ -2890,29 +3216,73 @@
       const hit = checkInteractiveHit(e);
       if (!hit) return;
 
+      if (hit.type === 'safety') {
+        const safety = hit.safetyHit;
+        if (safety.type === 'safety_equipment') {
+          if (safety.subItem === 'coat') {
+            labStore.toggleSafetyCoat();
+          } else if (safety.subItem === 'goggles') {
+            labStore.toggleSafetyGoggles();
+          } else if (safety.subItem === 'nitrile_gloves') {
+            labStore.setSafetyGloves(labStore.safetyGlovesType === 'nitrile_blue' ? 'none' : 'nitrile_blue');
+          } else if (safety.subItem === 'latex_gloves') {
+            labStore.setSafetyGloves(labStore.safetyGlovesType === 'latex_white' ? 'none' : 'latex_white');
+          }
+        } else if (safety.type === 'emergency_shower') {
+          labStore.triggerEmergencyShower();
+        } else if (safety.type === 'eyewash') {
+          labStore.triggerEmergencyEyewash();
+        } else if (safety.type === 'fire_extinguisher') {
+          labStore.triggerFireExtinguisher();
+        }
+        return;
+      }
+
       if (hit.type === 'microscopePart') {
+        labStore.setStation('biologia');
         handleMicroscopePartClick(hit.partId, e.shiftKey);
         return;
       }
 
       if (hit.type === 'book') {
         labSound.playBookOpen();
+        labStore.setStation('steam');
         labStore.isHomeBookOpen = true;
         return;
       }
 
       if (hit.type === 'tool') {
+        if (hit.toolId === 'microscope') {
+          labStore.setStation('biologia');
+          labStore.openMicroscope();
+          return;
+        }
+        if (hit.toolId === ('microscope_slide' as LabToolInfo['id']) && hit.specimenId) {
+          labSound.playInstrumentClick();
+          labStore.setStation('biologia');
+          labStore.selectMicroscopeSpecimen(hit.specimenId);
+          return;
+        }
+        if (hit.toolId === ('immersion_oil' as LabToolInfo['id'])) {
+          labSound.playInstrumentClick();
+          labStore.setStation('biologia');
+          labStore.applyMicroscopeImmersionOil();
+          return;
+        }
+        labStore.setStation('quimica');
         handleToolInteraction(hit.toolId);
         return;
       }
 
       if (hit.type === 'cabinet') {
         labSound.playInstrumentClick();
+        labStore.setStation('steam');
         labStore.selectCabinetComponent(hit.compId as CabinetComponentInfo['id']);
         return;
       }
 
       if (hit.type === 'flask') {
+        labStore.setStation('quimica');
         releaseGesture();
         labStore.selectReagent(hit.id);
         draggedFlaskId = hit.id;
@@ -3433,56 +3803,46 @@
         posAttr.needsUpdate = true;
       }
 
-      // ===================== MICROSCOPIO: ELEVACIÓN, ENCUADRE Y MECÁNICA ÓPTICA =====================
+      // ===================== CONTROLADOR 1ª PERSONA O CINEMÁTICA DE ESTACIÓN =====================
+      if (labStore.isFirstPersonWalking && fpController) {
+        if (controls.enabled) controls.enabled = false;
+        if (!fpController.enabled) fpController.enable(camera.position);
+        fpController.update(dt);
+        labStore.nearbyStationPrompt = fpController.getNearbyStation();
+      } else {
+        if (fpController?.enabled) fpController.disable();
+
+        if (isTransitioningStation) {
+          const targetPose = (labStore.activeStation === 'biologia' && labStore.isMicroscopeActive)
+            ? BIOLOGY_MICROSCOPE_FOCUS_POSE
+            : (STATION_VIEW_POSES[labStore.activeStation] ?? STATION_VIEW_POSES.quimica);
+
+          const k = 1 - Math.exp(-(isReducedMotion ? 40 : 5.5) * dt);
+          camera.position.lerp(targetPose.camPos, k);
+          controls.target.lerp(targetPose.target, k);
+          controls.update();
+
+          if (
+            camera.position.distanceTo(targetPose.camPos) < 0.015 &&
+            controls.target.distanceTo(targetPose.target) < 0.015
+          ) {
+            camera.position.copy(targetPose.camPos);
+            controls.target.copy(targetPose.target);
+            controls.update();
+            isTransitioningStation = false;
+          }
+        }
+      }
+
+      // ===================== MICROSCOPIO FIJO EN ESTACIÓN DE BIOLOGÍA =====================
       if (microscopeGroup) {
-        const microActive = labStore.isMicroscopeActive;
-        const k = 1 - Math.exp(-(isReducedMotion ? 30 : 5) * dt);
+        const k = 1 - Math.exp(-(isReducedMotion ? 30 : 6) * dt);
+        microscopeGroup.position.copy(MICROSCOPE_BIOLOGY_POS);
+        microscopeGroup.rotation.y = MICROSCOPE_BIOLOGY_ROT_Y;
 
-        // Trayectoria en arco: sube por encima de los demás objetos y aterriza sobre el pedestal
-        const destPos = microActive ? MICROSCOPE_FOCUS_POS : MICROSCOPE_HOME_POS;
-        const travelLeft = microscopeGroup.position.distanceTo(destPos);
-        microscopeGroup.position.lerp(destPos, k);
-        microscopeGroup.position.y = Math.max(
-          microscopeGroup.position.y,
-          destPos.y + Math.min(0.35, travelLeft * 0.25)
-        );
-        microscopeGroup.position.y = THREE.MathUtils.lerp(microscopeGroup.position.y, destPos.y, k * 0.6);
-        microscopeGroup.rotation.y = THREE.MathUtils.lerp(
-          microscopeGroup.rotation.y,
-          microActive ? MICROSCOPE_FOCUS_ROT_Y : MICROSCOPE_HOME_ROT_Y,
-          k
-        );
-
-        // Pedestal de vidrio grafito
-        microscopeFocusPedestal.visible = microActive || microscopeFocusPedestal.scale.x > 0.01;
-        const pedTarget = microActive ? 1 : 0.001;
-        microscopeFocusPedestal.scale.setScalar(
-          THREE.MathUtils.lerp(microscopeFocusPedestal.scale.x, pedTarget, k)
-        );
-        microscopeKeyLight.intensity = THREE.MathUtils.lerp(
-          microscopeKeyLight.intensity,
-          microActive ? 9 : 0,
-          k
-        );
-
-        // Encuadre de cámara (deja el microscopio a la izquierda y la estación óptica a la derecha)
-        if (microActive && !microscopeWasActive) {
-          homeCameraPos.copy(camera.position);
-          homeCameraTarget.copy(controls.target);
-          controls.enableZoom = false;
-        }
-        if (!microActive && microscopeWasActive) {
-          cameraReturnTimer = 1.4;
-          controls.enableZoom = true;
-        }
-        microscopeWasActive = microActive;
-        if (microActive) {
-          camera.position.lerp(focusCameraPos, k * 0.8);
-          controls.target.lerp(focusCameraTarget, k * 0.8);
-        } else if (cameraReturnTimer > 0) {
-          cameraReturnTimer -= dt;
-          camera.position.lerp(homeCameraPos, k * 0.8);
-          controls.target.lerp(homeCameraTarget, k * 0.8);
+        if (microscopeKeyLight) {
+          const targetIntensity = labStore.activeStation === 'biologia' ? (labStore.isMicroscopeActive ? 8.5 : 5.5) : 1.5;
+          microscopeKeyLight.intensity = THREE.MathUtils.lerp(microscopeKeyLight.intensity, targetIntensity, k);
         }
 
         // Revólver: gira por el camino más corto hasta el objetivo activo (con retén de clic)
@@ -3541,7 +3901,7 @@
         );
       }
 
-      if (controls.enabled) controls.update(dt);
+      if (!labStore.isFirstPersonWalking && controls.enabled) controls.update(dt);
       renderer?.render(scene, camera);
     }
 
@@ -3567,6 +3927,8 @@
       renderer?.domElement.removeEventListener('wheel', onMicroscopeWheel);
       window.removeEventListener('blur', cancelInteraction);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('keydown', onGlobalShortcuts);
+      fpController?.detach();
       labStore.activePourAnim = null;
       resizeObserver.disconnect();
     };

@@ -6,6 +6,43 @@ import type { GestureState } from '$lib/input/hand_gestures';
 import type { Reagent, BeakerState, TrialRecord, InputMode, LabSession } from '$lib/core/contracts';
 
 export type EducationLevel = 'primaria' | 'secundaria';
+export type LabStationId = 'quimica' | 'biologia' | 'steam';
+
+export interface LabStationInfo {
+  id: LabStationId;
+  name: string;
+  shortName: string;
+  icon: string;
+  badge: string;
+  description: string;
+}
+
+export const LAB_STATIONS: Record<LabStationId, LabStationInfo> = {
+  quimica: {
+    id: 'quimica',
+    name: 'Química Analítica & Reacciones',
+    shortName: 'Química',
+    icon: '🧪',
+    badge: 'Neutralización & pH',
+    description: 'Mesa con reactor central, agitador magnético, bureta volumétrica, matraces de ácidos y bases, y sensores de pH.'
+  },
+  biologia: {
+    id: 'biologia',
+    name: 'Biología Celular & Microscopía',
+    shortName: 'Biología',
+    icon: '🔬',
+    badge: 'Óptica DIN Siedentopf',
+    description: 'Mesa dedicada con microscopio compuesto binocular (4x–100x), portaobjetos preparados, cubreobjetos y tinciones biológicas.'
+  },
+  steam: {
+    id: 'steam',
+    name: 'Ciencias Cotidianas & Física STEAM',
+    shortName: 'Ciencias STEAM',
+    icon: '📚',
+    badge: 'Experimentos Prolongo & Pinto',
+    description: 'Mesa de investigación con el Manual 3D, estantería de materiales clasificados y fenómenos de termodinámica, convección y tensión superficial.'
+  }
+};
 
 export type SteamVisualEffect =
   | 'none'
@@ -14,6 +51,15 @@ export type SteamVisualEffect =
   | 'ice_convection'
   | 'tea_complex'
   | 'botijo_cooling';
+
+export type SafetyGlovesType = 'none' | 'nitrile_blue' | 'latex_white';
+
+export interface SafetyProtocolAlert {
+  type: 'warning' | 'info' | 'success';
+  title: string;
+  message: string;
+  timestamp: number;
+}
 
 export type MicroscopeObjectivePower = 4 | 10 | 40 | 100;
 
@@ -1529,10 +1575,22 @@ export const EXPERIMENT_PRESETS: HomeExperimentPreset[] = [
 
 export class LabStore {
   isExplorationMode = $state(false);
+  activeStation = $state<LabStationId>('quimica');
+  stationRevision = $state<number>(0);
   activePresetId = $state<string>('chemistry-p0-acid-base');
   presetRevision = $state<number>(1);
   educationLevel = $state<EducationLevel>('secundaria');
   soundEnabled = $state<boolean>(true);
+
+  setStation(station: LabStationId) {
+    if (this.activeStation === station) return;
+    labSound.playInstrumentClick();
+    this.activeStation = station;
+    this.stationRevision++;
+    if (station !== 'biologia' && this.isMicroscopeActive) {
+      this.isMicroscopeActive = false;
+    }
+  }
 
   // Efecto visual STEAM en el vaso 3D y componente activo del Mueble 3D Clasificado
   activeSteamEffect = $state<SteamVisualEffect>('none');
@@ -1563,6 +1621,17 @@ export class LabStore {
   microscopeLampIntensity = $state<number>(0.85); // Reóstato Köhler 0.0 – 1.0
   microscopeDiaphragm = $state<number>(0.72); // Diafragma iris de Abbe 0.10 – 1.0
   microscopeImmersionOilApplied = $state<boolean>(false); // Gota de aceite n = 1.515 para 100x
+
+  // Protocolo de Bioseguridad y Equipo de Protección Personal (EPP - ISO 7010 & SGA)
+  safetyCoatEquipped = $state<boolean>(false);
+  safetyGogglesEquipped = $state<boolean>(false);
+  safetyGlovesType = $state<SafetyGlovesType>('none');
+  safetyStrictMode = $state<boolean>(false);
+  safetyAlert = $state<SafetyProtocolAlert | null>(null);
+
+  // Navegación Libre en 1ª Persona (Recorrer el Laboratorio con Movilidad WASD)
+  isFirstPersonWalking = $state<boolean>(false);
+  nearbyStationPrompt = $state<LabStationId | null>(null);
 
   reagents = $state<Reagent[]>([
     {
@@ -1692,6 +1761,8 @@ export class LabStore {
     this.selectedCabinetComponentId = componentId;
     if (!componentId) return;
     labSound.playInstrumentClick();
+    this.activeStation = 'steam';
+    this.stationRevision++;
     const comp = CABINET_COMPONENTS.find((c) => c.id === componentId);
     if (!comp) return;
 
@@ -1779,12 +1850,21 @@ export class LabStore {
 
   openMicroscope(partId?: MicroscopePartId) {
     labSound.playInstrumentClick();
+    this.activeStation = 'biologia';
+    this.stationRevision++;
     this.isMicroscopeActive = true;
     this.inspectedToolId = 'microscope';
     this.selectedCabinetComponentId = null;
     if (partId) {
       this.microscopeSelectedPartId = partId;
     }
+  }
+
+  openHomeBook() {
+    labSound.playBookOpen();
+    this.activeStation = 'steam';
+    this.stationRevision++;
+    this.isHomeBookOpen = true;
   }
 
   closeMicroscope() {
@@ -1875,6 +1955,151 @@ export class LabStore {
     labSound.playDrop();
     this.microscopeImmersionOilApplied = !this.microscopeImmersionOilApplied;
     this.microscopeSelectedPartId = 'objectives';
+  }
+
+  applyMicroscopeImmersionOil(applied?: boolean) {
+    labSound.playDrop();
+    if (applied !== undefined) {
+      this.microscopeImmersionOilApplied = applied;
+    } else {
+      this.microscopeImmersionOilApplied = !this.microscopeImmersionOilApplied;
+    }
+    this.microscopeSelectedPartId = 'objectives';
+  }
+
+  // --- MÉTODOS DE PROTOCOLO DE BIOSEGURIDAD & EPP ---
+  get isFullyProtected(): boolean {
+    return this.safetyCoatEquipped && this.safetyGogglesEquipped && this.safetyGlovesType !== 'none';
+  }
+
+  toggleSafetyCoat() {
+    labSound.playInstrumentClick();
+    this.safetyCoatEquipped = !this.safetyCoatEquipped;
+    this.checkSafetyStatus();
+  }
+
+  toggleSafetyGoggles() {
+    labSound.playInstrumentClick();
+    this.safetyGogglesEquipped = !this.safetyGogglesEquipped;
+    this.checkSafetyStatus();
+  }
+
+  setSafetyGloves(type: SafetyGlovesType) {
+    labSound.playInstrumentClick();
+    this.safetyGlovesType = type;
+    this.checkSafetyStatus();
+  }
+
+  equipAllPPE() {
+    labSound.playInstrumentClick();
+    this.safetyCoatEquipped = true;
+    this.safetyGogglesEquipped = true;
+    this.safetyGlovesType = this.activeStation === 'biologia' ? 'latex_white' : 'nitrile_blue';
+    this.setSafetyAlert(
+      '✅ EPP Completo Equipado',
+      'Bata blanca 100% algodón, gafas EN 166 y guantes de protección activados reglamentariamente.',
+      'success'
+    );
+  }
+
+  clearSafetyPPE() {
+    labSound.playInstrumentClick();
+    this.safetyCoatEquipped = false;
+    this.safetyGogglesEquipped = false;
+    this.safetyGlovesType = 'none';
+    this.setSafetyAlert('ℹ️ EPP Retirado', 'Has retirado el equipo de protección personal.', 'info');
+  }
+
+  setSafetyAlert(
+    title: string,
+    message: string,
+    type: 'warning' | 'info' | 'success' = 'warning'
+  ) {
+    this.safetyAlert = {
+      title,
+      message,
+      type,
+      timestamp: Date.now()
+    };
+  }
+
+  clearSafetyAlert() {
+    this.safetyAlert = null;
+  }
+
+  verifySafetyEquipmentForChemistry(): boolean {
+    if (!this.safetyGogglesEquipped || this.safetyGlovesType === 'none' || !this.safetyCoatEquipped) {
+      const missing: string[] = [];
+      if (!this.safetyCoatEquipped) missing.push('Bata');
+      if (!this.safetyGogglesEquipped) missing.push('Gafas EN 166');
+      if (this.safetyGlovesType === 'none') missing.push('Guantes de Nitrilo');
+
+      this.setSafetyAlert(
+        '⚠️ PROTOCOLO DE SEGURIDAD (SGA)',
+        `Manipulando reactivos corrosivos (${missing.join(', ')} pendientes). Equípalos en el vestidor o Dynamic Island.`,
+        'warning'
+      );
+      if (this.safetyStrictMode) return false;
+    }
+    return true;
+  }
+
+  triggerEmergencyShower() {
+    labSound.playDrop();
+    this.setSafetyAlert(
+      '🚿 DUCHA DE EMERGENCIA ACTIVADA',
+      'Flujo de descontaminación corporal iniciado (15 minutos requeridos según norma UNE-EN 15154).',
+      'info'
+    );
+  }
+
+  triggerEmergencyEyewash() {
+    labSound.playDrop();
+    this.setSafetyAlert(
+      '👀 LAVAOJOS DE EMERGENCIA ACTIVADO',
+      'Lavado ocular bilateral con chorro aireado templado (mantener párpados abiertos con los dedos).',
+      'info'
+    );
+  }
+
+  triggerFireExtinguisher() {
+    labSound.playInstrumentClick();
+    this.setSafetyAlert(
+      '🧯 EXTINTOR CO₂ INSPECCIONADO',
+      'Regla PASS: 1. Tirar el pasador · 2. Apuntar a la base de la llama · 3. Apretar la palanca · 4. Mover en abanico.',
+      'info'
+    );
+  }
+
+  toggleFirstPersonWalk(enable?: boolean) {
+    labSound.playInstrumentClick();
+    this.isFirstPersonWalking = enable !== undefined ? enable : !this.isFirstPersonWalking;
+    if (this.isFirstPersonWalking) {
+      this.isMicroscopeActive = false;
+      this.isHomeBookOpen = false;
+      this.inspectedToolId = null;
+      this.setSafetyAlert(
+        '🚶 Modo Paseo en 1ª Persona Activo',
+        'Usa teclas W, A, S, D para caminar, Shift para trote suave y arrastra con el ratón para mirar libremente. Tecla V o botón en pantalla para regresar a la mesa.',
+        'info'
+      );
+    }
+  }
+
+  enterStationFromWalk(stationId: LabStationId) {
+    labSound.playInstrumentClick();
+    this.isFirstPersonWalking = false;
+    this.setStation(stationId);
+  }
+
+  private checkSafetyStatus() {
+    if (this.isFullyProtected) {
+      this.setSafetyAlert(
+        '🛡️ Bioseguridad Certificada',
+        'Cuentas con todo el EPP reglamentario para operar en todas las estaciones del laboratorio.',
+        'success'
+      );
+    }
   }
 
   /**
@@ -2002,6 +2227,14 @@ export class LabStore {
     const actualMl = Math.floor(Math.min(requestedMl, reagent.remainingMl, this.availableCapacityMl) * 10 + 1e-8) / 10;
     if (actualMl <= 0) return false;
 
+    if (reagentId === 'hcl' || reagentId === 'naoh') {
+      if (!this.verifySafetyEquipmentForChemistry()) return false;
+    }
+
+    if (reagentId === 'hcl' || reagentId === 'naoh') {
+      if (!this.verifySafetyEquipmentForChemistry()) return false;
+    }
+
     labSound.playDrop();
     this.selectedReagentId = reagentId;
     this.animCounter += 1;
@@ -2020,6 +2253,10 @@ export class LabStore {
 
     const actualMl = Math.floor(Math.min(requestedMl, reagent.remainingMl, this.availableCapacityMl) * 10 + 1e-8) / 10;
     if (actualMl <= 0) return false;
+
+    if (reagentId === 'hcl' || reagentId === 'naoh') {
+      if (!this.verifySafetyEquipmentForChemistry()) return false;
+    }
 
     if (this.isExplorationMode) {
       if (!explorationStore.add(reagent.chemicalId!, actualMl, source)) return false;

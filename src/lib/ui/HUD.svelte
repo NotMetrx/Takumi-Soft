@@ -120,43 +120,89 @@
         </div>
       </button>
 
-      <!-- Control Segmentado Estilo macOS / visionOS (Primaria | Secundaria | Libre) -->
+      <!-- Control Segmentado de Estaciones de Laboratorio 3D -->
       <div
-        class="flex items-center bg-white/[0.07] p-0.5 rounded-full border border-white/[0.08] shrink-0"
+        class="flex items-center bg-white/[0.08] p-0.5 rounded-full border border-white/[0.12] shrink-0"
+        role="group"
+        aria-label="Selector de estación temática de laboratorio"
+      >
+        <button
+          type="button"
+          onclick={() => labStore.setStation('quimica')}
+          class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'quimica'
+            ? 'bg-white text-black font-semibold shadow-sm'
+            : 'text-white/70 hover:text-white'}"
+          title="Mesa de Química Analítica (Reactor, Bureta, pH)"
+        >
+          <span>🧪</span>
+          <span class="hidden sm:inline">Química</span>
+        </button>
+        <button
+          type="button"
+          onclick={() => labStore.setStation('biologia')}
+          class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'biologia'
+            ? 'bg-white text-black font-semibold shadow-sm'
+            : 'text-white/70 hover:text-white'}"
+          title="Mesa de Biología & Microscopía Óptica"
+        >
+          <span>🔬</span>
+          <span class="hidden sm:inline">Biología</span>
+        </button>
+        <button
+          type="button"
+          onclick={() => labStore.setStation('steam')}
+          class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'steam'
+            ? 'bg-white text-black font-semibold shadow-sm'
+            : 'text-white/70 hover:text-white'}"
+          title="Mesa de Ciencias Cotidianas & Fenómenos STEAM"
+        >
+          <span>📚</span>
+          <span class="hidden sm:inline">STEAM</span>
+        </button>
+      </div>
+
+      <!-- Control de Nivel Educativo -->
+      <div
+        class="hidden lg:flex items-center bg-white/[0.06] p-0.5 rounded-full border border-white/[0.08] shrink-0"
         role="group"
         aria-label="Selector de nivel educativo"
       >
         <button
           type="button"
           onclick={() => switchLevelMode('primaria')}
-          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] cursor-pointer {!labStore.isExplorationMode && labStore.educationLevel === 'primaria'
-            ? 'bg-white text-black font-semibold shadow-sm'
-            : 'text-white/65 hover:text-white'}"
+          class="lab-btn px-2.5 py-1 rounded-full text-[10.5px] font-medium tracking-[-0.01em] cursor-pointer {!labStore.isExplorationMode && labStore.educationLevel === 'primaria'
+            ? 'bg-white text-black font-semibold shadow-xs'
+            : 'text-white/60 hover:text-white'}"
         >
           Primaria
         </button>
         <button
           type="button"
           onclick={() => switchLevelMode('secundaria')}
-          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] cursor-pointer {!labStore.isExplorationMode && labStore.educationLevel === 'secundaria'
-            ? 'bg-white text-black font-semibold shadow-sm'
-            : 'text-white/65 hover:text-white'}"
+          class="lab-btn px-2.5 py-1 rounded-full text-[10.5px] font-medium tracking-[-0.01em] cursor-pointer {!labStore.isExplorationMode && labStore.educationLevel === 'secundaria'
+            ? 'bg-white text-black font-semibold shadow-xs'
+            : 'text-white/60 hover:text-white'}"
         >
           Secundaria
         </button>
-        <button
-          type="button"
-          onclick={() => {
-            labSound.playInstrumentClick();
-            labStore.enterExploration();
-          }}
-          class="lab-btn px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] cursor-pointer {labStore.isExplorationMode
-            ? 'bg-white text-black font-semibold shadow-sm'
-            : 'text-white/65 hover:text-white'}"
-        >
-          Libre
-        </button>
       </div>
+
+      <!-- Indicador de Bioseguridad y EPP (ISO 7010 / SGA) -->
+      <button
+        type="button"
+        onclick={() => labStore.equipAllPPE()}
+        class="lab-btn px-2.5 py-1 rounded-full text-[10.5px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer shrink-0 {labStore.isFullyProtected
+          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
+          : 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'}"
+        title={labStore.isFullyProtected
+          ? 'Bioseguridad completa: Bata, Gafas EN 166 y Guantes reglamentarios'
+          : 'Atención: Falta equipar EPP reglamentario (haz clic para auto-equipar)'}
+      >
+        <span>{labStore.isFullyProtected ? '🛡️' : '⚠️'}</span>
+        <span class="hidden md:inline font-semibold">
+          {labStore.isFullyProtected ? 'EPP OK' : 'Falta EPP'}
+        </span>
+      </button>
 
       <!-- Telemetría Óptica en Vivo (pH · Temp · Progreso) + Botón expandir -->
       <button
@@ -329,10 +375,230 @@
             {/each}
           </div>
         </div>
+
+        <!-- Fila 4: Panel de Bioseguridad y Equipamiento EPP (ISO 7010 / SGA) -->
+        <div class="apple-card-inner rounded-2xl p-3 flex flex-col gap-2 border border-white/[0.08]">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-[12px] font-semibold text-white flex items-center gap-1.5">
+                <span>🛡️</span> Protocolo de Bioseguridad & EPP
+              </span>
+              <span
+                class="text-[10px] px-2 py-0.5 rounded-full {labStore.isFullyProtected
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}"
+              >
+                {labStore.isFullyProtected ? 'Protección Completa' : 'Equipo Pendiente'}
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onclick={() => (labStore.safetyStrictMode = !labStore.safetyStrictMode)}
+                class="lab-btn text-[10.5px] px-2.5 py-1 rounded-full border transition-colors cursor-pointer {labStore.safetyStrictMode
+                  ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 font-semibold'
+                  : 'bg-white/5 border-white/10 text-white/60 hover:text-white'}"
+                title="Bloquear manipulaciones químicas si no se tiene el EPP puesto"
+              >
+                {labStore.safetyStrictMode ? '🔒 Modo Estricto: ON' : '🔓 Modo Estricto: OFF'}
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            <button
+              type="button"
+              onclick={() => labStore.toggleSafetyCoat()}
+              class="lab-btn p-2 rounded-xl border flex items-center gap-2 text-[11px] transition-all cursor-pointer {labStore.safetyCoatEquipped
+                ? 'bg-white/20 border-white/40 text-white font-semibold'
+                : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.08]'}"
+            >
+              <span class="text-base">🥼</span>
+              <span class="truncate">Bata Blanca</span>
+              <span class="ml-auto text-[9px] opacity-75">{labStore.safetyCoatEquipped ? 'PUESTA' : 'NO'}</span>
+            </button>
+
+            <button
+              type="button"
+              onclick={() => labStore.toggleSafetyGoggles()}
+              class="lab-btn p-2 rounded-xl border flex items-center gap-2 text-[11px] transition-all cursor-pointer {labStore.safetyGogglesEquipped
+                ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-200 font-semibold'
+                : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.08]'}"
+            >
+              <span class="text-base">🥽</span>
+              <span class="truncate">Gafas EN 166</span>
+              <span class="ml-auto text-[9px] opacity-75">{labStore.safetyGogglesEquipped ? 'PUESTAS' : 'NO'}</span>
+            </button>
+
+            <button
+              type="button"
+              onclick={() => {
+                const next =
+                  labStore.safetyGlovesType === 'none'
+                    ? 'nitrile_blue'
+                    : labStore.safetyGlovesType === 'nitrile_blue'
+                      ? 'latex_white'
+                      : 'none';
+                labStore.setSafetyGloves(next);
+              }}
+              class="lab-btn p-2 rounded-xl border flex items-center gap-2 text-[11px] transition-all cursor-pointer {labStore.safetyGlovesType !== 'none'
+                ? 'bg-blue-500/20 border-blue-400/40 text-blue-200 font-semibold'
+                : 'bg-white/[0.04] border-white/[0.08] text-white/50 hover:bg-white/[0.08]'}"
+            >
+              <span class="text-base">🧤</span>
+              <span class="truncate">
+                {labStore.safetyGlovesType === 'nitrile_blue'
+                  ? 'Nitrilo Azul'
+                  : labStore.safetyGlovesType === 'latex_white'
+                    ? 'Látex Blanco'
+                    : 'Sin Guantes'}
+              </span>
+              <span class="ml-auto text-[9px] opacity-75">
+                {labStore.safetyGlovesType !== 'none' ? 'PUESTOS' : 'NO'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onclick={() => (labStore.isFullyProtected ? labStore.clearSafetyPPE() : labStore.equipAllPPE())}
+              class="lab-btn p-2 rounded-xl border flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-all cursor-pointer {labStore.isFullyProtected
+                ? 'bg-rose-500/15 border-rose-500/30 text-rose-300 hover:bg-rose-500/25'
+                : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/30'}"
+            >
+              <span>{labStore.isFullyProtected ? '❌ Retirar Todo' : '⚡ Equipar Todo'}</span>
+            </button>
+          </div>
+        </div>
       </div>
     {/if}
   </div>
 </header>
+
+<!-- Notificación Flotante de Protocolo de Seguridad (Alertas Didácticas) -->
+{#if labStore.safetyAlert}
+  <aside
+    class="pointer-events-auto fixed top-20 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-xl animate-in fade-in slide-in-from-top-2 duration-200"
+    role="alert"
+    aria-live="assertive"
+  >
+    <div
+      class="px-4 py-3 rounded-2xl backdrop-blur-xl border flex items-start gap-3 shadow-2xl {labStore.safetyAlert.type === 'warning'
+        ? 'bg-amber-950/85 border-amber-500/40 text-amber-200'
+        : labStore.safetyAlert.type === 'success'
+          ? 'bg-emerald-950/85 border-emerald-500/40 text-emerald-200'
+          : 'bg-sky-950/85 border-sky-500/40 text-sky-200'}"
+    >
+      <span class="text-xl shrink-0 mt-0.5">
+        {labStore.safetyAlert.type === 'warning' ? '⚠️' : labStore.safetyAlert.type === 'success' ? '🛡️' : 'ℹ️'}
+      </span>
+      <div class="flex-1 min-w-0">
+        <h4 class="text-[13px] font-bold tracking-tight text-white">
+          {labStore.safetyAlert.title}
+        </h4>
+        <p class="text-[12px] opacity-90 leading-relaxed mt-0.5">
+          {labStore.safetyAlert.message}
+        </p>
+        <div class="flex items-center gap-2 mt-2">
+          {#if !labStore.isFullyProtected}
+            <button
+              type="button"
+              onclick={() => labStore.equipAllPPE()}
+              class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+            >
+              Equipar Todo el EPP
+            </button>
+          {/if}
+          <button
+            type="button"
+            onclick={() => labStore.clearSafetyAlert()}
+            class="px-2 py-1 rounded-lg text-[11px] font-medium opacity-70 hover:opacity-100 hover:bg-white/10 text-white transition-colors cursor-pointer"
+          >
+            Entendido
+          </button>
+        </div>
+      </div>
+      <button
+        type="button"
+        onclick={() => labStore.clearSafetyAlert()}
+        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+        aria-label="Cerrar notificación de seguridad"
+      >
+        <X class="w-4 h-4" />
+      </button>
+    </div>
+  </aside>
+{/if}
+
+<!-- Overlay Óptico Inmersivo en 1ra Persona cuando las Gafas EN 166 están equipadas -->
+{#if labStore.safetyGogglesEquipped}
+  <div class="pointer-events-none fixed inset-0 z-10 overflow-hidden">
+    <!-- Marco perimetral con tono de policarbonato y refracción sutil -->
+    <div
+      class="absolute inset-0 border-[6px] border-cyan-400/20 rounded-3xl shadow-[inset_0_0_100px_rgba(34,211,238,0.1)]"
+    ></div>
+    <div
+      class="absolute top-5 right-6 px-2.5 py-1 rounded-md bg-black/40 backdrop-blur-sm border border-cyan-400/30 text-[10px] font-mono text-cyan-300 tracking-wider flex items-center gap-1.5 shadow-sm"
+    >
+      <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+      <span>EN 166 1-BT · POLICARBONATO UV400</span>
+    </div>
+  </div>
+{/if}
+
+<!-- HUD y Controles de Navegación en 1ª Persona (Paseo por el Laboratorio) -->
+{#if labStore.isFirstPersonWalking}
+  <div
+    class="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-2.5 animate-in fade-in duration-200"
+  >
+    <!-- Prompt contextual al acercarse a una mesa -->
+    {#if labStore.nearbyStationPrompt}
+      <button
+        type="button"
+        onclick={() => labStore.enterStationFromWalk(labStore.nearbyStationPrompt!)}
+        class="pointer-events-auto px-4 py-2 rounded-2xl bg-black/85 backdrop-blur-md border border-white/20 text-white shadow-2xl flex items-center gap-2.5 text-xs font-semibold hover:bg-white/20 hover:scale-105 transition-all cursor-pointer"
+      >
+        <span class="text-base">
+          {labStore.nearbyStationPrompt === 'quimica'
+            ? '🧪'
+            : labStore.nearbyStationPrompt === 'biologia'
+              ? '🔬'
+              : '📚'}
+        </span>
+        <span>
+          Trabajar en {labStore.nearbyStationPrompt === 'quimica'
+            ? 'Mesa de Química'
+            : labStore.nearbyStationPrompt === 'biologia'
+              ? 'Estación de Biología'
+              : 'Mesa STEAM'}
+        </span>
+        <kbd class="px-2 py-0.5 rounded bg-white/20 text-[10px] font-mono border border-white/30">Presiona E</kbd>
+      </button>
+    {/if}
+
+    <!-- Leyenda de Controles First Person -->
+    <div
+      class="px-4 py-1.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-white/80 text-[11px] flex items-center gap-3 shadow-lg"
+    >
+      <span class="flex items-center gap-1">
+        <kbd class="px-1.5 py-0.5 rounded bg-white/15 text-[9px] font-mono">W A S D</kbd> Caminar
+      </span>
+      <span class="text-white/25">|</span>
+      <span class="flex items-center gap-1">
+        <kbd class="px-1.5 py-0.5 rounded bg-white/15 text-[9px] font-mono">Shift</kbd> Correr
+      </span>
+      <span class="text-white/25">|</span>
+      <span>Ratón: Mirar</span>
+      <span class="text-white/25">|</span>
+      <button
+        type="button"
+        onclick={() => labStore.toggleFirstPersonWalk(false)}
+        class="pointer-events-auto text-cyan-300 font-semibold hover:underline cursor-pointer"
+      >
+        Salir (V)
+      </button>
+    </div>
+  </div>
+{/if}
 
 <!-- ===========================================================================
      2. POPOVER SHEETS ANCLADOS AL DOCK (PRÁCTICAS Y ESTANTERÍA 3D STEAM)
@@ -608,7 +874,23 @@
       {/if}
     </button>
 
-    <!-- 6. Control Gestual por Cámara AR -->
+    <!-- 6. Modo Paseo Libre 1ª Persona (WASD + Movilidad en Laboratorio) -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        labStore.toggleFirstPersonWalk();
+      }}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium flex items-center gap-2 cursor-pointer transition-all {labStore.isFirstPersonWalking
+        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/35 shadow-sm'
+        : 'text-white/85 hover:bg-white/[0.09] hover:text-white'}"
+      title="Alternar entre paseo libre en 1ª persona (WASD) y modo estación (Tecla V)"
+    >
+      <Compass class="w-4 h-4 shrink-0" />
+      <span class="hidden md:inline">{labStore.isFirstPersonWalking ? 'Paseo 1ªP' : 'Caminar'}</span>
+    </button>
+
+    <!-- 7. Control Gestual por Cámara AR -->
     <button
       type="button"
       onclick={() => {
