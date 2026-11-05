@@ -1,6 +1,6 @@
 import type { ChemistryInput, ChemistryResult, DiagnosticClass, IndicatorBand } from '$lib/core/contracts';
 
-const KW_25C = 1.0e-14;
+import { strongAcidHydronium } from './numeric_engine';
 
 export const INDICATOR_BANDS: Record<string, IndicatorBand> = {
   strong_acid: {
@@ -75,21 +75,7 @@ export function calculateStrongAcidBase(input: ChemistryInput): ChemistryResult 
   // Exceso de concentración molar firmado (mol/L)
   const d = (molesAcid - molesBase) / vTotalL;
 
-  // Producto iónico del agua Kw(T): exactamente 1.0e-14 a 25 °C; variación endotérmica de Van 't Hoff fuera de 25 °C
-  const kw =
-    temperatureC === 25
-      ? KW_25C
-      : KW_25C * Math.exp((55800 / 8.314) * (1 / 298.15 - 1 / (temperatureC + 273.15)));
-
-  // Raíz de electroneutralidad: H^2 - d*H - Kw = 0 (evitando cancelación numérica catastrófica)
-  let hydroniumConcentration: number;
-  const sqrtDiscriminant = Math.sqrt(d * d + 4 * kw);
-
-  if (d >= 0) {
-    hydroniumConcentration = (d + sqrtDiscriminant) / 2.0;
-  } else {
-    hydroniumConcentration = (2.0 * kw) / (sqrtDiscriminant - d);
-  }
+  const hydroniumConcentration = strongAcidHydronium(d, temperatureC);
 
   // Cálculo de pH acotado entre 0 y 14
   let rawPh = -Math.log10(hydroniumConcentration);

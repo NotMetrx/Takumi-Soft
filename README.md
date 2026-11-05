@@ -117,6 +117,19 @@ npm run dev
 npm test
 ```
 
+### Motor científico Rust/WASM
+
+Los cálculos de equilibrio, calor, gases y precipitación usan un módulo Rust local con respaldo TypeScript. Para compilar desde fuentes se necesita Rust con el destino `wasm32-unknown-unknown`:
+
+```bash
+rustup target add wasm32-unknown-unknown
+npm run build:science
+npm run test:science
+npm run bench:science
+```
+
+`npm run build` también recompila el módulo Rust. Consulta [arquitectura, validación y límites del motor](docs/science-rust.md).
+
 ---
 
 ## 🔒 Privacidad y Ética Científica

@@ -4,6 +4,7 @@
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
   import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   import { Timer } from 'three/addons/misc/Timer.js';
   import { flaskFluid, pourRate, streamHitsBeaker } from './fluid';
   import { handDepthOffset, handDragPlane, handFlaskPose } from './hand_manipulation';
@@ -95,17 +96,18 @@
   let microscopeRevolverGroup: THREE.Group;
   let microscopeStageAssembly: THREE.Group;
   let microscopeSlideGroup: THREE.Group;
+  let microscopeSlideHome = new THREE.Vector3(0, 0, 0.09);
   let microscopeSpecimenMat: THREE.MeshBasicMaterial;
   let microscopeOilDropMesh: THREE.Mesh;
-  let microscopeCoarseKnobMesh: THREE.Mesh;
-  let microscopeFineKnobMesh: THREE.Mesh;
+  let microscopeCoarseKnobMesh: THREE.Object3D;
+  let microscopeFineKnobMesh: THREE.Object3D;
   let microscopeLedGlowMat: THREE.MeshBasicMaterial;
   let microscopeLightBeamMesh: THREE.Mesh;
   let microscopeLightBeamMat: THREE.MeshBasicMaterial;
   let microscopeProxyMesh: THREE.Object3D | null = null;
 
   // Posición fija realista del Microscopio en la Estación de Biología
-  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-3.5, 0.04, 0.15);
+  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-3.5, 0, 0.15);
   const MICROSCOPE_BIOLOGY_ROT_Y = 0.35;
   const MICROSCOPE_HOME_POS = MICROSCOPE_BIOLOGY_POS;
   const MICROSCOPE_HOME_ROT_Y = MICROSCOPE_BIOLOGY_ROT_Y;
@@ -1698,7 +1700,153 @@
 
     microscopeProxyMesh = proxy;
     microscopeGroup = group;
+    loadMicroscopeModel(group, proxy);
     return group;
+  }
+
+  function loadMicroscopeModel(group: THREE.Group, proxy: THREE.Object3D) {
+    new GLTFLoader().load('/models/instruments/microscope.glb', ({ scene: asset }) => {
+      // GLTFLoader preserves Blender's original names in userData after sanitizing node names.
+      const modelObjects = new Map<string, THREE.Object3D>();
+      asset.traverse((object) => modelObjects.set(object.userData.name ?? object.name, object));
+      const named = (name: string) => modelObjects.get(name);
+      const requireObject = (name: string) => {
+        const object = named(name);
+        if (!object) throw new Error(`No se encontró la pieza ${name} del microscopio`);
+        return object;
+      };
+
+      try {
+        const stage = requireObject('stage');
+        const slide = requireObject('slide');
+        const coverslip = requireObject('slide.coverslip');
+        const condenser = requireObject('condenser');
+        const diaphragm = requireObject('diaphragm');
+        const turret = requireObject('objectives');
+        requireObject('coarse_knob.left');
+        requireObject('fine_knob.left');
+        requireObject('illuminator.lens');
+
+        asset.updateMatrixWorld(true);
+        const movingParts = new THREE.Group();
+        movingParts.name = 'MicroscopeMovingParts';
+        group.add(movingParts);
+        movingParts.add(asset);
+
+        const stageAssembly = new THREE.Group();
+        stageAssembly.name = 'MicroscopeStageAssembly';
+        movingParts.add(stageAssembly);
+        stageAssembly.attach(stage);
+        stageAssembly.attach(condenser);
+        stageAssembly.attach(diaphragm);
+        for (const [name, object] of modelObjects) {
+          if (name.startsWith('stage.') || name.startsWith('condenser.')) stageAssembly.attach(object);
+        }
+        microscopeStageAssembly = stageAssembly;
+
+        const slideGroup = new THREE.Group();
+        slideGroup.name = 'MicroscopeSlideAssembly';
+        stageAssembly.add(slideGroup);
+        slideGroup.position.copy(slide.position);
+        microscopeSlideHome.copy(slideGroup.position);
+        slideGroup.attach(slide);
+        slideGroup.attach(coverslip);
+        microscopeSlideGroup = slideGroup;
+
+        const revolver = new THREE.Group();
+        revolver.name = 'MicroscopeRevolver';
+        revolver.position.copy(turret.position);
+        movingParts.add(revolver);
+        revolver.attach(turret);
+        for (const [name, object] of modelObjects) {
+          if (name.startsWith('objectives.')) revolver.attach(object);
+        }
+        microscopeRevolverGroup = revolver;
+
+        const makeKnobPivot = (name: string) => {
+          const mesh = requireObject(name) as THREE.Mesh;
+          const mount = new THREE.Group();
+          movingParts.attach(mesh);
+          mount.position.copy(mesh.position);
+          mount.quaternion.copy(mesh.quaternion);
+          movingParts.add(mount);
+          const pivot = new THREE.Group();
+          mount.add(pivot);
+          mesh.position.set(0, 0, 0);
+          mesh.rotation.set(0, 0, 0);
+          pivot.add(mesh);
+          return pivot;
+        };
+        microscopeCoarseKnobMesh = makeKnobPivot('coarse_knob.left');
+        microscopeFineKnobMesh = makeKnobPivot('fine_knob.left');
+        const illuminatorLens = requireObject('illuminator.lens') as THREE.Mesh;
+        illuminatorLens.material = new THREE.MeshBasicMaterial({ color: 0xd9f0f5, toneMapped: false });
+        microscopeLedGlowMat = illuminatorLens.material as THREE.MeshBasicMaterial;
+
+        microscopeSpecimenMat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.8 });
+        const specimen = new THREE.Mesh(new THREE.SphereGeometry(0.009, 16, 12), microscopeSpecimenMat);
+        specimen.name = 'MicroscopeSpecimen';
+        specimen.scale.y = 0.05;
+        specimen.position.set(0, 0.001, 0);
+        slideGroup.add(specimen);
+
+        const oil = new THREE.Mesh(
+          new THREE.SphereGeometry(0.009, 16, 12),
+          new THREE.MeshPhysicalMaterial({ color: 0xfef3c7, transmission: 0.7, transparent: true, opacity: 0.8, roughness: 0.02 })
+        );
+        oil.scale.y = 0.45;
+        oil.position.set(0, 0.006, 0);
+        oil.visible = false;
+        slideGroup.add(oil);
+        microscopeOilDropMesh = oil;
+
+        microscopeLightBeamMat = new THREE.MeshBasicMaterial({
+          color: 0xf8fbff,
+          transparent: true,
+          opacity: 0.18,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          toneMapped: false
+        });
+        microscopeLightBeamMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.006, 0.02, 0.016, 20, 1, true),
+          microscopeLightBeamMat
+        );
+        microscopeLightBeamMesh.position.set(0, 0.174, microscopeSlideHome.z);
+        stageAssembly.add(microscopeLightBeamMesh);
+
+        for (const [name, part] of Object.entries({
+          base: 'illuminator', arm: 'arm', head: 'head', tube: 'head', stage: 'stage', slide: 'slide',
+          condenser: 'condenser', diaphragm: 'diaphragm', illuminator: 'illuminator', objectives: 'nosepiece'
+        } satisfies Record<string, MicroscopePartId>)) {
+          named(name)?.traverse((object) => { object.userData.microscopePart = part; });
+        }
+        for (const part of ['oculars', 'objectives', 'coarse_knob', 'fine_knob', 'condenser', 'illuminator', 'slide'] as const) {
+          for (const [name, object] of modelObjects) {
+            if (name.startsWith(`${part}.`)) object.userData.microscopePart = part;
+          }
+        }
+        for (const [name, object] of modelObjects) {
+          if (name.startsWith('stage.clip')) object.userData.microscopePart = 'slide';
+        }
+
+        group.scale.setScalar(3);
+        group.traverse((object) => {
+          if (object instanceof THREE.Mesh && movingParts.getObjectById(object.id)) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+          } else if (object !== proxy && object instanceof THREE.Mesh) {
+            object.visible = false;
+          }
+        });
+        proxy.scale.set(0.4, 0.31, 0.45);
+        proxy.position.y = 0.205;
+      } catch (error) {
+        const movingParts = group.getObjectByName('MicroscopeMovingParts');
+        if (movingParts) group.remove(movingParts);
+        console.error('No se pudo preparar el modelo GLB del microscopio:', error);
+      }
+    }, undefined, (error) => console.error('No se pudo cargar el modelo GLB del microscopio:', error));
   }
 
   function buildCentralBeakerStation(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
@@ -3883,7 +4031,7 @@
 
         // La platina sube/baja según el enfoque (cremallera y piñón) y se traslada en X-Y
         const stageLift =
-          (labStore.microscopeCoarseUm - 4500) * 0.00012 + labStore.microscopeFineUm * 0.00006;
+          (labStore.microscopeCoarseUm - 4500) * 0.00004 + labStore.microscopeFineUm * 0.00002;
         microscopeStageAssembly.position.y = THREE.MathUtils.lerp(
           microscopeStageAssembly.position.y,
           stageLift,
@@ -3896,7 +4044,7 @@
         );
         microscopeSlideGroup.position.z = THREE.MathUtils.lerp(
           microscopeSlideGroup.position.z,
-          0.09 + labStore.microscopeStageYUm * 0.00003,
+          microscopeSlideHome.z - labStore.microscopeStageYUm * 0.00003,
           k
         );
 

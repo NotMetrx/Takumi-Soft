@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:science": "node scripts/build-science.mjs",
+    "prebuild": "npm run build:science",
+    "test:rust": "cargo test --manifest-path crates/chemistry/Cargo.toml",
+    "test:science": "npm run build:science && npm run test:rust && vitest run tests/science",
+    "bench:science": "vitest bench --run tests/science/numeric_engine.bench.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -13,6 +18,7 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "^24.19.2",
     "@types/three": "^0.170.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",

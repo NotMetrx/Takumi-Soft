@@ -1,9 +1,8 @@
 import { chemical, REACTION_SOURCES } from './catalog';
+import { solveEquilibrium, neutralizationTemperature, gasPressure, trappedAir, gasVolume, releasedCO2, copperPrecipitate } from './numeric_engine';
 
 export const REACTOR_MODEL = 'aqueous-exploration-1.0.0';
-const R = 8.314462618; // kPa L mol⁻¹ K⁻¹
 const AMBIENT = 101.325;
-const K1 = 4.3e-7, K2 = 4.7e-11, KA = 1.8e-5, KSP = 8.7e-9;
 export interface ReactorState {
   volumeMl: number;
   addedMl: Record<string, number>;
@@ -60,44 +59,8 @@ export function assessHazards(s: ReactorState, incoming?: string): Hazard[] {
 }
 
 function equilibrium(s: ReactorState) {
-  const { calcium, acetate, charge } = ionicInventory(s);
-  const volumeL = s.volumeMl / 1000;
-  const at = (pH: number) => {
-    const h = 10 ** -pH;
-    const denominator = h * h + K1 * h + K1 * K2;
-    const alpha1 = K1 * h / denominator, alpha2 = K1 * K2 / denominator;
-    const product = alpha2 > 0 ? KSP * volumeL ** 2 / alpha2 : Infinity;
-    let solid = 0;
-    if (calcium * s.carbonMol > product) {
-      solid = 2 * (calcium * s.carbonMol - product)
-        / (calcium + s.carbonMol + Math.sqrt((calcium - s.carbonMol) ** 2 + 4 * product));
-    }
-    let hydroxideSolid = 0;
-    const maxCalciumFromHydroxide = 1.3e-6 * volumeL / (1e-14 / h) ** 2;
-    if (calcium - solid > maxCalciumFromHydroxide) {
-      const freeCalcium = maxCalciumFromHydroxide;
-      const dissolvedCarbon = alpha2 > 0 && freeCalcium > 0 ? KSP * volumeL ** 2 / (freeCalcium * alpha2) : Infinity;
-      solid = Math.min(calcium - freeCalcium, Math.max(0, s.carbonMol - dissolvedCarbon));
-      hydroxideSolid = Math.max(0, calcium - freeCalcium - solid);
-    }
-    const carbon = Math.max(0, s.carbonMol - solid);
-    const acetateIon = acetate * KA / (KA + h);
-    const c1 = 10 ** -3.13, c2 = 10 ** -4.76, c3 = 10 ** -6.40;
-    const citrateCharge = moles(s, 'citric') * (c1 * h * h + 2 * c1 * c2 * h + 3 * c1 * c2 * c3)
-      / (h ** 3 + c1 * h * h + c1 * c2 * h + c1 * c2 * c3);
-    const ammonium = moles(s, 'ammonia') * h / (h + 1e-14 / 1.8e-5);
-    const residual = h * volumeL + charge + 2 * (calcium - solid - hydroxideSolid)
-      + ammonium - 1e-14 / h * volumeL - carbon * (alpha1 + 2 * alpha2) - acetateIon - citrateCharge;
-    return { residual, solid, hydroxideSolid, h, carbon, alpha1, alpha2, acetateIon };
-  };
-  let low = -1, high = 15;
-  for (let i = 0; i < 90; i++) {
-    const middle = (low + high) / 2;
-    if (at(middle).residual > 0) low = middle;
-    else high = middle;
-  }
-  const pH = (low + high) / 2;
-  return { pH, ...at(pH) };
+  return solveEquilibrium({ ...ionicInventory(s), volumeL: s.volumeMl / 1000,
+    carbonMol: s.carbonMol, citricMol: moles(s, 'citric'), ammoniaMol: moles(s, 'ammonia') });
 }
 
 export function readReactor(s: ReactorState): ReactorResult {
@@ -109,9 +72,8 @@ export function readReactor(s: ReactorState): ReactorResult {
   const thermal = subset(ids, [...inert, 'hcl', 'naoh']);
   const neutralized = Math.min(moles(s, 'hcl'), moles(s, 'naoh'));
   // shortcut: calor adiabático con Cp de agua; no estima calor de dilución ni pérdidas.
-  const temperatureC = thermal ? 25 + neutralized * 57300 / (s.volumeMl * 4.184) : null;
-  const temperatureK = (temperatureC ?? 25) + 273.15;
-  const pressureKpa = s.closed ? (s.airMol + s.trappedCO2Mol) * R * temperatureK / ((250 - s.volumeMl) / 1000) : AMBIENT;
+  const temperatureC = thermal ? neutralizationTemperature(s.volumeMl, moles(s, 'hcl'), moles(s, 'naoh')) : null;
+  const pressureKpa = s.closed ? gasPressure(s.volumeMl, s.airMol, s.trappedCO2Mol, temperatureC ?? 25) : AMBIENT;
   const observations: ReactionObservation[] = [];
   const note = (id: string, title: string, equation: string, explanation: string, source: string = REACTION_SOURCES.equilibrium) => observations.push({ id, title, equation, explanation, source });
   let pH: number | null = null, precipitateG: number | null = null, precipitateName: string | null = null;
@@ -139,8 +101,7 @@ export function readReactor(s: ReactorState): ReactorResult {
     color = '#312e81';
     note('starch', 'Complejo azul oscuro', 'Yodo + almidón ⇌ complejo coloreado', 'Observación cualitativa; no se asigna pH ni rendimiento al polímero.', chemical('iodine').source);
   } else if (copperTest) {
-    const solidMol = Math.min(moles(s, 'copper'), moles(s, 'naoh') / 2);
-    precipitateG = solidMol * 97.56;
+    precipitateG = copperPrecipitate(moles(s, 'copper'), moles(s, 'naoh'));
     precipitateName = 'Hidróxido de cobre(II) · Cu(OH)₂'; color = '#38bdf8';
     note('copper-hydroxide', 'Precipitado azul de hidróxido', 'Cu²⁺ + 2 OH⁻ → Cu(OH)₂(s)', 'Límite estequiométrico ideal de precipitación completa; no resuelve hidrólisis, Ksp ni pH.', REACTION_SOURCES.precipitation);
   } else {
@@ -155,8 +116,8 @@ export function readReactor(s: ReactorState): ReactorResult {
   const gasKnown = quantitative;
   return { modelId: REACTOR_MODEL, coverage: quantitative ? 'quantitative' : starchTest || copperTest ? 'partial' : 'unknown',
     pH, temperatureC, pressureKpa: gasKnown && !ids.includes('ammonia') ? pressureKpa : null,
-    gasMl: gasKnown ? s.generatedCO2Mol * R * 298.15 / AMBIENT * 1000 : null,
-    trappedGasMl: gasKnown ? s.trappedCO2Mol * R * 298.15 / AMBIENT * 1000 : null,
+    gasMl: gasKnown ? gasVolume(s.generatedCO2Mol) : null,
+    trappedGasMl: gasKnown ? gasVolume(s.trappedCO2Mol) : null,
     precipitateG, precipitateName, color, observations, hazards: assessHazards(s), limitations, species,
     stopped: gasKnown && !ids.includes('ammonia') && pressureKpa >= 150 };
 }
@@ -180,7 +141,7 @@ export function addDose(s: ReactorState, id: string, ml: number): ReactorState {
   if (supportsEquilibrium(idsOf(next))) {
     const { charge, calcium, acetate } = ionicInventory(next);
     // shortcut: desgasificación completa por equivalentes; no predice velocidad ni redisolución en el colector.
-    const gas = Math.min(next.carbonMol, Math.max(0, next.carbonMol - (charge + 2 * calcium - acetate - 3 * moles(next, 'citric'))));
+    const gas = releasedCO2(next.carbonMol, charge, calcium, acetate, moles(next, 'citric'));
     next.carbonMol = Math.max(0, next.carbonMol - gas);
     next.generatedCO2Mol += gas;
     if (next.closed) next.trappedCO2Mol += gas;
@@ -191,6 +152,6 @@ export function addDose(s: ReactorState, id: string, ml: number): ReactorState {
 export function setClosure(s: ReactorState, closed: boolean): ReactorState {
   if (s.closed === closed) return s;
   const temperature = readReactor(s).temperatureC ?? 25;
-  return closed ? { ...s, closed, airMol: AMBIENT * ((250 - s.volumeMl) / 1000) / (R * (temperature + 273.15)) }
+  return closed ? { ...s, closed, airMol: trappedAir(s.volumeMl, temperature) }
     : { ...s, closed, airMol: 0, escapedCO2Mol: s.escapedCO2Mol + s.trappedCO2Mol, trappedCO2Mol: 0 };
 }
