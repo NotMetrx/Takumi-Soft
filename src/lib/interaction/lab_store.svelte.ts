@@ -1629,6 +1629,11 @@ export class LabStore {
   safetyStrictMode = $state<boolean>(false);
   safetyAlert = $state<SafetyProtocolAlert | null>(null);
 
+  // Efectos de partículas de seguridad (Ducha, Lavaojos, Extintor)
+  showerFxRevision = $state<number>(0);
+  eyewashFxRevision = $state<number>(0);
+  extinguisherFxRevision = $state<number>(0);
+
   // Navegación Libre en 1ª Persona (Recorrer el Laboratorio con Movilidad WASD)
   isFirstPersonWalking = $state<boolean>(false);
   nearbyStationPrompt = $state<LabStationId | null>(null);
@@ -2052,16 +2057,18 @@ export class LabStore {
   }
 
   triggerEmergencyShower() {
-    labSound.playDrop();
+    labSound.playWaterStream();
+    this.showerFxRevision += 1;
     this.setSafetyAlert(
       '🚿 DUCHA DE EMERGENCIA ACTIVADA',
-      'Flujo de descontaminación corporal iniciado (15 minutos requeridos según norma UNE-EN 15154).',
+      'Flujo continuo de descontaminación corporal iniciado (15 minutos requeridos según norma UNE-EN 15154).',
       'info'
     );
   }
 
   triggerEmergencyEyewash() {
-    labSound.playDrop();
+    labSound.playWaterStream();
+    this.eyewashFxRevision += 1;
     this.setSafetyAlert(
       '👀 LAVAOJOS DE EMERGENCIA ACTIVADO',
       'Lavado ocular bilateral con chorro aireado templado (mantener párpados abiertos con los dedos).',
@@ -2070,10 +2077,11 @@ export class LabStore {
   }
 
   triggerFireExtinguisher() {
-    labSound.playInstrumentClick();
+    labSound.playGasDischarge();
+    this.extinguisherFxRevision += 1;
     this.setSafetyAlert(
-      '🧯 EXTINTOR CO₂ INSPECCIONADO',
-      'Regla PASS: 1. Tirar el pasador · 2. Apuntar a la base de la llama · 3. Apretar la palanca · 4. Mover en abanico.',
+      '🧯 DESCARGA CO₂ DE EXTINTOR',
+      'Nube criogénica de dióxido de carbono presurizado activada · Sofoca fuegos eléctricos y solventes B/C.',
       'info'
     );
   }

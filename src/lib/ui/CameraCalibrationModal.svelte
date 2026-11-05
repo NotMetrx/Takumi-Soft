@@ -59,8 +59,16 @@
         samples.push(sample);
         captureProgress = Math.min(1, samples.length / 8, (now - sampleStart) / 1000);
         if (now - sampleStart >= 1000 && samples.length >= 8) {
-          const median = (key: keyof HandSample) => samples.map(s => s[key]).sort((a, b) => a - b)[Math.floor(samples.length / 2)];
-          const measured = { x: median('x'), y: median('y'), pinch: median('pinch'), angle: median('angle'), palmSize: median('palmSize') };
+          const median = (key: 'x' | 'y' | 'pinch' | 'angle' | 'palmSize'): number =>
+            (samples.map((s) => s[key]).sort((a, b) => a - b)[Math.floor(samples.length / 2)]) ?? 0;
+          const measured: HandSample = {
+            x: median('x'),
+            y: median('y'),
+            pinch: median('pinch'),
+            angle: median('angle'),
+            palmSize: median('palmSize'),
+            landmarks: sample.landmarks
+          };
           if (phase === 'open') { openSample = measured; phase = 'closed'; }
           else if (openSample && gestures.calibrate(openSample, measured)) {
             phase = 'ready';
