@@ -80,28 +80,28 @@ export class FirstPersonController {
 
   // Cajas de colisión AABB para impedir atravesar mesas, muros y cámara SAS
   colliders: FirstPersonColliderBox[] = [
-    // Perímetro General del Complejo (Laboratorio + SAS)
-    { minX: -8.0, maxX: 8.0, minZ: -1.2, maxZ: 8.0, name: 'bounds' },
+    // Perímetro General del Complejo (Gran Nave de Laboratorio + Esclusa SAS al Fondo)
+    { minX: -9.8, maxX: 9.8, minZ: -1.2, maxZ: 14.3, name: 'bounds' },
     // Mesa Central Química (4.4m x 2.6m ampliada)
     { minX: -2.25, maxX: 2.25, minZ: -1.35, maxZ: 1.35, name: 'chem_table' },
     // Mesa Biología (3.5m x 2.4m en x = -4.3)
     { minX: -6.1, maxX: -2.5, minZ: -1.1, maxZ: 1.4, name: 'bio_table' },
     // Mesa STEAM (3.5m x 2.4m en x = 4.3)
     { minX: 2.5, maxX: 6.1, minZ: -1.1, maxZ: 1.4, name: 'steam_table' },
-    // Pared Sur del Laboratorio (Ala Oeste: x de -8.0 a -1.15)
-    { minX: -8.0, maxX: -1.15, minZ: 4.65, maxZ: 4.95, name: 'south_wall_left' },
-    // Pared Sur del Laboratorio (Ala Este: x de 1.15 a 8.0)
-    { minX: 1.15, maxX: 8.0, minZ: 4.65, maxZ: 4.95, name: 'south_wall_right' },
-    // Pared Lateral Oeste de la Esclusa SAS (x = -4.5)
-    { minX: -4.65, maxX: -4.35, minZ: 4.8, maxZ: 8.1, name: 'sas_west_wall' },
-    // Pared Lateral Este de la Esclusa SAS (x = +4.5)
-    { minX: 4.35, maxX: 4.65, minZ: 4.8, maxZ: 8.1, name: 'sas_east_wall' },
-    // Pared Posterior Exterior de la Esclusa SAS (z = 8.1)
-    { minX: -4.5, maxX: 4.5, minZ: 8.05, maxZ: 8.35, name: 'sas_back_wall' },
+    // Pared Sur del Laboratorio (Ala Oeste: x de -9.8 a -1.25, en z = 10.0)
+    { minX: -9.8, maxX: -1.25, minZ: 9.85, maxZ: 10.15, name: 'south_wall_left' },
+    // Pared Sur del Laboratorio (Ala Este: x de 1.25 a 9.8, en z = 10.0)
+    { minX: 1.25, maxX: 9.8, minZ: 9.85, maxZ: 10.15, name: 'south_wall_right' },
+    // Pared Lateral Oeste de la Esclusa SAS (x = -4.0, z de 10.0 a 14.3)
+    { minX: -4.15, maxX: -3.85, minZ: 10.0, maxZ: 14.3, name: 'sas_west_wall' },
+    // Pared Lateral Este de la Esclusa SAS (x = +4.0, z de 10.0 a 14.3)
+    { minX: 3.85, maxX: 4.15, minZ: 10.0, maxZ: 14.3, name: 'sas_east_wall' },
+    // Pared Posterior Exterior de la Esclusa SAS (z = 14.3)
+    { minX: -4.0, maxX: 4.0, minZ: 14.25, maxZ: 14.55, name: 'sas_back_wall' },
     // Equipamiento técnico en SAS: Ducha de emergencia en pared oeste
-    { minX: -4.4, maxX: -3.1, minZ: 5.6, maxZ: 6.8, name: 'sas_shower' },
+    { minX: -3.95, maxX: -2.7, minZ: 11.6, maxZ: 12.8, name: 'sas_shower' },
     // Equipamiento técnico en SAS: Armario EPP en pared este
-    { minX: 3.1, maxX: 4.4, minZ: 5.6, maxZ: 6.8, name: 'sas_ppe_wardrobe' }
+    { minX: 2.7, maxX: 3.95, minZ: 11.6, maxZ: 12.8, name: 'sas_ppe_wardrobe' }
   ];
 
   constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement, scene?: THREE.Scene) {

@@ -43,27 +43,27 @@ describe('Mobiliario Profesional de Laboratorio (lab_furniture.ts)', () => {
     expect(doubleDoors.rightLeaf).toBeDefined();
     expect(doubleDoors.sensorLed).toBeDefined();
 
-    // En reposo están juntas en el centro (-0.585 y +0.585)
-    expect(doubleDoors.leftLeaf.position.x).toBeCloseTo(-0.585, 2);
-    expect(doubleDoors.rightLeaf.position.x).toBeCloseTo(0.585, 2);
+    // En reposo están juntas en el centro (-0.64 y +0.64)
+    expect(doubleDoors.leftLeaf.position.x).toBeCloseTo(-0.64, 2);
+    expect(doubleDoors.rightLeaf.position.x).toBeCloseTo(0.64, 2);
 
-    // Al acercarse el usuario (distancia < 2.8m a la puerta en z = 4.8)
-    const nearPos = new THREE.Vector3(0, 1.68, 4.0);
+    // Al acercarse el usuario (distancia < 3.2m a la puerta en z = 10.0)
+    const nearPos = new THREE.Vector3(0, 1.68, 9.2);
     for (let i = 0; i < 20; i++) {
       doubleDoors.update(nearPos, 0.1);
     }
     expect(doubleDoors.currentOpen).toBeGreaterThan(0.8);
-    expect(doubleDoors.leftLeaf.position.x).toBeLessThan(-1.2);
-    expect(doubleDoors.rightLeaf.position.x).toBeGreaterThan(1.2);
+    expect(doubleDoors.leftLeaf.position.x).toBeLessThan(-1.5);
+    expect(doubleDoors.rightLeaf.position.x).toBeGreaterThan(1.5);
 
-    // Al alejarse el usuario (distancia > 2.8m)
-    const farPos = new THREE.Vector3(0, 1.68, 0.0);
+    // Al alejarse el usuario (distancia > 3.2m, z = 4.0)
+    const farPos = new THREE.Vector3(0, 1.68, 4.0);
     for (let i = 0; i < 30; i++) {
       doubleDoors.update(farPos, 0.1);
     }
     expect(doubleDoors.currentOpen).toBeLessThan(0.05);
-    expect(doubleDoors.leftLeaf.position.x).toBeCloseTo(-0.585, 1);
-    expect(doubleDoors.rightLeaf.position.x).toBeCloseTo(0.585, 1);
+    expect(doubleDoors.leftLeaf.position.x).toBeCloseTo(-0.64, 1);
+    expect(doubleDoors.rightLeaf.position.x).toBeCloseTo(0.64, 1);
   });
 
   it('construye la mesa de Química con encimera marina, bastidor en C, grifo y repisa', () => {

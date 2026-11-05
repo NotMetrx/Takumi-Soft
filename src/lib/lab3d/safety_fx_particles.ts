@@ -116,7 +116,7 @@ export class LabSafetyFXSystem {
 
   // --- DUCHA DE SEGURIDAD ---
   private resetShowerParticles() {
-    const origin = new THREE.Vector3(-3.36, 0.77, 6.20); // Boca de la campana en esclusa SAS (Y real)
+    const origin = new THREE.Vector3(-2.96, 0.77, 12.20); // Boca de la campana en esclusa SAS (Y real)
     for (let i = 0; i < 60; i++) {
       const idx = i * 3;
       const angle = Math.random() * Math.PI * 2;
@@ -140,7 +140,7 @@ export class LabSafetyFXSystem {
 
   // --- LAVAOJOS ---
   private resetEyewashParticles() {
-    const origin = new THREE.Vector3(-3.52, -0.495, 6.20); // Boquillas del lavaojos en esclusa SAS (Y real)
+    const origin = new THREE.Vector3(-3.12, -0.495, 12.20); // Boquillas del lavaojos en esclusa SAS (Y real)
     for (let i = 0; i < 35; i++) {
       const idx = i * 3;
       const side = i % 2 === 0 ? -0.045 : 0.045;
@@ -181,7 +181,7 @@ export class LabSafetyFXSystem {
 
   // --- EXTINTOR CO2 ---
   private resetCO2Particles() {
-    const nozzlePos = new THREE.Vector3(-1.6, -0.41, 4.73);
+    const nozzlePos = new THREE.Vector3(-1.65, -0.41, 9.88);
     for (let i = 0; i < 70; i++) {
       const idx = i * 3;
       this.co2Positions[idx] = nozzlePos.x;
