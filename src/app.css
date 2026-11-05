@@ -20,29 +20,31 @@ body {
 }
 
 .font-mono-numbers {
-  font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 
-/* Superficie espacial estilo Apple visionOS / Dynamic Island */
+/* Superficie espacial estilo Apple visionOS / Dynamic Island (optimizada para bajo uso de GPU compositor sobre WebGL) */
 .apple-glass {
-  background: rgba(22, 22, 26, 0.72);
-  backdrop-filter: blur(32px) saturate(190%);
-  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  background: rgba(18, 19, 24, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  contain: layout style;
   border: 1px solid rgba(255, 255, 255, 0.11);
   box-shadow:
-    0 24px 48px -12px rgba(0, 0, 0, 0.6),
+    0 18px 36px -12px rgba(0, 0, 0, 0.58),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
 }
 
 /* Superficie de cápsula oscura tipo Dynamic Island iOS 18 */
 .apple-island {
-  background: rgba(14, 14, 17, 0.84);
-  backdrop-filter: blur(36px) saturate(200%);
-  -webkit-backdrop-filter: blur(36px) saturate(200%);
+  background: rgba(14, 15, 19, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  contain: layout style;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 20px 44px -10px rgba(0, 0, 0, 0.72),
+    0 16px 32px -10px rgba(0, 0, 0, 0.68),
     inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
   transition:
     transform 260ms var(--ease-apple-spring),
@@ -66,11 +68,12 @@ body {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
-/* Compatibilidad con paneles existentes en modales */
+/* Contenedor principal de cualquier ventana modal o diálogo (Spatial Cleanroom blur(28px), esquinas rounded-[24px] y borde perimetral sutil) */
 .lab-panel {
-  background: rgba(20, 20, 24, 0.78);
-  backdrop-filter: blur(28px) saturate(185%);
-  -webkit-backdrop-filter: blur(28px) saturate(185%);
+  background: rgba(18, 19, 24, 0.93);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  contain: layout style;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 24px;
   box-shadow:

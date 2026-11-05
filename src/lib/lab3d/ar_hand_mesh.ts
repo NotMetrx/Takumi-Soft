@@ -40,6 +40,7 @@ class OneEuroFilter3D {
   private dCutoff: number;
   private xPrev: THREE.Vector3 | null = null;
   private dxPrev: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+  private dValTemp: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   private tPrev = 0;
 
   constructor(minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
@@ -53,20 +54,21 @@ class OneEuroFilter3D {
     return r / (r + 1);
   }
 
-  filter(val: THREE.Vector3, timestampMs: number): THREE.Vector3 {
+  filterInto(val: THREE.Vector3, timestampMs: number, out: THREE.Vector3): void {
     if (!this.xPrev) {
       this.xPrev = val.clone();
       this.tPrev = timestampMs;
-      return val.clone();
+      out.copy(val);
+      return;
     }
 
     const dt = Math.max(0.001, (timestampMs - this.tPrev) * 0.001);
     this.tPrev = timestampMs;
 
-    // Derivada (velocidad del movimiento)
-    const dVal = val.clone().sub(this.xPrev).divideScalar(dt);
+    // Derivada (velocidad del movimiento) sin asignaciones GC
+    this.dValTemp.copy(val).sub(this.xPrev).divideScalar(dt);
     const alphaD = this.smoothingFactor(dt, this.dCutoff);
-    this.dxPrev.lerp(dVal, alphaD);
+    this.dxPrev.lerp(this.dValTemp, alphaD);
 
     // Frecuencia de corte adaptativa: aumenta con la velocidad para eliminar lag
     const speed = this.dxPrev.length();
@@ -74,7 +76,7 @@ class OneEuroFilter3D {
     const alpha = this.smoothingFactor(dt, cutoff);
 
     this.xPrev.lerp(val, alpha);
-    return this.xPrev.clone();
+    out.copy(this.xPrev);
   }
 
   reset() {
@@ -104,6 +106,8 @@ export class ARHandMeshRig {
   private tempVecB = new THREE.Vector3();
   private tempMid = new THREE.Vector3();
   private tempDiff = new THREE.Vector3();
+  private tempNorm = new THREE.Vector3();
+  private readonly upAxis = new THREE.Vector3(0, 1, 0);
 
   constructor() {
     this.group = new THREE.Group();
@@ -216,9 +220,8 @@ export class ARHandMeshRig {
       const lz = ((p.z ?? 0) - (wristRaw.z ?? 0)) * scale * 1.5;
 
       this.tempVecA.set(lx, ly, lz);
-      // Aplicar filtro de suavizado adaptativo 1-Euro
-      const filtered = this.filters[i].filter(this.tempVecA, now);
-      this.currentLandmarks[i].copy(filtered);
+      // Aplicar filtro de suavizado adaptativo 1-Euro (Zero-GC)
+      this.filters[i].filterInto(this.tempVecA, now, this.currentLandmarks[i]);
     }
 
     // 2. Posicionar el grupo completo en la escena cerca del recipiente o cursor
@@ -236,7 +239,7 @@ export class ARHandMeshRig {
       this.jointMeshes[i].position.copy(this.currentLandmarks[i]);
     }
 
-    // 4. Posicionar y orientar cilindros de conexión (huesos)
+    // 4. Posicionar y orientar cilindros de conexión (huesos) sin asignaciones GC
     for (let c = 0; c < HAND_CONNECTIONS.length; c++) {
       const [idxA, idxB] = HAND_CONNECTIONS[c];
       const posA = this.currentLandmarks[idxA];
@@ -244,12 +247,13 @@ export class ARHandMeshRig {
 
       this.tempMid.copy(posA).add(posB).multiplyScalar(0.5);
       this.tempDiff.copy(posB).sub(posA);
-      const len = this.tempDiff.length();
+      const len = Math.max(0.0001, this.tempDiff.length());
+      this.tempNorm.copy(this.tempDiff).divideScalar(len);
 
       const bone = this.boneMeshes[c];
       bone.position.copy(this.tempMid);
       bone.scale.set(1, len, 1);
-      bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.tempDiff.clone().normalize());
+      bone.quaternion.setFromUnitVectors(this.upAxis, this.tempNorm);
     }
 
     // 5. Posicionar la palma central (punto medio entre muñeca y base de dedos)

@@ -5,7 +5,33 @@
 
 class LabSoundEngine {
   private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
   public enabled = true;
+  public volume = 0.8;
+
+  public getDestination(ctx: AudioContext): AudioNode {
+    if (!this.masterGain) {
+      this.masterGain = ctx.createGain();
+      this.masterGain.gain.setValueAtTime(this.enabled ? this.volume : 0, ctx.currentTime);
+      this.masterGain.connect(ctx.destination);
+    }
+    return this.masterGain;
+  }
+
+  public setVolume(vol: number) {
+    this.volume = Math.max(0, Math.min(1, vol));
+    if (this.ctx && this.masterGain) {
+      const targetGain = this.enabled ? this.volume : 0;
+      this.masterGain.gain.setValueAtTime(targetGain, this.ctx.currentTime);
+    }
+  }
+
+  public setEnabled(enable: boolean) {
+    this.enabled = enable;
+    if (this.ctx && this.masterGain) {
+      this.masterGain.gain.setValueAtTime(enable ? this.volume : 0, this.ctx.currentTime);
+    }
+  }
 
   private getContext(): AudioContext | null {
     if (!this.enabled || typeof window === 'undefined') return null;
@@ -73,7 +99,7 @@ class LabSoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.getDestination(ctx));
 
     noise.start(now);
     noise.stop(now + duration);
@@ -99,7 +125,7 @@ class LabSoundEngine {
     oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
 
     osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
+    oscGain.connect(this.getDestination(ctx));
     osc.start(now);
     osc.stop(now + 0.2);
 
@@ -151,7 +177,7 @@ class LabSoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.getDestination(ctx));
     osc.start(now);
     osc.stop(now + 0.11);
   }
@@ -174,7 +200,7 @@ class LabSoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.getDestination(ctx));
     osc.start(now);
     osc.stop(now + 0.055);
   }
@@ -202,7 +228,7 @@ class LabSoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.getDestination(ctx));
     osc.start(now);
     osc.stop(now + duration + 0.01);
   }
@@ -239,7 +265,7 @@ class LabSoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.getDestination(ctx));
 
     noise.start(now);
     noise.stop(now + duration);
@@ -276,7 +302,7 @@ class LabSoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.getDestination(ctx));
 
     noise.start(now);
     noise.stop(now + duration);

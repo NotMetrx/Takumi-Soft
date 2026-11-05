@@ -93,10 +93,11 @@ describe('Opción 3: LabSafetyFXSystem (Fluidos, Vapores y Partículas Físicas)
     expect(showerPoints.visible).toBe(true);
 
     const posAttr = showerPoints.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const initialY0 = posAttr.getY(0);
+    posAttr.setY(0, 2.0);
+    const initialY0 = 2.0;
 
-    // Simular un paso físico de 0.1 segundos
-    fx.update(0.1);
+    // Simular un paso físico de 0.05 segundos
+    fx.update(0.05);
 
     // La partícula debe haber caído hacia el suelo (velocidad negativa en Y)
     const newY0 = posAttr.getY(0);

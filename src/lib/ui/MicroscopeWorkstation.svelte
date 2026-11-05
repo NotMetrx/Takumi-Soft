@@ -26,8 +26,37 @@
   let ocularCanvas = $state<HTMLCanvasElement | null>(null);
   let activeRightTab = $state<'controls' | 'parts'>('controls');
   let animFrameId: number | null = null;
+  let lastOcularRenderMs = 0;
   let isDraggingSlide = $state(false);
+  let isDraggingFineKnob = $state(false);
+  let ocularDragMode = $state<'focus_y' | 'stage_xy'>('focus_y');
   let lastPointer = { x: 0, y: 0 };
+  let lastHoverOcularY: number | null = null;
+  let lastKnobDragY = 0;
+  const quantizedBlurPx = $derived(Math.round(labStore.microscopeBlurPx * 2) / 2);
+
+  // Tamaño real (px CSS) del lente central para escalar el desenfoque óptico de forma proporcional
+  let lensPx = $state(560);
+  const lensBlurScale = $derived(Math.max(1, lensPx / 236));
+
+  // Animación estilo "inventario": el lente emerge desde el centro de la pantalla durante el
+  // último tramo del acercamiento de cámara (y se recoge al alejarse).
+  const LENS_APPEAR_START = 0.55;
+  const inventoryAppear = $derived.by(() => {
+    if (labStore.microscopeTransitionPhase === 'OCULAR_LOCKED') return 1;
+    const p = labStore.microscopeTransitionProgress;
+    const u = Math.min(1, Math.max(0, (p - LENS_APPEAR_START) / (1 - LENS_APPEAR_START)));
+    return u * u * (3 - 2 * u);
+  });
+  // Rebote sutil de "pop" al abrir (overshoot tipo easeOutBack) solo en la escala del lente
+  const lensScale = $derived.by(() => {
+    const u = inventoryAppear;
+    const c1 = 1.2;
+    const c3 = c1 + 1;
+    const back = 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2);
+    return 0.18 + 0.82 * back;
+  });
+  const panelsAppear = $derived(Math.min(1, Math.max(0, (inventoryAppear - 0.35) / 0.65)));
 
   const objectivePowers: MicroscopeObjectivePower[] = [4, 10, 40, 100];
 
@@ -68,18 +97,81 @@
     if (e.button !== 0) return;
     isDraggingSlide = true;
     lastPointer = { x: e.clientX, y: e.clientY };
+    lastHoverOcularY = e.clientY;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function onOcularPointerMove(e: PointerEvent) {
-    if (!isDraggingSlide) return;
+    if (!isDraggingSlide) {
+      // Fase 3: En modo Simulación (INSPECTING_MICROSCOPE), el movimiento del mouse (eje Y) controla la variable de enfoque analítica
+      if (
+        ocularDragMode === 'focus_y' &&
+        labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE' &&
+        labStore.microscopeTransitionPhase === 'OCULAR_LOCKED'
+      ) {
+        if (lastHoverOcularY !== null) {
+          const dy = e.clientY - lastHoverOcularY;
+          if (Math.abs(dy) > 0.4 && Math.abs(dy) < 80) {
+            labStore.applyAnalyticalFocusAxisY(-dy / 260);
+          }
+        }
+        lastHoverOcularY = e.clientY;
+      }
+      return;
+    }
     const dx = e.clientX - lastPointer.x;
     const dy = e.clientY - lastPointer.y;
     lastPointer = { x: e.clientX, y: e.clientY };
-    // En un microscopio compuesto real la imagen está ópticamente invertida:
-    // al arrastrar la vista, desplazamos la platina proporcionalmente al campo visual
-    const sensitivity = 120 / labStore.microscopeObjective;
-    labStore.moveMicroscopeStage(-dx * sensitivity, -dy * sensitivity);
+    lastHoverOcularY = e.clientY;
+    if (ocularDragMode === 'focus_y' && !e.shiftKey) {
+      // Modo Simulación Científica (INSPECTING_MICROSCOPE): el eje Y del input controla el enfoque analítico (nitidez)
+      const normDeltaY = -dy / 180;
+      labStore.applyAnalyticalFocusAxisY(normDeltaY);
+      if (Math.abs(dx) > 1.5) {
+        const sensitivity = 90 / labStore.microscopeObjective;
+        labStore.moveMicroscopeStage(-dx * sensitivity, 0);
+      }
+    } else {
+      // Desplazamiento X-Y de la platina mecánica (inversión óptica compuesta)
+      const sensitivity = 120 / labStore.microscopeObjective;
+      labStore.moveMicroscopeStage(-dx * sensitivity, -dy * sensitivity);
+    }
+  }
+
+  function onOcularPointerLeave() {
+    lastHoverOcularY = null;
+  }
+
+  function onFineKnobPointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    isDraggingFineKnob = true;
+    lastKnobDragY = e.clientY;
+    labStore.selectMicroscopePart('fine_knob');
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onFineKnobPointerMove(e: PointerEvent) {
+    if (!isDraggingFineKnob) return;
+    const dy = lastKnobDragY - e.clientY;
+    lastKnobDragY = e.clientY;
+    if (Math.abs(dy) > 0.3) {
+      labStore.adjustFineFocus(Math.round(dy * 0.8));
+    }
+  }
+
+  function onFineKnobPointerUp(e: PointerEvent) {
+    if (!isDraggingFineKnob) return;
+    isDraggingFineKnob = false;
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+  }
+
+  function onOcularWheel(e: WheelEvent) {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    labStore.adjustMicroscopeFocusWheel(dir);
   }
 
   function onOcularPointerUp(e: PointerEvent) {
@@ -92,10 +184,19 @@
   }
 
   function renderOcularField(timeMs: number) {
-    if (!ocularCanvas || !labStore.isMicroscopeActive) {
+    if (
+      !ocularCanvas ||
+      (!labStore.isMicroscopeActive && labStore.microscopeFsmState === 'EXPLORING')
+    ) {
       animFrameId = null;
       return;
     }
+    // Limitar redibujado del canvas 2D del ocular a ~24 FPS (40ms) para eliminar latencia de CPU/compositor
+    if (timeMs - lastOcularRenderMs < 40) {
+      animFrameId = requestAnimationFrame(renderOcularField);
+      return;
+    }
+    lastOcularRenderMs = timeMs;
     const ctx = ocularCanvas.getContext('2d');
     if (!ctx) return;
 
@@ -164,7 +265,9 @@
 
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.scale(zoomScale, zoomScale);
+    // Escala base: los preparados están dibujados para un lienzo de referencia de 320 px
+    const baseScale = w / 320;
+    ctx.scale(zoomScale * baseScale, zoomScale * baseScale);
     // Inversión óptica real: al mover platina +X, la imagen se desplaza en sentido opuesto
     ctx.translate(-labStore.microscopeStageXUm * 0.08, -labStore.microscopeStageYUm * 0.08);
 
@@ -582,7 +685,7 @@
     ctx.save();
     ctx.strokeStyle = lightReticle ? 'rgba(226, 232, 240, 0.42)' : 'rgba(15, 23, 42, 0.42)';
     ctx.fillStyle = lightReticle ? 'rgba(226, 232, 240, 0.65)' : 'rgba(15, 23, 42, 0.65)';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max(1, radius / 150);
 
     // Línea horizontal central del micrómetro ocular
     const reticleHalf = radius * 0.55;
@@ -593,7 +696,7 @@
 
     for (let tick = -10; tick <= 10; tick++) {
       const tx = cx + (tick / 10) * reticleHalf;
-      const tickH = tick % 5 === 0 ? 8 : 4;
+      const tickH = (tick % 5 === 0 ? 8 : 4) * (radius / 150);
       ctx.beginPath();
       ctx.moveTo(tx, cy - tickH);
       ctx.lineTo(tx, cy + tickH);
@@ -602,16 +705,16 @@
 
     // Viñeteado óptico perimetral del tubo ocular WF10x/18
     const vig = ctx.createRadialGradient(cx, cy, radius * 0.82, cx, cy, radius * 1.02);
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(0.85, 'rgba(0,0,0,0.35)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.95)');
+    vig.addColorStop(0, 'rgba(8,9,12,0)');
+    vig.addColorStop(0.85, 'rgba(8,9,12,0.38)');
+    vig.addColorStop(1, 'rgba(8,9,12,0.96)');
     ctx.fillStyle = vig;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
 
     // Anillo metálico interior del ocular
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(cx, cy, radius - 1.5, 0, Math.PI * 2);
@@ -620,7 +723,11 @@
   }
 
   $effect(() => {
-    if (labStore.isMicroscopeActive && ocularCanvas) {
+    const visible =
+      labStore.isMicroscopeActive ||
+      labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE' ||
+      labStore.microscopeTransitionPhase !== 'IDLE';
+    if (visible && ocularCanvas) {
       if (animFrameId === null) {
         animFrameId = requestAnimationFrame(renderOcularField);
       }
@@ -645,166 +752,89 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && labStore.isMicroscopeActive) labStore.closeMicroscope();
+    if (
+      (e.key === 'Escape' || e.key === 'Backspace') &&
+      !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) &&
+      (labStore.isMicroscopeActive || labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE')
+    ) {
+      e.preventDefault();
+      labStore.closeMicroscope();
+    }
   }}
 />
 
-{#if labStore.isMicroscopeActive}
+{#if labStore.isMicroscopeActive || labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE' || labStore.microscopeTransitionPhase !== 'IDLE'}
   {@const objSpec = labStore.activeMicroscopeObjectiveSpec}
   {@const partSpec = labStore.activeMicroscopePartSpec}
   {@const specSpec = labStore.activeMicroscopeSpecimenSpec}
 
-  <!-- ETIQUETA ESPACIAL FLOTANTE SOBRE EL MICROSCOPIO 3D ELEVADO EN LA MESA (IZQUIERDA) -->
-  <div class="fixed top-20 left-6 z-30 pointer-events-auto flex flex-col gap-2 max-w-[330px] apple-popover-enter">
-    <div class="apple-island rounded-3xl px-4 py-3 flex flex-col gap-2">
-      <div class="flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
-          <span class="text-[11px] font-semibold tracking-[0.06em] uppercase text-white/65">
-            Estación Óptica en Primer Plano
-          </span>
-        </div>
-        <button
-          type="button"
-          onclick={() => labStore.closeMicroscope()}
-          class="lab-btn px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 text-[11px] font-semibold cursor-pointer"
-        >
-          Volver a la Mesa
-        </button>
-      </div>
-      <p class="text-[11.5px] text-white/75 leading-relaxed">
-        Estás en la <strong class="text-white">Estación de Biología</strong>. Puedes interactuar directamente con las piezas del <strong class="text-white">microscopio 3D</strong> o usar los controles del visor binocular.
-      </p>
-      <div class="flex items-center justify-between text-[11px] pt-1 border-t border-white/10 text-white/65">
-        <span>Pieza activa: <strong class="text-white">{partSpec.name.split(' ')[0]}</strong></span>
-        <span class="font-mono-numbers text-sky-300">{objSpec.totalMagnification}x ({objSpec.power}x DIN)</span>
-      </div>
-    </div>
-  </div>
+  <!-- VISTA "INVENTARIO" DEL OCULAR: fondo atenuado + lente gigante centrado + ajustes a la izquierda -->
+  <div
+    class="fixed inset-0 z-30 pointer-events-none"
+    style="opacity: {inventoryAppear}; background: radial-gradient(ellipse at center, rgba(8, 9, 12, 0.65) 0%, rgba(8, 9, 12, 0.88) 62%, rgba(8, 9, 12, 0.98) 100%); backdrop-filter: blur({inventoryAppear * 6}px); -webkit-backdrop-filter: blur({inventoryAppear * 6}px);"
+    aria-hidden="true"
+  ></div>
 
-  <!-- WORKSTATION BINOCULAR APPLE VISIONOS (DERECHA, DEJANDO EL MICROSCOPIO 3D VISIBLE A LA IZQUIERDA) -->
-  <aside
-    class="fixed top-18 right-5 bottom-21 z-30 w-[calc(100vw-2.5rem)] max-w-[560px] lg:max-w-[580px] pointer-events-auto flex flex-col apple-popover-enter"
-    aria-label="Estación de Microscopía Óptica Compuesta"
+  <div
+    class="microscope-inventory fixed inset-0 z-30 {inventoryAppear > 0.02 ? 'pointer-events-auto' : 'pointer-events-none'}"
+    style="--lens-scale: {lensScale}; --panel-appear: {panelsAppear}; opacity: {Math.min(1, inventoryAppear * 1.6)};"
+    aria-label="Vista ocular del microscopio"
+    role="dialog"
   >
-    <div class="apple-glass rounded-[30px] p-4 sm:p-5 h-full flex flex-col gap-3.5 overflow-hidden shadow-2xl">
-      <!-- Barra superior de la estación de microscopía -->
-      <header class="flex items-center justify-between gap-3 pb-2.5 border-b border-white/[0.08] shrink-0">
-        <div class="flex items-center gap-3 min-w-0">
-          <div
-            class="w-9 h-9 rounded-2xl bg-white/[0.08] border border-white/[0.12] flex items-center justify-center shrink-0"
-          >
-            <Eye class="w-4 h-4 text-white" />
-          </div>
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] font-mono-numbers uppercase tracking-[0.14em] text-white/50">
-                ÓPTICA DIN 160 MM · WF10x/18
-              </span>
-              <span
-                class="w-2 h-2 rounded-full"
-                style="background-color: {objSpec.dinColorHex}; box-shadow: 0 0 8px {objSpec.dinColorHex};"
-              ></span>
-              <span class="text-[11px] font-mono-numbers text-white/80 font-semibold">
-                {objSpec.totalMagnification}x Total
-              </span>
-            </div>
-            <h2 class="text-sm sm:text-base font-semibold tracking-[-0.02em] text-white truncate">
-              Microscopio Compuesto Binocular Siedentopf
-            </h2>
-          </div>
-        </div>
-
+    <!-- COLUMNA IZQUIERDA: AJUSTES ÓPTICOS Y MECÁNICOS -->
+    <aside class="inv-left" aria-label="Ajustes del microscopio">
+      <div class="lab-panel rounded-[24px] p-3.5 h-full flex flex-col gap-3 overflow-hidden shadow-2xl">
         <!-- Segmented Control estilo Apple visionOS -->
-        <div class="flex items-center gap-2 shrink-0">
-          <div class="flex items-center bg-white/[0.07] p-0.5 rounded-full border border-white/[0.08]">
-            <button
-              type="button"
-              onclick={() => (activeRightTab = 'controls')}
-              class="px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 {activeRightTab ===
-              'controls'
-                ? 'bg-white text-black font-semibold shadow-sm'
-                : 'text-white/70 hover:text-white'}"
-            >
-              <Sliders class="w-3.5 h-3.5" />
-              <span>Óptica y Enfoque</span>
-            </button>
-            <button
-              type="button"
-              onclick={() => (activeRightTab = 'parts')}
-              class="px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 {activeRightTab ===
-              'parts'
-                ? 'bg-white text-black font-semibold shadow-sm'
-                : 'text-white/70 hover:text-white'}"
-            >
-              <Layers class="w-3.5 h-3.5" />
-              <span>12 Partes Reales</span>
-            </button>
-          </div>
-
+        <div class="flex items-center bg-white/[0.07] p-0.5 rounded-full border border-white/[0.08] shrink-0">
           <button
             type="button"
-            onclick={() => labStore.closeMicroscope()}
-            class="w-8 h-8 rounded-full bg-white/[0.08] hover:bg-white/[0.16] flex items-center justify-center text-white/75 hover:text-white cursor-pointer"
-            title="Cerrar estación de microscopía"
-            aria-label="Cerrar microscopio"
+            onclick={() => (activeRightTab = 'controls')}
+            class="lab-btn flex-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 {activeRightTab ===
+            'controls'
+              ? 'bg-white text-black font-semibold shadow-sm'
+              : 'text-white/70 hover:text-white'}"
           >
-            <X class="w-4 h-4" />
+            <Sliders class="w-3.5 h-3.5" />
+            <span>Óptica y Enfoque</span>
+          </button>
+          <button
+            type="button"
+            onclick={() => (activeRightTab = 'parts')}
+            class="lab-btn flex-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 {activeRightTab ===
+            'parts'
+              ? 'bg-white text-black font-semibold shadow-sm'
+              : 'text-white/70 hover:text-white'}"
+          >
+            <Layers class="w-3.5 h-3.5" />
+            <span>12 Partes</span>
           </button>
         </div>
-      </header>
 
-      <!-- Cuerpo de doble columna: Izquierda = Visor Ocular en Vivo + Revólver | Derecha = Controles o Partes -->
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 flex-1 min-h-0 overflow-y-auto pr-0.5">
-        <!-- COLUMNA IZQUIERDA (5 cols): VISOR OCULAR BINOCULAR EN VIVO -->
-        <div class="md:col-span-5 flex flex-col items-center justify-between gap-3 bg-black/35 border border-white/[0.07] rounded-3xl p-3.5">
-          <!-- Telemetría óptica superior del ocular -->
-          <div class="w-full flex items-center justify-between text-[11px] px-1">
-            <span class="font-mono-numbers text-white/65">
-              NA {objSpec.numericalAperture.toFixed(2)} · WD {objSpec.workingDistanceMm} mm
-            </span>
-            <span
-              class="font-mono-numbers px-2 py-0.5 rounded-full text-[10px] font-semibold {labStore.microscopeFocusQualityPercent >=
-              85
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : labStore.microscopeFocusQualityPercent >= 45
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}"
-            >
-              Nitidez {labStore.microscopeFocusQualityPercent}%
-            </span>
-          </div>
-
-          <!-- Círculo Óptico Binocular Interactivo (arrastrable para mover la platina X-Y) -->
-          <div
-            class="relative w-[220px] h-[220px] sm:w-[244px] sm:h-[244px] rounded-full bg-black shadow-[0_0_40px_rgba(0,0,0,0.9)] border-2 border-white/15 overflow-hidden cursor-grab active:cursor-grabbing select-none shrink-0"
-            onpointerdown={onOcularPointerDown}
-            onpointermove={onOcularPointerMove}
-            onpointerup={onOcularPointerUp}
-            onpointercancel={onOcularPointerUp}
-            role="application"
-            aria-label="Campo visual del ocular binocular. Arrastra para trasladar la muestra en los ejes X e Y."
-          >
-            <canvas
-              bind:this={ocularCanvas}
-              width="320"
-              height="320"
-              class="w-full h-full block transition-[filter] duration-75"
-              style="filter: blur({labStore.microscopeBlurPx}px);"
-            ></canvas>
-
-            <!-- Barra de escala micrométrica calibrada dentro del ocular -->
-            <div class="absolute bottom-3.5 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-0.5 bg-black/65 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/15">
-              <div class="w-10 h-0.5 bg-white relative">
-                <span class="absolute -left-0.5 -top-1 w-0.5 h-2.5 bg-white"></span>
-                <span class="absolute -right-0.5 -top-1 w-0.5 h-2.5 bg-white"></span>
-              </div>
-              <span class="font-mono-numbers text-[9px] text-white/90">
-                {scaleBarUm} µm · FOV {objSpec.fieldOfViewUm} µm
-              </span>
+        <div class="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col gap-3">
+          {#if activeRightTab === 'controls'}
+            <!-- Selector de modo de arrastre en el ocular: Eje Y (Enfoque Analítico) vs Platina X-Y -->
+            <div class="w-full flex items-center justify-between bg-white/[0.05] p-0.5 rounded-full border border-white/[0.08] text-[10px] shrink-0">
+              <button
+                type="button"
+                onclick={() => (ocularDragMode = 'focus_y')}
+                class="lab-btn flex-1 py-1 px-2 rounded-full font-semibold transition-all cursor-pointer {ocularDragMode === 'focus_y'
+                  ? 'bg-emerald-400 text-black'
+                  : 'text-white/65 hover:text-white'}"
+              >
+                Eje Y · Enfoque Analítico
+              </button>
+              <button
+                type="button"
+                onclick={() => (ocularDragMode = 'stage_xy')}
+                class="lab-btn flex-1 py-1 px-2 rounded-full font-semibold transition-all cursor-pointer {ocularDragMode === 'stage_xy'
+                  ? 'bg-white text-black'
+                  : 'text-white/65 hover:text-white'}"
+              >
+                Platina X-Y
+              </button>
             </div>
-          </div>
 
+            <section class="apple-card-inner rounded-2xl p-3 flex flex-col gap-2.5">
           <!-- Aviso de inmersión en aceite (100x) o alerta de colisión de cubreobjetos -->
           {#if labStore.microscopeSlideCollisionWarning}
             <div class="w-full px-3 py-1.5 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center gap-2 text-[11px] text-rose-200">
@@ -815,9 +845,9 @@
             <button
               type="button"
               onclick={() => labStore.applyImmersionOil()}
-              class="w-full py-1.5 px-3 rounded-2xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 flex items-center justify-center gap-2 text-[11px] font-semibold text-sky-200 cursor-pointer"
+              class="lab-btn w-full py-1.5 px-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 flex items-center justify-center gap-2 text-[11px] font-semibold text-emerald-200 cursor-pointer"
             >
-              <Droplets class="w-3.5 h-3.5 text-sky-300 shrink-0" />
+              <Droplets class="w-3.5 h-3.5 text-emerald-300 shrink-0" />
               <span>Aplicar Aceite de Inmersión (n = 1.515)</span>
             </button>
           {/if}
@@ -829,7 +859,7 @@
               <button
                 type="button"
                 onclick={() => labStore.autoFocusMicroscope()}
-                class="text-sky-300 hover:text-white font-semibold flex items-center gap-1 cursor-pointer"
+                class="lab-btn text-emerald-300 hover:text-white font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <Sparkles class="w-3 h-3" />
                 <span>Auto-Enfocar</span>
@@ -879,11 +909,7 @@
               </button>
             {/each}
           </div>
-        </div>
-
-        <!-- COLUMNA DERECHA (7 cols): CONTROLES MECÁNICOS/ÓPTICOS O CATÁLOGO DE 12 PARTES -->
-        <div class="md:col-span-7 flex flex-col gap-3 min-h-0 overflow-y-auto pr-1">
-          {#if activeRightTab === 'controls'}
+            </section>
             <!-- 1. Selector de Preparación Microscópica (6 Muestras) -->
             <section class="bg-white/[0.04] border border-white/[0.07] rounded-3xl p-3.5 flex flex-col gap-2">
               <div class="flex items-center justify-between">
@@ -962,15 +988,33 @@
                 />
               </div>
 
-              <!-- Micrométrico -->
-              <div class="flex flex-col gap-1">
+              <!-- Micrométrico + Rueda Táctil Arrastrable -->
+              <div class="flex flex-col gap-1.5">
                 <div class="flex items-center justify-between text-xs">
                   <span class="font-medium text-white/85">
                     Tornillo Micrométrico (Precisión 2 µm/div)
                   </span>
-                  <span class="font-mono-numbers text-[11px] text-sky-300">
-                    {labStore.microscopeFineUm >= 0 ? `+${labStore.microscopeFineUm}` : labStore.microscopeFineUm} µm
-                  </span>
+                  <div class="flex items-center gap-2">
+                    <div
+                      onpointerdown={onFineKnobPointerDown}
+                      onpointermove={onFineKnobPointerMove}
+                      onpointerup={onFineKnobPointerUp}
+                      onpointercancel={onFineKnobPointerUp}
+                      role="slider"
+                      tabindex="0"
+                      aria-label="Tambor micrométrico arrastrable en eje Y"
+                      aria-valuemin={-120}
+                      aria-valuemax={120}
+                      aria-valuenow={labStore.microscopeFineUm}
+                      class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-[10px] font-semibold text-emerald-200 cursor-ns-resize select-none"
+                      title="Arrastra verticalmente para girar el tambor micrométrico"
+                    >
+                      ↕ Arrastrar Tambor
+                    </div>
+                    <span class="font-mono-numbers text-[11px] text-emerald-300">
+                      {labStore.microscopeFineUm >= 0 ? `+${labStore.microscopeFineUm}` : labStore.microscopeFineUm} µm
+                    </span>
+                  </div>
                 </div>
                 <input
                   type="range"
@@ -982,15 +1026,15 @@
                     labStore.microscopeFineUm = Number((e.currentTarget as HTMLInputElement).value);
                     labStore.microscopeSelectedPartId = 'fine_knob';
                   }}
-                  class="w-full accent-sky-400 cursor-pointer h-1.5 bg-white/15 rounded-lg"
+                  class="w-full accent-emerald-400 cursor-pointer h-1.5 bg-white/15 rounded-lg"
                 />
               </div>
             </section>
 
             <!-- 3. Platina Mecánica X-Y (Nonio Vernier) + Condensador de Abbe e Iluminador Köhler -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3">
               <!-- Platina X-Y -->
-              <section class="bg-white/[0.04] border border-white/[0.07] rounded-3xl p-3.5 flex flex-col justify-between gap-2.5">
+              <section class="apple-card-inner rounded-2xl p-3.5 flex flex-col justify-between gap-2.5">
                 <div class="flex items-center justify-between">
                   <span class="text-[10px] font-mono-numbers uppercase tracking-wider text-white/50">
                     Platina Vernier X-Y
@@ -1001,7 +1045,7 @@
                       labStore.microscopeStageXUm = 0;
                       labStore.microscopeStageYUm = 0;
                     }}
-                    class="text-[10px] text-white/60 hover:text-white flex items-center gap-1 cursor-pointer"
+                    class="lab-btn text-[10px] text-white/60 hover:text-white flex items-center gap-1 cursor-pointer"
                   >
                     <Crosshair class="w-3 h-3" />
                     <span>Centrar</span>
@@ -1013,7 +1057,7 @@
                   <button
                     type="button"
                     onclick={() => labStore.moveMicroscopeStage(0, -80)}
-                    class="py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
+                    class="lab-btn py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
                   >
                     ▲
                   </button>
@@ -1021,7 +1065,7 @@
                   <button
                     type="button"
                     onclick={() => labStore.moveMicroscopeStage(-80, 0)}
-                    class="py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
+                    class="lab-btn py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
                   >
                     ◀
                   </button>
@@ -1031,7 +1075,7 @@
                   <button
                     type="button"
                     onclick={() => labStore.moveMicroscopeStage(80, 0)}
-                    class="py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
+                    class="lab-btn py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
                   >
                     ▶
                   </button>
@@ -1039,7 +1083,7 @@
                   <button
                     type="button"
                     onclick={() => labStore.moveMicroscopeStage(0, 80)}
-                    class="py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
+                    class="lab-btn py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-white text-xs font-bold cursor-pointer"
                   >
                     ▼
                   </button>
@@ -1053,7 +1097,7 @@
               </section>
 
               <!-- Condensador de Abbe, Diafragma Iris e Iluminador LED Köhler -->
-              <section class="bg-white/[0.04] border border-white/[0.07] rounded-3xl p-3.5 flex flex-col justify-between gap-2.5">
+              <section class="apple-card-inner rounded-2xl p-3.5 flex flex-col justify-between gap-2.5">
                 <div class="flex items-center justify-between">
                   <span class="text-[10px] font-mono-numbers uppercase tracking-wider text-white/50">
                     Condensador & LED Köhler
@@ -1064,7 +1108,7 @@
                       labStore.microscopeLampOn = !labStore.microscopeLampOn;
                       labStore.selectMicroscopePart('illuminator');
                     }}
-                    class="px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 cursor-pointer {labStore.microscopeLampOn
+                    class="lab-btn px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 cursor-pointer {labStore.microscopeLampOn
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/35'
                       : 'bg-white/10 text-white/50'}"
                   >
@@ -1118,7 +1162,7 @@
                       );
                       labStore.microscopeSelectedPartId = 'diaphragm';
                     }}
-                    class="w-full accent-sky-300 cursor-pointer h-1.5 bg-white/15 rounded-lg"
+                    class="w-full accent-emerald-400 cursor-pointer h-1.5 bg-white/15 rounded-lg"
                   />
                 </div>
               </section>
@@ -1127,7 +1171,7 @@
             <!-- PESTAÑA 2: ANATOMÍA FUNCIONAL DE LAS 12 PARTES REALES DEL MICROSCOPIO -->
             <div class="bg-white/[0.06] border border-white/[0.12] rounded-3xl p-3.5 flex flex-col gap-1.5">
               <div class="flex items-center justify-between">
-                <span class="font-mono-numbers text-[10px] uppercase tracking-[0.14em] text-sky-300">
+                <span class="font-mono-numbers text-[10px] uppercase tracking-[0.14em] text-emerald-300">
                   {partSpec.code} · {partSpec.system}
                 </span>
                 <span class="font-mono-numbers text-[10px] text-white/50">{partSpec.spec}</span>
@@ -1169,6 +1213,269 @@
           {/if}
         </div>
       </div>
+    </aside>
+
+    <!-- CENTRO: LENTE OCULAR GIGANTE (estilo inventario) — Eje Y controla enfoque analítico; rueda o arrastre -->
+    <div class="inv-center">
+      <div class="inv-lens-frame" bind:clientWidth={lensPx}>
+        <div
+          class="relative w-full h-full rounded-full bg-black overflow-hidden {ocularDragMode === 'focus_y'
+            ? 'cursor-ns-resize'
+            : 'cursor-grab active:cursor-grabbing'} select-none"
+          onpointerdown={onOcularPointerDown}
+          onpointermove={onOcularPointerMove}
+          onpointerup={onOcularPointerUp}
+          onpointercancel={onOcularPointerUp}
+          onpointerleave={onOcularPointerLeave}
+          onwheel={onOcularWheel}
+          role="application"
+          aria-label="Campo visual del ocular binocular. Mueve el ratón en el Eje Y o gira la rueda para ajustar el enfoque analítico."
+        >
+          <canvas
+            bind:this={ocularCanvas}
+            width="768"
+            height="768"
+            class="w-full h-full block"
+            style="filter: {quantizedBlurPx > 0 ? `blur(${quantizedBlurPx * lensBlurScale}px)` : 'none'}; transform: translateZ(0);"
+          ></canvas>
+
+          <!-- Retícula SVG vectorial y muestra translúcida con profundidad de campo analítica -->
+          <svg
+            viewBox="0 0 200 200"
+            class="absolute inset-0 w-full h-full pointer-events-none"
+            style="filter: {quantizedBlurPx > 0 ? `blur(${Math.min(8, quantizedBlurPx * 0.45) * lensBlurScale}px)` : 'none'}; opacity: {labStore.microscopeLampOn ? 0.55 : 0.08};"
+          >
+            <g
+              transform="translate({100 - labStore.microscopeStageXUm * 0.04}, {100 - labStore.microscopeStageYUm * 0.04})"
+            >
+              <circle
+                cx="0"
+                cy="0"
+                r="48"
+                fill="none"
+                stroke={specSpec.accentColor}
+                stroke-width="0.75"
+                stroke-dasharray="3 2"
+              />
+              <path
+                d="M -28 -12 Q 0 -28 28 -12 Q 36 12 0 26 Q -36 12 -28 -12 Z"
+                fill="{specSpec.accentColor}22"
+                stroke={specSpec.accentColor}
+                stroke-width="1.1"
+              />
+              <circle cx="-6" cy="-2" r="5" fill={specSpec.accentColor} fill-opacity="0.55" />
+            </g>
+          </svg>
+
+          <!-- Barra de escala micrométrica calibrada dentro del ocular -->
+          <div class="absolute bottom-[7%] left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1 bg-black/75 px-3.5 py-1.5 rounded-full border border-white/15">
+            <div class="w-14 h-0.5 bg-white relative">
+              <span class="absolute -left-0.5 -top-1 w-0.5 h-2.5 bg-white"></span>
+              <span class="absolute -right-0.5 -top-1 w-0.5 h-2.5 bg-white"></span>
+            </div>
+            <span class="font-mono-numbers text-[11px] text-white/90">
+              {scaleBarUm} µm · FOV {objSpec.fieldOfViewUm} µm
+            </span>
+          </div>
+
+          <!-- Nitidez en la parte superior del campo -->
+          <div class="absolute top-[6%] left-1/2 -translate-x-1/2 pointer-events-none">
+            <span
+              class="font-mono-numbers px-3 py-1 rounded-full text-[11px] font-semibold backdrop-blur-sm {labStore.microscopeFocusQualityPercent >=
+              85
+                ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/40'
+                : labStore.microscopeFocusQualityPercent >= 45
+                  ? 'bg-amber-500/25 text-amber-200 border border-amber-500/40'
+                  : 'bg-rose-500/25 text-rose-200 border border-rose-500/40'}"
+            >
+              Nitidez {labStore.microscopeFocusQualityPercent}%
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
-  </aside>
+
+    <!-- COLUMNA DERECHA: ESTADO, TELEMETRÍA Y SALIDA -->
+    <aside class="inv-right" aria-label="Estado del microscopio">
+      <div class="apple-island rounded-[24px] px-4 py-3.5 flex flex-col gap-3 shadow-2xl">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-9 h-9 rounded-2xl bg-white/[0.08] border border-white/[0.12] flex items-center justify-center shrink-0">
+              <Eye class="w-4 h-4 text-white" />
+            </div>
+            <div class="min-w-0">
+              <span class="text-[9.5px] font-mono-numbers uppercase tracking-[0.14em] text-white/50 block">
+                DIN 160 MM · WF10x/18
+              </span>
+              <h2 class="text-sm font-semibold tracking-[-0.02em] text-white leading-tight">
+                Microscopio Binocular
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onclick={() => labStore.closeMicroscope()}
+            class="lab-btn w-8 h-8 rounded-full bg-white/[0.08] hover:bg-white/[0.16] flex items-center justify-center text-white/75 hover:text-white cursor-pointer shrink-0"
+            title="Cerrar estación de microscopía (Esc)"
+            aria-label="Cerrar microscopio"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span
+            class="w-2.5 h-2.5 rounded-full {labStore.microscopeTransitionPhase === 'OCULAR_LOCKED'
+              ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+              : 'bg-amber-400 shadow-[0_0_8px_#fbbf24] animate-pulse'}"
+          ></span>
+          <span class="text-[10.5px] font-mono-numbers font-semibold tracking-[0.06em] uppercase text-white/85">
+            FSM: {labStore.microscopeFsmState}
+          </span>
+        </div>
+
+        <p class="text-[11.5px] text-white/80 leading-relaxed">
+          {#if labStore.microscopeTransitionPhase === 'APPROACHING_OCULAR'}
+            <strong class="text-amber-300">Acercamiento:</strong> la cámara se asoma al ocular…
+          {:else if labStore.microscopeTransitionPhase === 'RETURNING_TO_EXPLORING'}
+            <strong class="text-emerald-300">Alejándose:</strong> volviendo a la posición original…
+          {:else}
+            Mueve el ratón en el <strong class="text-white">Eje Y</strong> sobre el lente o usa la rueda para enfocar. Arrastra para mover la platina.
+          {/if}
+        </p>
+
+        <div class="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-white/10">
+          <div class="flex flex-col">
+            <span class="text-white/45 text-[9.5px] uppercase tracking-wider">Aumento</span>
+            <span class="font-mono-numbers text-white font-semibold flex items-center gap-1.5">
+              <span
+                class="w-2 h-2 rounded-full"
+                style="background-color: {objSpec.dinColorHex}; box-shadow: 0 0 8px {objSpec.dinColorHex};"
+              ></span>
+              {objSpec.totalMagnification}x
+            </span>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-white/45 text-[9.5px] uppercase tracking-wider">NA · WD</span>
+            <span class="font-mono-numbers text-white/80">
+              {objSpec.numericalAperture.toFixed(2)} · {objSpec.workingDistanceMm} mm
+            </span>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-white/45 text-[9.5px] uppercase tracking-wider">Pieza activa</span>
+            <span class="text-white font-semibold truncate">{partSpec.name.split(' ')[0]}</span>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-white/45 text-[9.5px] uppercase tracking-wider">Altura Z</span>
+            <span class="font-mono-numbers text-white/80">{labStore.microscopeTotalStageUm.toFixed(1)} µm</span>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2 pt-2 border-t border-white/10">
+          <span
+            class="w-2 h-2 rounded-full mt-1 shrink-0"
+            style="background-color: {specSpec.accentColor}; box-shadow: 0 0 8px {specSpec.accentColor};"
+          ></span>
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-white leading-tight">{specSpec.name}</p>
+            <p class="text-[10.5px] text-white/55 mt-0.5">{specSpec.stainOrMedium}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onclick={() => labStore.closeMicroscope()}
+          class="lab-btn w-full py-2 rounded-full bg-white text-black hover:bg-white/90 text-[12px] font-bold cursor-pointer shadow-sm"
+        >
+          Alejarse (ESC)
+        </button>
+      </div>
+    </aside>
+  </div>
 {/if}
+
+<style>
+  .microscope-inventory {
+    --lens-size: min(84vh, 50vw);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: clamp(12px, 2vw, 32px);
+    padding: clamp(12px, 2.5vh, 28px) clamp(12px, 2vw, 28px);
+  }
+
+  .inv-left {
+    justify-self: end;
+    width: min(390px, 100%);
+    height: min(var(--lens-size), calc(100vh - 32px));
+    opacity: var(--panel-appear);
+    transform: translate3d(calc((1 - var(--panel-appear)) * -48px), 0, 0);
+  }
+
+  .inv-right {
+    justify-self: start;
+    align-self: center;
+    width: min(300px, 100%);
+    opacity: var(--panel-appear);
+    transform: translate3d(calc((1 - var(--panel-appear)) * 48px), 0, 0);
+  }
+
+  .inv-center {
+    width: var(--lens-size);
+    height: var(--lens-size);
+    display: grid;
+    place-items: center;
+  }
+
+  /* Bisel de precisión del lente ocular (diseño espacial en titanio oscuro y antirreflejo) */
+  .inv-lens-frame {
+    width: 100%;
+    height: 100%;
+    padding: clamp(8px, 1.4vh, 16px);
+    border-radius: 9999px;
+    background:
+      radial-gradient(circle at 50% 50%, transparent 63%, rgba(16, 185, 129, 0.09) 64.5%, transparent 66%, rgba(255, 255, 255, 0.08) 67%),
+      conic-gradient(from 215deg, #101217, #1e222a, #0b0d11, #282d38, #13151b, #21252f, #101217);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.12),
+      0 28px 80px -10px rgba(0, 0, 0, 0.85),
+      inset 0 2px 6px rgba(255, 255, 255, 0.14),
+      inset 0 -8px 22px rgba(0, 0, 0, 0.8);
+    transform: scale(var(--lens-scale));
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+
+  @media (max-width: 960px) {
+    .microscope-inventory {
+      --lens-size: min(92vw, 62vh);
+      grid-template-columns: minmax(0, 1fr);
+      justify-items: center;
+      align-content: start;
+      row-gap: 14px;
+      overflow-y: auto;
+    }
+    .inv-center {
+      order: 1;
+    }
+    .inv-left {
+      order: 2;
+      justify-self: stretch;
+      width: 100%;
+      height: auto;
+    }
+    .inv-right {
+      order: 3;
+      justify-self: stretch;
+      width: 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inv-lens-frame,
+    .inv-left,
+    .inv-right {
+      transform: none;
+    }
+  }
+</style>

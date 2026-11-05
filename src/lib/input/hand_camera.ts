@@ -19,10 +19,18 @@ export class HandCamera {
     this.stream.getVideoTracks()[0].onended = () => onError('Se perdió el acceso a la cámara. Vuelve a activarla o usa mouse.');
     const files = await FilesetResolver.forVisionTasks(`${import.meta.env.BASE_URL}models/mediapipe/wasm`);
     if (this.stopped) return;
-    const detector = await HandLandmarker.createFromOptions(files, {
-      baseOptions: { modelAssetPath: `${import.meta.env.BASE_URL}models/mediapipe/hand_landmarker.task`, delegate: 'CPU' },
-      runningMode: 'VIDEO', numHands: 1
-    });
+    let detector: HandLandmarker;
+    try {
+      detector = await HandLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: `${import.meta.env.BASE_URL}models/mediapipe/hand_landmarker.task`, delegate: 'GPU' },
+        runningMode: 'VIDEO', numHands: 1
+      });
+    } catch {
+      detector = await HandLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: `${import.meta.env.BASE_URL}models/mediapipe/hand_landmarker.task`, delegate: 'CPU' },
+        runningMode: 'VIDEO', numHands: 1
+      });
+    }
     if (this.stopped) { detector.close(); return; }
     this.detector = detector;
     await video.play();

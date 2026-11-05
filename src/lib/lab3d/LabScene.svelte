@@ -140,8 +140,8 @@
   };
 
   const BIOLOGY_MICROSCOPE_FOCUS_POSE = {
-    camPos: new THREE.Vector3(-3.18, 0.98, 1.15),
-    target: new THREE.Vector3(-3.5, 0.55, 0.15)
+    camPos: new THREE.Vector3(-3.34, 0.72, 0.62),
+    target: new THREE.Vector3(-3.5, 0.52, 0.15)
   };
 
   let isTransitioningStation = false;
@@ -174,6 +174,11 @@
   let icePlumeGeo: THREE.BufferGeometry;
   let steamTeaComplexGroup: THREE.Group;
   let steamBotijoGroup: THREE.Group;
+  let steamBenzeneInvisibleFireGroup: THREE.Group;
+  let benzeneHeavyVaporGeo: THREE.BufferGeometry;
+  let benzeneHeavyVaporParticles: THREE.Points;
+  let benzeneThermalFlameMesh: THREE.Mesh;
+  let benzeneThermalFlameShaderMat: THREE.ShaderMaterial;
 
   let isBookHovered = $state<boolean>(false);
   let hoveredToolId = $state<LabToolInfo['id'] | null>(null);
@@ -456,10 +461,88 @@
     }
   });
 
+  const MICROSCOPE_TRANSITION_DURATION = 1.2; // 1.2 segundos exactos (Lerp + Slerp + Cubic Ease-In-Out)
+  const microCamStartPos = new THREE.Vector3();
+  const microCamStartQuat = new THREE.Quaternion();
+  const microCamTargetPos = new THREE.Vector3();
+  const microCamTargetQuat = new THREE.Quaternion();
+  const savedOrbitTarget = new THREE.Vector3(0, 0.55, 0);
+  const microLookMat = new THREE.Matrix4();
+  const microUpVec = new THREE.Vector3(0, 1, 0);
+  let lastMicroFsmDirection: 1 | -1 | 0 = 0;
+
+  function easeInOutCubic(u: number): number {
+    return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+  }
+
+  /**
+   * Convierte objetos de suelo en cajas AABB (planta XZ) para el controlador de primera persona.
+   * Descarta decoraciones planas (carteles, marcas de suelo) y elementos enormes (muros/suelo).
+   */
+  function registerFirstPersonSceneColliders(objects: THREE.Object3D[]) {
+    if (!fpController) return;
+    const boxes: { minX: number; maxX: number; minZ: number; maxZ: number; name: string }[] = [];
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    objects.forEach((obj, idx) => {
+      obj.updateWorldMatrix(true, true);
+      box.setFromObject(obj);
+      if (box.isEmpty()) return;
+      box.getSize(size);
+      const footprintOk = size.x > 0.05 && size.z > 0.05 && size.x < 3.2 && size.z < 3.2;
+      if (!footprintOk || size.y < 0.3) return;
+      boxes.push({
+        minX: box.min.x,
+        maxX: box.max.x,
+        minZ: box.min.z,
+        maxZ: box.max.z,
+        name: obj.name || `floor_object_${idx}`
+      });
+    });
+    fpController.setSceneColliders(boxes);
+  }
+
+  /**
+   * Calcula la pose final del acercamiento al microscopio: la cámara se sitúa justo encima de los
+   * oculares (lado del usuario) y mira hacia el centro del lente, de modo que el ocular quede en el
+   * centro exacto de la pantalla. La UI (MicroscopeWorkstation) amplía después el lente desde ese punto.
+   */
+  function computeEyepieceApproachPose(): { camPos: THREE.Vector3; target: THREE.Vector3 } {
+    const fallback = BIOLOGY_MICROSCOPE_FOCUS_POSE;
+    if (!microscopeGroup) return fallback;
+    microscopeGroup.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    microscopeGroup.traverse((obj) => {
+      if (obj.userData?.microscopePart === 'oculars' && (obj as THREE.Mesh).isMesh) {
+        box.expandByObject(obj);
+      }
+    });
+    if (box.isEmpty()) return fallback;
+
+    const target = new THREE.Vector3();
+    box.getCenter(target);
+    target.y = box.max.y;
+
+    // Dirección horizontal hacia el lado del observador (desde el microscopio hacia la pose de estudio)
+    const front = new THREE.Vector3()
+      .subVectors(fallback.camPos, microscopeGroup.position)
+      .setY(0);
+    if (front.lengthSq() < 1e-6) front.set(0, 0, 1);
+    front.normalize();
+
+    const size = box.getSize(new THREE.Vector3());
+    const dist = THREE.MathUtils.clamp(Math.max(size.x, size.z) * 2.4, 0.2, 0.45);
+    const camPos = target
+      .clone()
+      .addScaledVector(front, dist * 0.42)
+      .add(new THREE.Vector3(0, dist * 0.9, 0));
+    return { camPos, target };
+  }
+
   function roundedBox(width: number, height: number, depth: number, radius: number, material: THREE.Material) {
-    const mesh = new THREE.Mesh(new RoundedBoxGeometry(width, height, depth, 3, radius), material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(width, height, depth, 1, radius), material);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
     return mesh;
   }
 
@@ -509,9 +592,54 @@
     if (revision > 0 && camera && controls) homeCamera();
   });
   $effect(() => {
+    const res = labStore.renderResolution;
+    const shadows = labStore.shadowsEnabled;
+    const mouseSens = labStore.mouseSensitivity;
+    const invY = labStore.invertY;
+    if (renderer) {
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, res));
+      renderer.shadowMap.enabled = shadows;
+    }
+    if (keyLight) {
+      keyLight.castShadow = shadows;
+    }
+    if (fpController) {
+      fpController.mouseSensitivity = mouseSens;
+      fpController.invertY = invY;
+    }
+  });
+  $effect(() => {
     const station = labStore.activeStation;
     const rev = labStore.stationRevision;
     const microActive = labStore.isMicroscopeActive;
+    const phase = labStore.microscopeTransitionPhase;
+    const fsmDir: 1 | -1 | 0 =
+      phase === 'APPROACHING_OCULAR' ? 1 : phase === 'RETURNING_TO_EXPLORING' ? -1 : 0;
+
+    if (fsmDir !== 0 && fsmDir !== lastMicroFsmDirection && camera && controls) {
+      lastMicroFsmDirection = fsmDir;
+      if (fsmDir === 1) {
+        if (fpController?.enabled) {
+          fpController.capturePreInspectPose();
+        }
+        // Capturar pose exacta de inicio (1ª persona o vista de mesa) al iniciar la transición de 1.2s hacia el ocular
+        camera.getWorldPosition(microCamStartPos);
+        camera.getWorldQuaternion(microCamStartQuat);
+        savedOrbitTarget.copy(controls.target);
+
+        // Destino: cámara asomada sobre los oculares, mirando hacia el lente (estilo "inventario"):
+        // al terminar el acercamiento el lente queda centrado en pantalla y la UI lo amplía.
+        const eyepiecePose = computeEyepieceApproachPose();
+        microCamTargetPos.copy(eyepiecePose.camPos);
+        microLookMat.lookAt(eyepiecePose.camPos, eyepiecePose.target, microUpVec);
+        microCamTargetQuat.setFromRotationMatrix(microLookMat);
+      }
+      isTransitioningStation = false;
+      return;
+    } else if (fsmDir === 0) {
+      lastMicroFsmDirection = 0;
+    }
+
     if (
       station !== lastStationId ||
       rev !== lastStationRev ||
@@ -520,7 +648,9 @@
       lastStationId = station;
       lastStationRev = rev;
       lastMicroscopeActiveState = microActive;
-      isTransitioningStation = true;
+      if (labStore.microscopeFsmState === 'EXPLORING' && phase === 'IDLE') {
+        isTransitioningStation = true;
+      }
     }
   });
 
@@ -1089,9 +1219,9 @@
     const amberGlassMat = new THREE.MeshPhysicalMaterial({
       color: 0x451a03,
       roughness: 0.2,
-      transmission: 0.6,
+      transmission: 0,
       transparent: true,
-      thickness: 0.05
+      opacity: 0.86
     });
     const oilBottle = new THREE.Group();
     oilBottle.position.set(-0.45, 0.015, -0.45);
@@ -1124,7 +1254,7 @@
 
     const methBottle = new THREE.Group();
     methBottle.position.set(0.72, 0.015, -0.45);
-    const blueMat = new THREE.MeshPhysicalMaterial({ color: 0x1e3a8a, roughness: 0.2, transmission: 0.65, transparent: true, thickness: 0.05 });
+    const blueMat = new THREE.MeshPhysicalMaterial({ color: 0x1e3a8a, roughness: 0.2, transmission: 0, transparent: true, opacity: 0.86 });
     const methBody = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.046, 0.13, 20), blueMat);
     methBody.position.y = 0.065;
     methBottle.add(methBody);
@@ -1224,7 +1354,7 @@
       new THREE.CylinderGeometry(0.023, 0.023, 0.62, 24),
       new THREE.MeshPhysicalMaterial({
         color: 0x8b5cf6,
-        transmission: 0.45,
+        transmission: 0,
         transparent: true,
         opacity: 0.88,
         roughness: 0.15
@@ -1416,9 +1546,9 @@
       new THREE.LatheGeometry(bottlePts, 36),
       new THREE.MeshPhysicalMaterial({
         color: 0x92400e,
-        transmission: 0.62,
+        transmission: 0,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.88,
         roughness: 0.12,
         ior: 1.5
       })
@@ -1562,7 +1692,7 @@
     condenserGroup.add(condenser);
     const condenserLens = new THREE.Mesh(
       new THREE.CylinderGeometry(0.03, 0.03, 0.004, 28),
-      new THREE.MeshPhysicalMaterial({ color: 0xdbeafe, transmission: 0.8, transparent: true, opacity: 0.85, roughness: 0.02 })
+      new THREE.MeshPhysicalMaterial({ color: 0xf1f5f9, transmission: 0, transparent: true, opacity: 0.65, roughness: 0.02 })
     );
     condenserLens.position.set(0, 0.529, 0.09);
     condenserGroup.add(condenserLens);
@@ -1582,7 +1712,7 @@
     microscopeSlideGroup.position.set(0, 0.564, 0.09);
     const slideGlass = new THREE.Mesh(
       new THREE.BoxGeometry(0.19, 0.006, 0.066),
-      new THREE.MeshPhysicalMaterial({ color: 0xe8f4fb, transmission: 0.85, transparent: true, opacity: 0.88, roughness: 0.04 })
+      new THREE.MeshPhysicalMaterial({ color: 0xe8f4fb, transmission: 0, transparent: true, opacity: 0.55, roughness: 0.04 })
     );
     microscopeSlideGroup.add(slideGlass);
     const frostedLabel = new THREE.Mesh(
@@ -1597,13 +1727,13 @@
     microscopeSlideGroup.add(specimen);
     const coverSlip = new THREE.Mesh(
       new THREE.BoxGeometry(0.05, 0.0015, 0.05),
-      new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.9, transparent: true, opacity: 0.55, roughness: 0.02 })
+      new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0, transparent: true, opacity: 0.45, roughness: 0.02 })
     );
     coverSlip.position.y = 0.0055;
     microscopeSlideGroup.add(coverSlip);
     microscopeOilDropMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.009, 16, 12),
-      new THREE.MeshPhysicalMaterial({ color: 0xfef3c7, transmission: 0.7, transparent: true, opacity: 0.8, roughness: 0.02 })
+      new THREE.MeshPhysicalMaterial({ color: 0xfef3c7, transmission: 0, transparent: true, opacity: 0.75, roughness: 0.02 })
     );
     microscopeOilDropMesh.scale.set(1, 0.45, 1);
     microscopeOilDropMesh.position.y = 0.008;
@@ -1682,7 +1812,7 @@
       }
       const frontLens = new THREE.Mesh(
         new THREE.CylinderGeometry(0.008, 0.008, 0.003, 18),
-        new THREE.MeshPhysicalMaterial({ color: 0xbfdbfe, transmission: 0.6, transparent: true, opacity: 0.9, roughness: 0.02 })
+        new THREE.MeshPhysicalMaterial({ color: 0xf1f5f9, transmission: 0, transparent: true, opacity: 0.75, roughness: 0.02 })
       );
       frontLens.position.y = -def.len - 0.001;
       plumb.add(frontLens);
@@ -1715,7 +1845,7 @@
       ocular.add(eyeCup);
       const eyeLens = new THREE.Mesh(
         new THREE.CylinderGeometry(0.016, 0.016, 0.002, 20),
-        new THREE.MeshPhysicalMaterial({ color: 0x93c5fd, transmission: 0.5, transparent: true, opacity: 0.9, roughness: 0.02 })
+        new THREE.MeshPhysicalMaterial({ color: 0xccfbf1, transmission: 0, transparent: true, opacity: 0.72, roughness: 0.02 })
       );
       eyeLens.position.y = 0.191;
       ocular.add(eyeLens);
@@ -1822,7 +1952,7 @@
 
         const oil = new THREE.Mesh(
           new THREE.SphereGeometry(0.009, 16, 12),
-          new THREE.MeshPhysicalMaterial({ color: 0xfef3c7, transmission: 0.7, transparent: true, opacity: 0.8, roughness: 0.02 })
+          new THREE.MeshPhysicalMaterial({ color: 0xfef3c7, transmission: 0, transparent: true, opacity: 0.75, roughness: 0.02 })
         );
         oil.scale.y = 0.45;
         oil.position.set(0, 0.006, 0);
@@ -1861,12 +1991,13 @@
         }
 
         group.scale.setScalar(3);
-        group.traverse((object) => {
-          if (object instanceof THREE.Mesh && movingParts.getObjectById(object.id)) {
-            object.castShadow = true;
+        // Eliminar mallas procedurales de respaldo para evitar que Raycaster las evalúe en cada frame
+        const toRemove = group.children.filter((c) => c !== movingParts && c !== proxy);
+        toRemove.forEach((c) => group.remove(c));
+        movingParts.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.castShadow = false;
             object.receiveShadow = true;
-          } else if (object !== proxy && object instanceof THREE.Mesh) {
-            object.visible = false;
           }
         });
         proxy.scale.set(0.4, 0.31, 0.45);
@@ -1972,11 +2103,11 @@
     gradMesh.renderOrder = 4;
     station.add(gradMesh);
 
-    const liquidGeo = new THREE.CylinderGeometry(0.38, 0.375, 0.8, 48);
+    const liquidGeo = new THREE.CylinderGeometry(0.38, 0.375, 0.8, 36);
     beakerLiquidMat = new THREE.MeshPhysicalMaterial({
       color: 0x10b981,
-      transmission: explorationStore.renderQuality === 'basic' ? 0 : 0.55,
-      opacity: 0.9,
+      transmission: 0,
+      opacity: 0.78,
       transparent: true,
       roughness: 0.12,
       ior: 1.333,
@@ -2090,12 +2221,12 @@
     station.add(steamAntibubblesGroup);
 
     const agaveLayer = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.372, 0.368, 0.14, 40),
+      new THREE.CylinderGeometry(0.372, 0.368, 0.14, 32),
       new THREE.MeshPhysicalMaterial({
         color: 0xd97706,
-        transmission: 0.45,
+        transmission: 0,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.78,
         roughness: 0.15
       })
     );
@@ -2103,12 +2234,12 @@
     steamAntibubblesGroup.add(agaveLayer);
 
     const strawPipette = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.012, 0.008, 0.55, 20),
+      new THREE.CylinderGeometry(0.012, 0.008, 0.55, 16),
       new THREE.MeshPhysicalMaterial({
         color: 0xe0f2fe,
-        transmission: 0.8,
+        transmission: 0,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.45,
         roughness: 0.1
       })
     );
@@ -2128,24 +2259,24 @@
       );
 
       const innerDrop = new THREE.Mesh(
-        new THREE.SphereGeometry(0.025, 20, 20),
+        new THREE.SphereGeometry(0.025, 16, 16),
         new THREE.MeshPhysicalMaterial({
           color: i % 2 === 0 ? 0x0284c7 : 0x38bdf8,
-          transmission: 0.35,
+          transmission: 0,
           transparent: true,
-          opacity: 0.92,
+          opacity: 0.85,
           roughness: 0.1
         })
       );
       orbGroup.add(innerDrop);
 
       const airShell = new THREE.Mesh(
-        new THREE.SphereGeometry(0.033, 24, 24),
+        new THREE.SphereGeometry(0.033, 16, 16),
         new THREE.MeshPhysicalMaterial({
           color: 0xf0f9ff,
-          transmission: 0.88,
+          transmission: 0,
           transparent: true,
-          opacity: 0.65,
+          opacity: 0.35,
           roughness: 0.04,
           ior: 1.05,
           side: THREE.DoubleSide
@@ -2163,12 +2294,12 @@
     station.add(steamIceConvectionGroup);
 
     iceCubeMesh = new THREE.Mesh(
-      new RoundedBoxGeometry(0.16, 0.11, 0.16, 3, 0.022),
+      new RoundedBoxGeometry(0.16, 0.11, 0.16, 1, 0.022),
       new THREE.MeshPhysicalMaterial({
         color: 0xe11d48,
-        transmission: 0.55,
+        transmission: 0,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.78,
         roughness: 0.15,
         ior: 1.31
       })
@@ -2212,9 +2343,9 @@
       new THREE.ConeGeometry(0.095, 0.14, 4),
       new THREE.MeshPhysicalMaterial({
         color: 0xfef3c7,
-        transmission: 0.55,
+        transmission: 0,
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.72,
         roughness: 0.4
       })
     );
@@ -2270,6 +2401,85 @@
     botijoMouth.position.set(0.08, 0.27, -0.02);
     botijoMouth.rotation.z = -0.35;
     steamBotijoGroup.add(botijoMouth);
+
+    // 6. Módulo de Benceno: Emanación de gases tóxicos pesados (ρ = 2.77x aire) que caen sobre la mesa + Shaders de refracción térmica (llama casi invisible)
+    steamBenzeneInvisibleFireGroup = new THREE.Group();
+    steamBenzeneInvisibleFireGroup.visible = false;
+    station.add(steamBenzeneInvisibleFireGroup);
+
+    const heavyVaporCount = 72;
+    const heavyVaporPos = new Float32Array(heavyVaporCount * 3);
+    for (let i = 0; i < heavyVaporCount; i++) {
+      const ang = (i / heavyVaporCount) * Math.PI * 2;
+      const t = (i % 12) / 12;
+      const r = 0.36 + t * 0.65;
+      heavyVaporPos[i * 3] = Math.cos(ang) * r;
+      heavyVaporPos[i * 3 + 1] = Math.max(0.03, 0.92 * (1 - t));
+      heavyVaporPos[i * 3 + 2] = Math.sin(ang) * r;
+    }
+    benzeneHeavyVaporGeo = new THREE.BufferGeometry();
+    benzeneHeavyVaporGeo.setAttribute('position', new THREE.BufferAttribute(heavyVaporPos, 3));
+    benzeneHeavyVaporParticles = new THREE.Points(
+      benzeneHeavyVaporGeo,
+      new THREE.PointsMaterial({
+        color: 0xfcd34d,
+        size: 0.042,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false
+      })
+    );
+    steamBenzeneInvisibleFireGroup.add(benzeneHeavyVaporParticles);
+
+    benzeneThermalFlameShaderMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uIntensity: { value: 0.45 }
+      },
+      vertexShader: `
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+        varying float vElevation;
+        void main() {
+          vUv = uv;
+          vec3 pos = position;
+          float wave = sin(pos.y * 14.0 - uTime * 8.5 + pos.x * 9.0) * 0.028 * vUv.y * uIntensity;
+          float waveZ = cos(pos.y * 12.0 - uTime * 7.2 + pos.z * 9.0) * 0.028 * vUv.y * uIntensity;
+          pos.x += wave;
+          pos.z += waveZ;
+          vElevation = vUv.y;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+        varying float vElevation;
+        void main() {
+          float shimmer = sin(vUv.y * 26.0 - uTime * 11.0 + sin(vUv.x * 18.0 + uTime * 4.0)) * 0.5 + 0.5;
+          float rim = pow(1.0 - abs(vUv.x - 0.5) * 2.0, 1.6);
+          float fadeTop = smoothstep(1.0, 0.12, vElevation);
+          vec3 coldRefraction = vec3(0.45, 0.82, 1.0);
+          vec3 hotCore = vec3(1.0, 0.86, 0.48);
+          vec3 col = mix(coldRefraction, hotCore, shimmer * 0.55);
+          float alpha = (0.07 + shimmer * 0.16) * rim * fadeTop * uIntensity;
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide
+    });
+
+    benzeneThermalFlameMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.36, 0.72, 32, 18, true),
+      benzeneThermalFlameShaderMat
+    );
+    benzeneThermalFlameMesh.position.y = 0.96;
+    steamBenzeneInvisibleFireGroup.add(benzeneThermalFlameMesh);
 
     return station;
   }
@@ -2433,12 +2643,12 @@
         itemGroup.add(cup);
 
         const soapLiq = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.05, 0.044, 0.12, 20),
+          new THREE.CylinderGeometry(0.05, 0.044, 0.12, 16),
           new THREE.MeshPhysicalMaterial({
             color: 0x06b6d4,
-            transmission: 0.5,
+            transmission: 0,
             transparent: true,
-            opacity: 0.88
+            opacity: 0.78
           })
         );
         soapLiq.position.y = 0.075;
@@ -2454,12 +2664,12 @@
       } else if (comp.id === 'blue_tea_infusion') {
         // Frasco de infusión de Té Azul / Negro con bolsita piramidal
         const jar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.058, 0.058, 0.18, 24),
+          new THREE.CylinderGeometry(0.058, 0.058, 0.18, 20),
           new THREE.MeshPhysicalMaterial({
             color: 0x4f46e5,
-            transmission: 0.45,
+            transmission: 0,
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.82,
             roughness: 0.15
           })
         );
@@ -2475,7 +2685,7 @@
       } else if (comp.id === 'kmno4_reagent') {
         // Frasco reactivo violeta oscuro de KMnO4
         const bottle = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.056, 0.056, 0.19, 24),
+          new THREE.CylinderGeometry(0.056, 0.056, 0.19, 20),
           new THREE.MeshPhysicalMaterial({
             color: 0x7e22ce,
             roughness: 0.2,
@@ -2487,7 +2697,7 @@
         itemGroup.add(bottle);
 
         const neck = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.026, 0.032, 0.05, 18),
+          new THREE.CylinderGeometry(0.026, 0.032, 0.05, 16),
           new THREE.MeshStandardMaterial({ color: 0x3b0764 })
         );
         neck.position.y = 0.225;
@@ -2495,14 +2705,14 @@
       } else if (comp.id === 'fe3_tannin') {
         // Par de viales: Sal Férrica Fe3+ (ámbar) y Ditionita (blanco)
         const vialFe = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.036, 0.036, 0.17, 20),
+          new THREE.CylinderGeometry(0.036, 0.036, 0.17, 16),
           new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.25 })
         );
         vialFe.position.set(-0.032, 0.10, 0);
         itemGroup.add(vialFe);
 
         const vialDith = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.036, 0.036, 0.15, 20),
+          new THREE.CylinderGeometry(0.036, 0.036, 0.15, 16),
           new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35 })
         );
         vialDith.position.set(0.035, 0.09, 0.01);
@@ -2510,12 +2720,12 @@
       } else if (comp.id === 'agave_syrup') {
         // Bote dosificador dorado de Sirope de Agave
         const syrupBottle = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.048, 0.058, 0.18, 24),
+          new THREE.CylinderGeometry(0.048, 0.058, 0.18, 20),
           new THREE.MeshPhysicalMaterial({
             color: 0xf59e0b,
-            transmission: 0.4,
+            transmission: 0,
             transparent: true,
-            opacity: 0.92,
+            opacity: 0.84,
             roughness: 0.18
           })
         );
@@ -2523,7 +2733,7 @@
         itemGroup.add(syrupBottle);
 
         const nozzleCap = new THREE.Mesh(
-          new THREE.ConeGeometry(0.028, 0.06, 18),
+          new THREE.ConeGeometry(0.028, 0.06, 16),
           new THREE.MeshStandardMaterial({ color: 0xfef08a })
         );
         nozzleCap.position.y = 0.225;
@@ -2531,19 +2741,19 @@
       } else if (comp.id === 'dyed_ice_block') {
         // Cubo de hielo teñido de rojo carmín sobre cristalizador
         const dish = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.075, 0.07, 0.035, 24),
+          new THREE.CylinderGeometry(0.075, 0.07, 0.035, 20),
           glassMaterial
         );
         dish.position.y = 0.032;
         itemGroup.add(dish);
 
         const ice = new THREE.Mesh(
-          new RoundedBoxGeometry(0.085, 0.085, 0.085, 3, 0.014),
+          new RoundedBoxGeometry(0.085, 0.085, 0.085, 1, 0.014),
           new THREE.MeshPhysicalMaterial({
             color: 0xe11d48,
-            transmission: 0.65,
+            transmission: 0,
             transparent: true,
-            opacity: 0.9,
+            opacity: 0.78,
             roughness: 0.12
           })
         );
@@ -2553,12 +2763,12 @@
       } else if (comp.id === 'nacl_brine') {
         // Matraz de Salmuera Saturada NaCl con cristales blancos en el fondo
         const brineJar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.055, 0.055, 0.18, 24),
+          new THREE.CylinderGeometry(0.055, 0.055, 0.18, 20),
           new THREE.MeshPhysicalMaterial({
             color: 0x38bdf8,
-            transmission: 0.6,
+            transmission: 0,
             transparent: true,
-            opacity: 0.85,
+            opacity: 0.72,
             roughness: 0.15
           })
         );
@@ -2724,9 +2934,9 @@
     );
     const liquidMat = new THREE.MeshPhysicalMaterial({
       color: colorHex,
-      transmission: explorationStore.renderQuality === 'basic' ? 0 : 0.5,
+      transmission: 0,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.78,
       roughness: 0.15,
       ior: 1.33,
       side: THREE.DoubleSide
@@ -2952,7 +3162,7 @@
       powerPreference: 'high-performance'
     });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowTier ? 1.0 : basicGraphics ? 1.0 : 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowTier ? 1.0 : basicGraphics ? 1.0 : 1.25));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.18;
     renderer.shadowMap.enabled = !lowTier && !basicGraphics;
@@ -2995,6 +3205,11 @@
 
     function onGlobalShortcuts(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.code === 'Escape' || e.code === 'Backspace') && labStore.isMicroscopeActive) {
+        e.preventDefault();
+        labStore.closeMicroscope();
+        return;
+      }
       if (e.code === 'KeyV') {
         labStore.toggleFirstPersonWalk();
       } else if (e.code === 'KeyE' && labStore.isFirstPersonWalking && labStore.nearbyStationPrompt) {
@@ -3010,7 +3225,7 @@
     keyLight = new THREE.DirectionalLight(0xfff5e6, 2.4);
     keyLight.position.set(2.5, 4.5, 3.0);
     keyLight.castShadow = !lowTier && !basicGraphics;
-    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.mapSize.set(512, 512);
     keyLight.shadow.bias = -0.0005;
     scene.add(keyLight);
 
@@ -3121,14 +3336,14 @@
 
     const borosilicateGlassMat = new THREE.MeshPhysicalMaterial({
       color: 0xcce4ec,
-      transmission: basicGraphics ? 0 : 0.92,
-      opacity: basicGraphics ? 0.1 : 1,
-      depthWrite: !basicGraphics,
+      transmission: 0,
+      opacity: 0.18,
+      depthWrite: false,
       transparent: true,
       roughness: 0.06,
       ior: 1.47,
-      thickness: 0.08,
-      reflectivity: 0.9,
+      reflectivity: 0.85,
+      clearcoat: 0.6,
       side: THREE.FrontSide
     });
 
@@ -3234,6 +3449,9 @@
     const safetyInteractiveItems: { mesh: THREE.Object3D; hit: SafetyInteractiveHit }[] = [];
     safetyInfrastructureGroup = buildCompleteLabSafetyInfrastructure(safetyInteractiveItems);
     scene.add(safetyInfrastructureGroup);
+
+    // Colisiones de primera persona contra mobiliario de suelo (ducha/lavaojos, vestidor EPP, extintor, mueble STEAM)
+    registerFirstPersonSceneColliders([...safetyInfrastructureGroup.children, componentsCabinet]);
 
     // Manos 3D Articuladas con MediaPipe y Filtro 1-Euro (Opción 1)
     arHandRig = new ARHandMeshRig();
@@ -3354,6 +3572,12 @@
       );
     }
 
+    let lastHoverRaycastMs = 0;
+    let isMicroFocusDragging = false;
+    let lastMicroFocusClientY = 0;
+    let lastPassiveMicroMouseY: number | null = null;
+    let lastHandMicroFocusY: number | null = null;
+
     function checkInteractiveHit(
       e: PointerEvent
     ):
@@ -3367,7 +3591,7 @@
       updatePointer(e);
       raycaster.setFromCamera(pointer, camera);
       const microActive = labStore.isMicroscopeActive;
-      // En modo enfoque solo el microscopio es interactivo: la atención queda centrada en él
+      // En modo enfoque solo el microscopio es interactivo; fuera de él usamos su proxy ligero para evitar recorrer el GLB
       const targets = microActive
         ? [microscopeGroup]
         : [
@@ -3375,7 +3599,7 @@
             flasks.naoh.group,
             bookGroup,
             ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
-            ...interactiveToolGroups,
+            ...interactiveToolGroups.map((g) => (g === microscopeGroup && microscopeProxyMesh ? microscopeProxyMesh : g)),
             ...cabinetItemGroups
           ];
       const hits = raycaster
@@ -3409,7 +3633,43 @@
         (labStore.isExplorationMode && explorationStore.pendingSafety)
       )
         return;
+
+      if (
+        labStore.microscopeTransitionPhase === 'APPROACHING_OCULAR' ||
+        labStore.microscopeTransitionPhase === 'RETURNING_TO_EXPLORING'
+      )
+        return;
+
+      // En Primera Persona (EXPLORING), el punto central reemplaza al cursor y FirstPersonController gestiona la alineación
+      if (labStore.isFirstPersonWalking && labStore.microscopeFsmState === 'EXPLORING') {
+        renderer!.domElement.style.cursor = 'none';
+        return;
+      }
+
       const hit = checkInteractiveHit(e);
+
+      // En modo Simulación Científica (INSPECTING_MICROSCOPE), arrastrar en el eje Y ajusta el enfoque analítico micrométrico/macrométrico
+      if (labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE' && (!hit || hit.type === 'microscopePart')) {
+        if (
+          !hit ||
+          hit.partId === 'coarse_knob' ||
+          hit.partId === 'fine_knob' ||
+          hit.partId === 'oculars' ||
+          hit.partId === 'head' ||
+          hit.partId === 'arm'
+        ) {
+          isMicroFocusDragging = true;
+          lastMicroFocusClientY = e.clientY;
+          activePointerId = e.pointerId;
+          renderer!.domElement.setPointerCapture(e.pointerId);
+          renderer!.domElement.style.cursor = 'ns-resize';
+          if (hit?.type === 'microscopePart') {
+            labStore.selectMicroscopePart(hit.partId);
+          }
+          return;
+        }
+      }
+
       if (!hit) return;
 
       if (hit.type === 'safety') {
@@ -3496,6 +3756,33 @@
     }
 
     function onPointerMove(e: PointerEvent) {
+      if (isMicroFocusDragging && e.pointerId === activePointerId) {
+        const dyPx = lastMicroFocusClientY - e.clientY;
+        lastMicroFocusClientY = e.clientY;
+        lastPassiveMicroMouseY = e.clientY;
+        const normDeltaY = dyPx / Math.max(240, window.innerHeight * 0.45);
+        labStore.applyAnalyticalFocusAxisY(normDeltaY);
+        return;
+      }
+
+      // Fase 3 (Modo Simulación): En estado INSPECTING_MICROSCOPE (OCULAR_LOCKED), el movimiento del mouse en el eje Y
+      // ya no mueve la vista del entorno sino que controla directamente la variable de enfoque analítico
+      if (
+        labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE' &&
+        labStore.microscopeTransitionPhase === 'OCULAR_LOCKED'
+      ) {
+        if (lastPassiveMicroMouseY !== null) {
+          const dyPx = lastPassiveMicroMouseY - e.clientY;
+          if (Math.abs(dyPx) > 0.5 && Math.abs(dyPx) < 120) {
+            const normDeltaY = dyPx / Math.max(320, window.innerHeight * 0.65);
+            labStore.applyAnalyticalFocusAxisY(normDeltaY);
+          }
+        }
+        lastPassiveMicroMouseY = e.clientY;
+      } else {
+        lastPassiveMicroMouseY = null;
+      }
+
       if (draggedFlaskId) {
         if (e.pointerId !== activePointerId) return;
         updatePointer(e);
@@ -3508,6 +3795,22 @@
         return;
       }
 
+      // En Primera Persona (EXPLORING), ocultar siempre el cursor del sistema (el punto central lo reemplaza)
+      if (labStore.isFirstPersonWalking && labStore.microscopeFsmState === 'EXPLORING') {
+        hoveredFlaskId = null;
+        isBookHovered = false;
+        hoveredToolId = null;
+        hoveredCabinetId = null;
+        hoveredMicroscopePartId = null;
+        renderer!.domElement.style.cursor = 'none';
+        return;
+      }
+
+      // Throttle de raycasting de hover a 25Hz (40ms) para eliminar latencia de CPU
+      const nowMs = performance.now();
+      if (nowMs - lastHoverRaycastMs < 40) return;
+      lastHoverRaycastMs = nowMs;
+
       const hit = checkInteractiveHit(e);
       hoveredMicroscopePartId = hit?.type === 'microscopePart' ? hit.partId : null;
       if (hit?.type === 'microscopePart') {
@@ -3515,7 +3818,8 @@
         isBookHovered = false;
         hoveredToolId = null;
         hoveredCabinetId = null;
-        renderer!.domElement.style.cursor = 'pointer';
+        renderer!.domElement.style.cursor =
+          hit.partId === 'coarse_knob' || hit.partId === 'fine_knob' ? 'ns-resize' : 'pointer';
       } else if (hit?.type === 'flask') {
         hoveredFlaskId = hit.id;
         isBookHovered = false;
@@ -3545,12 +3849,21 @@
         isBookHovered = false;
         hoveredToolId = null;
         hoveredCabinetId = null;
-        renderer!.domElement.style.cursor = 'default';
+        renderer!.domElement.style.cursor = labStore.isMicroscopeActive ? 'ns-resize' : 'default';
       }
     }
 
     function onPointerUp(e: PointerEvent) {
       if (e.pointerId !== activePointerId) return;
+      if (isMicroFocusDragging) {
+        isMicroFocusDragging = false;
+        if (renderer?.domElement.hasPointerCapture(e.pointerId)) {
+          renderer.domElement.releasePointerCapture(e.pointerId);
+        }
+        renderer!.domElement.style.cursor = labStore.isMicroscopeActive ? 'ns-resize' : 'default';
+        activePointerId = null;
+        return;
+      }
       if (draggedFlaskId) {
         const rig = flasks[draggedFlaskId];
         rig.targetPos.copy(rig.homePos);
@@ -3572,21 +3885,25 @@
     renderer.domElement.addEventListener('pointercancel', onPointerUp);
     renderer.domElement.addEventListener('lostpointercapture', onPointerUp);
 
-    // Rueda del ratón sobre los tornillos: girarlos como en un microscopio real
+    // Rueda del ratón / eje Y en modo Simulación Científica (INSPECTING): controla el enfoque analítico
     function onMicroscopeWheel(e: WheelEvent) {
       if (!labStore.isMicroscopeActive) return;
-      const part = hoveredMicroscopePartId;
-      if (part !== 'coarse_knob' && part !== 'fine_knob' && part !== 'diaphragm') return;
       e.preventDefault();
+      const part = hoveredMicroscopePartId;
       const dir = e.deltaY < 0 ? 1 : -1;
-      if (part === 'coarse_knob') labStore.adjustCoarseFocus(15 * dir);
-      else if (part === 'fine_knob') labStore.adjustFineFocus(2 * dir);
-      else
+      if (part === 'diaphragm') {
         labStore.microscopeDiaphragm = THREE.MathUtils.clamp(
           Number((labStore.microscopeDiaphragm + 0.05 * dir).toFixed(2)),
           0.15,
           1
         );
+      } else if (part === 'coarse_knob') {
+        labStore.adjustCoarseFocus(12 * dir);
+      } else if (part === 'fine_knob') {
+        labStore.adjustFineFocus(1.5 * dir * labStore.microscopeWheelSensitivity);
+      } else {
+        labStore.adjustMicroscopeFocusWheel(dir);
+      }
     }
     renderer.domElement.addEventListener('wheel', onMicroscopeWheel, { passive: false });
 
@@ -3625,6 +3942,14 @@
     let smoothedFps = 60;
     let lowFpsStreak = 0;
     let adaptiveOptimizationActive = lowTier;
+
+    // Vectores pre-alocados Zero-GC para el bucle animate()
+    const unitVec3 = new THREE.Vector3(1, 1, 1);
+    const tempScaleVec3 = new THREE.Vector3();
+    const safeTargetVec3 = new THREE.Vector3();
+    const nozzleVec3 = new THREE.Vector3();
+    const specColorTemp = new THREE.Color();
+    const handMicroTargetVec3 = new THREE.Vector3(-3.36, 0.34, 0.14);
 
     function animate(timestamp?: number) {
       timer.update(timestamp);
@@ -3739,12 +4064,12 @@
         if (buretteValveMesh) buretteValveMesh.rotation.x = 0;
       }
 
-      // Animación del bulbo del Gotero Ámbar
+      // Animación del bulbo del Gotero Ámbar (Zero-GC)
       if (dropperAnimTimer > 0 && dropperBulbMesh) {
         dropperAnimTimer -= dt;
         dropperBulbMesh.scale.set(0.75, 0.85, 0.75);
       } else if (dropperBulbMesh) {
-        dropperBulbMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 8);
+        dropperBulbMesh.scale.lerp(unitVec3, dt * 8);
       }
 
       // Animación de la tira de papel pH
@@ -3764,12 +4089,13 @@
         (bookGlowRing.material as THREE.MeshBasicMaterial).opacity = isBookHovered ? 0.95 : 0.45;
       }
 
-      // Realce 3D suave en los componentes clasificados del Mueble 3D al pasar el ratón o seleccionarlos
+      // Realce 3D suave en los componentes clasificados del Mueble 3D al pasar el ratón o seleccionarlos (Zero-GC)
       cabinetItemGroups.forEach((grp) => {
         const cid = grp.userData?.cabinetComponentId;
         const isHot = cid === hoveredCabinetId || cid === labStore.selectedCabinetComponentId;
         const targetScale = isHot ? 1.16 : 1.0;
-        grp.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), dt * 10);
+        tempScaleVec3.setScalar(targetScale);
+        grp.scale.lerp(tempScaleVec3, dt * 10);
       });
 
       // Animación 3D en vivo de los Efectos STEAM en el Vaso Central (Prolongo & Pinto)
@@ -3831,18 +4157,67 @@
         steamBotijoGroup.visible = steamEff === 'botijo_cooling';
       }
 
+      if (steamBenzeneInvisibleFireGroup) {
+        steamBenzeneInvisibleFireGroup.visible = steamEff === 'benzene_invisible_fire';
+        if (steamBenzeneInvisibleFireGroup.visible && !isReducedMotion) {
+          const benzeneVol = labStore.beaker.acidVolumeMl + labStore.beaker.baseVolumeMl;
+          const heatFactor = Math.max(0.25, Math.min(1.3, (tempC - 18) / 35));
+          if (benzeneHeavyVaporGeo) {
+            const vAttr = benzeneHeavyVaporGeo.getAttribute('position') as THREE.BufferAttribute;
+            for (let i = 0; i < vAttr.count; i++) {
+              const phase = (elapsed * (0.38 + heatFactor * 0.25) + i / vAttr.count) % 1;
+              const ang = (i / vAttr.count) * Math.PI * 2 + elapsed * 0.15;
+              const rad = 0.35 + Math.pow(phase, 0.85) * (0.55 + Math.min(0.45, benzeneVol * 0.01));
+              const vy = Math.max(0.025, 0.94 * (1 - Math.pow(phase, 0.72)));
+              vAttr.setXYZ(i, Math.cos(ang) * rad, vy, Math.sin(ang) * rad);
+            }
+            vAttr.needsUpdate = true;
+          }
+          if (benzeneThermalFlameShaderMat && benzeneThermalFlameMesh) {
+            benzeneThermalFlameShaderMat.uniforms.uTime.value = elapsed;
+            const targetInt =
+              tempC >= 35
+                ? Math.min(1.25, 0.65 + (tempC - 35) * 0.02 + benzeneVol * 0.01)
+                : 0.35 + Math.min(0.35, benzeneVol * 0.008);
+            benzeneThermalFlameShaderMat.uniforms.uIntensity.value = targetInt;
+          }
+          const activeAngle =
+            Math.abs(flasks.hcl.group.rotation.z) >= Math.abs(flasks.naoh.group.rotation.z)
+              ? flasks.hcl.group.rotation.z
+              : flasks.naoh.group.rotation.z;
+          labStore.updateDelicatePourAngle(
+            activeAngle,
+            Math.abs(activeAngle) > 0.25 || !!labStore.activePourAnim
+          );
+        }
+      }
+
       const hand = labStore.gestureInput;
       const handFresh = hand && hand.tracked && performance.now() - hand.timestampMs < 250;
       if (handFresh) lastHandSeen = hand.timestampMs;
-      const handEnabled = labStore.isCameraActive && !labStore.isMicroscopeActive && cameraReturnTimer <= 0 && !(labStore.isExplorationMode && explorationStore.pendingSafety) && !draggedFlaskId && !labStore.activePourAnim
+      const handEnabled = labStore.isCameraActive && !labStore.isMicroscopeActive && !labStore.isLegalConsentModalOpen && cameraReturnTimer <= 0 && !(labStore.isExplorationMode && explorationStore.pendingSafety) && !draggedFlaskId && !labStore.activePourAnim
         && !labStore.isCatalogOpen && !labStore.isCameraModalOpen && !labStore.isHomeBookOpen && !labStore.isNotebookOpen && !labStore.isHypothesisModalOpen;
       handHoveredFlaskId = null;
       let gestureCanPour = false;
       if (!handEnabled || !hand || performance.now() - lastHandSeen >= 1500) {
         releaseGesture();
         wasPinched = hand?.pinched ?? false;
-        if (labStore.isCameraActive && handFresh && labStore.isMicroscopeActive) labStore.gestureStatus = 'Mano detectada. Vuelve a la mesa para agarrar recipientes.';
+        if (labStore.isCameraActive && handFresh && labStore.isMicroscopeActive && hand) {
+          // En modo Simulación Científica (INSPECTING), el eje Y de la mano MediaPipe controla el enfoque analítico
+          if (lastHandMicroFocusY !== null) {
+            const dyHand = lastHandMicroFocusY - hand.y;
+            if (Math.abs(dyHand) > 0.002) {
+              labStore.applyAnalyticalFocusAxisY(dyHand * 1.35);
+            }
+          }
+          lastHandMicroFocusY = hand.y;
+          labStore.gestureStatus =
+            'Modo Simulación Científica: Mueve tu mano en el eje Y para ajustar el enfoque analítico del microscopio.';
+        } else {
+          lastHandMicroFocusY = null;
+        }
       } else if (handFresh) {
+        lastHandMicroFocusY = null;
         pointer.set(hand.x * 2 - 1, 1 - hand.y * 2);
         raycaster.setFromCamera(pointer, camera);
         if (!gestureFlaskId) {
@@ -3885,9 +4260,15 @@
       }
       handCursor = handEnabled && handFresh ? { x: hand.x, y: hand.y, pinched: hand.pinched, overFlask: !hand.needsOpen && !!(handHoveredFlaskId || gestureFlaskId) } : null;
 
-      // Actualizar Mano 3D Articulada con MediaPipe y Filtro 1-Euro (Opción 1)
+      // Actualizar Mano 3D Articulada con MediaPipe y Filtro 1-Euro (se oculta en INSPECTING_MICROSCOPE según Fase 2)
       if (arHandRig) {
-        if (handEnabled && handFresh && hand && !labStore.isFirstPersonWalking) {
+        if (
+          handEnabled &&
+          handFresh &&
+          hand &&
+          !labStore.isFirstPersonWalking &&
+          labStore.microscopeFsmState === 'EXPLORING'
+        ) {
           let targetPos = intersectPt;
           if (gestureFlaskId && flasks[gestureFlaskId]) {
             targetPos = flasks[gestureFlaskId].group.position;
@@ -3925,28 +4306,51 @@
         rig.targetPos.set(side * 0.9, 1.65, 0);
         rig.targetRotZ = animState.elapsed > 0.45 ? side * 1.95 : 0;
         flowingRig = rig;
+      } else if (labStore.isFirstPersonWalking && fpController?.heldFlaskId) {
+        const heldId = fpController.heldFlaskId;
+        const rig = flasks[heldId];
+        const otherId = heldId === 'hcl' ? 'naoh' : 'hcl';
+        flasks[otherId].targetPos.copy(flasks[otherId].homePos);
+        flasks[otherId].targetRotZ = 0;
+
+        if (fpController.isPouringHeldFlask) {
+          const side = rig.id === 'hcl' ? -1 : 1;
+          rig.targetPos.set(side * 0.9, 1.65, 0);
+          rig.targetRotZ = side * 1.95;
+          flowingRig = rig;
+        } else {
+          fpController.getRightHandHoldWorldPosition(rig.targetPos);
+          rig.targetRotZ = 0.12;
+        }
       } else if (draggedFlaskId && isOverPourZone) {
         flowingRig = flasks[draggedFlaskId];
       } else if (gestureFlaskId && gestureCanPour) {
         flowingRig = flasks[gestureFlaskId];
+      } else if (!draggedFlaskId && !gestureFlaskId) {
+        flasks.hcl.targetPos.copy(flasks.hcl.homePos);
+        flasks.hcl.targetRotZ = 0;
+        flasks.naoh.targetPos.copy(flasks.naoh.homePos);
+        flasks.naoh.targetRotZ = 0;
       }
 
       (['hcl', 'naoh'] as const).forEach((id) => {
         const rig = flasks[id];
         const reagentData = labStore.reagents.find((r) => r.reagentId === id);
         const remRatio = reagentData ? reagentData.remainingMl / reagentData.initialMl : 0;
-        const heldByHand = gestureFlaskId === id;
-        const smoothing = 1 - Math.exp(-(heldByHand ? 14 : 8) * dt);
+        const heldByHand =
+          gestureFlaskId === id ||
+          (labStore.isFirstPersonWalking && fpController?.heldFlaskId === id);
+        const smoothing = 1 - Math.exp(-(heldByHand ? 15 : 8) * dt);
         // Elevar primero evita atravesar el vaso al inclinar o devolver el matraz.
         const returning = !heldByHand && rig.targetPos.y < 0.5;
         rig.group.rotation.z = THREE.MathUtils.lerp(rig.group.rotation.z,
           !heldByHand && !returning && rig.group.position.y < 1.4 ? 0 : rig.targetRotZ, smoothing);
-        const safeTarget = rig.targetPos.clone();
-        if (returning && Math.abs(rig.group.rotation.z) > 0.15) safeTarget.y = 1.65;
+        safeTargetVec3.copy(rig.targetPos);
+        if (returning && Math.abs(rig.group.rotation.z) > 0.15) safeTargetVec3.y = 1.65;
         if (returning && Math.hypot(rig.group.position.x, rig.group.position.z) < 0.76 && rig.group.position.y > 0.9) {
-          safeTarget.y = Math.max(safeTarget.y, rig.group.position.y, 1.04);
+          safeTargetVec3.y = Math.max(safeTargetVec3.y, rig.group.position.y, 1.04);
         }
-        rig.group.position.lerp(safeTarget, smoothing);
+        rig.group.position.lerp(safeTargetVec3, smoothing);
         const key = `${rig.group.rotation.z.toFixed(3)}:${remRatio.toFixed(4)}`;
         if (key !== rig.fluidKey) {
           const fluid = flaskFluid(rig.group.rotation.z, remRatio * 0.65);
@@ -3971,12 +4375,15 @@
         rig.ringMesh.scale.setScalar(isSel ? 1.08 : 1.0);
       });
 
-      const nozzle = flowingRig
-        ? new THREE.Vector3(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
-            .applyEuler(flowingRig.group.rotation)
-            .add(flowingRig.group.position)
-        : new THREE.Vector3();
-      if (flowingRig && streamHitsBeaker(nozzle)) {
+      if (flowingRig) {
+        nozzleVec3
+          .set(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
+          .applyEuler(flowingRig.group.rotation)
+          .add(flowingRig.group.position);
+      } else {
+        nozzleVec3.set(0, 0, 0);
+      }
+      if (flowingRig && streamHitsBeaker(nozzleVec3)) {
         requestedFlow = pourRate(flowingRig.group.rotation.z, flowingRig.fluidHeight) * dt;
       }
       const reagent = flowingRig && labStore.reagents.find(r => r.reagentId === flowingRig?.id);
@@ -4024,11 +4431,11 @@
       if (isFlowing && flowingRig) {
         pourStreamMat.color.setHex(flowingRig.colorHex);
         const impactY = 0.12 + 0.8 * currentFillRatio;
-        const length = nozzle.y - impactY;
+        const length = nozzleVec3.y - impactY;
         pourStreamMesh.scale.set(1, length / 0.65, 1);
         pourStreamMesh.quaternion.identity();
-        pourStreamMesh.position.set(nozzle.x, impactY + length / 2, nozzle.z);
-        splashParticles.position.set(nozzle.x, impactY, nozzle.z);
+        pourStreamMesh.position.set(nozzleVec3.x, impactY + length / 2, nozzleVec3.z);
+        splashParticles.position.set(nozzleVec3.x, impactY, nozzleVec3.z);
         const posAttr = splashGeo.getAttribute('position') as THREE.BufferAttribute;
         for (let i = 0; i < posAttr.count; i++) {
           const age = (elapsed * 2 + i / posAttr.count) % 1;
@@ -4052,17 +4459,73 @@
         safetyFx.setReactorVapor(isVaporActive, vaporIntensity);
       }
 
-      // ===================== CONTROLADOR 1ª PERSONA O CINEMÁTICA DE ESTACIÓN =====================
-      if (labStore.isFirstPersonWalking && fpController) {
+      // ===================== FSM DE INTERACCIÓN CON EL MICROSCOPIO (EXPLORING <-> INSPECTING_MICROSCOPE) =====================
+      const knobAngleRad =
+        ((labStore.microscopeCoarseUm - 4500) / 2000) * Math.PI * 2 +
+        (labStore.microscopeFineUm / 200) * Math.PI * 2;
+      const stageXNorm = THREE.MathUtils.clamp(labStore.microscopeStageXUm / 800, -1, 1);
+      const stageYNorm = THREE.MathUtils.clamp(labStore.microscopeStageYUm / 800, -1, 1);
+
+      if (
+        labStore.microscopeTransitionPhase === 'APPROACHING_OCULAR' ||
+        labStore.microscopeTransitionPhase === 'RETURNING_TO_EXPLORING'
+      ) {
+        // Fase 1 y Fase 4: Locomoción y movimiento libre del mouse completamente bloqueados durante la interpolación de 1.2s
+        if (controls.enabled) controls.enabled = false;
+        if (fpController?.enabled) fpController.disable();
+        fpController?.setAvatarBodyVisible(false);
+
+        const duration = isReducedMotion ? 0.15 : MICROSCOPE_TRANSITION_DURATION;
+        const nextProgress = THREE.MathUtils.clamp(
+          labStore.microscopeTransitionProgress +
+            (dt / duration) * labStore.microscopeTransitionDirection,
+          0,
+          1
+        );
+        labStore.microscopeTransitionProgress = nextProgress;
+        const alpha = easeInOutCubic(nextProgress);
+
+        camera.position.lerpVectors(microCamStartPos, microCamTargetPos, alpha);
+        camera.position.y += Math.sin(alpha * Math.PI) * 0.025;
+        camera.quaternion.slerpQuaternions(microCamStartQuat, microCamTargetQuat, alpha);
+
+        if (
+          (labStore.microscopeTransitionDirection === 1 && nextProgress >= 1) ||
+          (labStore.microscopeTransitionDirection === -1 && nextProgress <= 0)
+        ) {
+          const returningToExploring = labStore.microscopeTransitionDirection === -1;
+          labStore.completeMicroscopeTransition();
+          if (returningToExploring) {
+            if (labStore.isFirstPersonWalking && fpController) {
+              fpController.enable(microCamStartPos);
+              fpController.setAvatarBodyVisible(true);
+            } else {
+              fpController?.updateMicroscopeHands(0, knobAngleRad, stageXNorm, stageYNorm);
+              controls.target.copy(savedOrbitTarget);
+              controls.enabled = true;
+              controls.update();
+            }
+          }
+        }
+      } else if (labStore.microscopeFsmState === 'INSPECTING_MICROSCOPE') {
+        // Fase 2: Cámara fija en la matriz de transformación exacta frente al ocular y cuerpo del avatar oculto
+        if (controls.enabled) controls.enabled = false;
+        if (fpController?.enabled) fpController.disable();
+        fpController?.setAvatarBodyVisible(false);
+
+        camera.position.copy(microCamTargetPos);
+        camera.quaternion.copy(microCamTargetQuat);
+      } else if (labStore.isFirstPersonWalking && fpController) {
         if (controls.enabled) controls.enabled = false;
         if (!fpController.enabled) fpController.enable(camera.position);
+        fpController.setAvatarBodyVisible(true);
         fpController.update(dt);
         fpController.updateCrosshairRaycast([
           flasks.hcl.group,
           flasks.naoh.group,
           bookGroup,
           ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
-          ...interactiveToolGroups,
+          ...interactiveToolGroups.map((g) => (g === microscopeGroup && microscopeProxyMesh ? microscopeProxyMesh : g)),
           ...cabinetItemGroups
         ]);
         labStore.nearbyStationPrompt = fpController.getNearbyStation();
@@ -4077,6 +4540,7 @@
         labStore.firstPersonPointerLocked = fpController.isPointerLocked;
       } else {
         if (fpController?.enabled) fpController.disable();
+        fpController?.setAvatarBodyVisible(false);
 
         if (isTransitioningStation) {
           const targetPose = (labStore.activeStation === 'biologia' && labStore.isMicroscopeActive)
@@ -4149,12 +4613,13 @@
           k
         );
 
-        // Muestra, aceite de inmersión e iluminación Köhler
-        const specColor =
-          labStore.microscopeSpecimenId === 'reactor_live'
-            ? targetLiquidColor
-            : new THREE.Color(MICROSCOPE_SPECIMEN_COLORS[labStore.microscopeSpecimenId]);
-        microscopeSpecimenMat.color.lerp(specColor, k);
+        // Muestra, aceite de inmersión e iluminación Köhler (Zero-GC)
+        if (labStore.microscopeSpecimenId === 'reactor_live') {
+          specColorTemp.copy(targetLiquidColor);
+        } else {
+          specColorTemp.setHex(MICROSCOPE_SPECIMEN_COLORS[labStore.microscopeSpecimenId]);
+        }
+        microscopeSpecimenMat.color.lerp(specColorTemp, k);
         microscopeOilDropMesh.visible = labStore.microscopeImmersionOilApplied;
         const lamp = labStore.microscopeLampOn ? labStore.microscopeLampIntensity : 0;
         microscopeLedGlowMat.color.setRGB(0.15 + lamp * 0.85, 0.16 + lamp * 0.84, 0.18 + lamp * 0.82);
@@ -4167,7 +4632,13 @@
         );
       }
 
-      if (!labStore.isFirstPersonWalking && controls.enabled) controls.update(dt);
+      if (
+        labStore.microscopeFsmState === 'EXPLORING' &&
+        !labStore.isFirstPersonWalking &&
+        controls.enabled
+      ) {
+        controls.update(dt);
+      }
       renderer?.render(scene, camera);
     }
 
@@ -4230,7 +4701,13 @@
   });
 </script>
 
-<div class="relative w-full h-full overflow-hidden select-none bg-[#080c14]">
+<div
+  class="relative w-full h-full overflow-hidden select-none bg-[#080c14] {labStore.isFirstPersonWalking &&
+  labStore.microscopeFsmState === 'EXPLORING' &&
+  !labStore.isAnyModalBlockingFirstPerson
+    ? 'cursor-none'
+    : ''}"
+>
   <div bind:this={container} class="w-full h-full"></div>
 
   {#if handCursor}
@@ -4296,8 +4773,8 @@
     </div>
   {/if}
 
-  <!-- INSPECTOR ESPACIAL DE COMPONENTE STEAM (ESTILO AIRPODS / VISIONOS) -->
-  {#if labStore.selectedCabinetComponent}
+  <!-- INSPECTOR ESPACIAL DE COMPONENTE STEAM (SE OCULTA DURANTE INSPECTING_MICROSCOPE SEGÚN FASE 2) -->
+  {#if labStore.microscopeFsmState === 'EXPLORING' && labStore.selectedCabinetComponent}
     {@const comp = labStore.selectedCabinetComponent}
     <div class="fixed bottom-22 left-6 z-20 w-full max-w-[340px] pointer-events-auto apple-popover-enter">
       <div class="apple-glass rounded-[26px] p-4 flex flex-col gap-3">
@@ -4361,7 +4838,7 @@
         </div>
       </div>
     </div>
-  {:else if labStore.inspectedTool && labStore.inspectedTool.id !== 'ph_meter' && labStore.inspectedTool.id !== 'microscope'}
+  {:else if labStore.microscopeFsmState === 'EXPLORING' && labStore.inspectedTool && labStore.inspectedTool.id !== 'ph_meter' && labStore.inspectedTool.id !== 'microscope'}
     {@const tool = labStore.inspectedTool}
     <div class="fixed bottom-22 left-6 z-20 w-full max-w-[340px] pointer-events-auto apple-popover-enter">
       <div class="apple-glass rounded-[26px] p-4 flex flex-col gap-3">
