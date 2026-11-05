@@ -75,6 +75,269 @@ export function createLabFloorTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * Textura procedural de falso techo acústico registrable modular (Placas de 60x60 cm con perfilería T)
+ */
+export function createLabCeilingTexture(): THREE.CanvasTexture {
+  if (typeof document === 'undefined') {
+    const fallbackTex = new THREE.CanvasTexture({} as HTMLCanvasElement);
+    fallbackTex.repeat.set(16, 12);
+    return fallbackTex;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+
+  // Base blanco tiza / acústico claro de laboratorio
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Cuadrícula modular de falso techo registrable (perfilería T de 60x60 cm)
+  const tileSize = 128;
+  for (let x = 0; x < 512; x += tileSize) {
+    for (let y = 0; y < 512; y += tileSize) {
+      // Placa acústica con bisel perimetral tegular
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(x + 3, y + 3, tileSize - 6, tileSize - 6);
+
+      // Microperforaciones acústicas de absorción fónica
+      ctx.fillStyle = 'rgba(100, 116, 139, 0.08)';
+      for (let px = x + 16; px < x + tileSize - 16; px += 16) {
+        for (let py = y + 16; py < y + tileSize - 16; py += 16) {
+          ctx.beginPath();
+          ctx.arc(px, py, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  // Perfilería T metálica lacada en blanco
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 3;
+  for (let i = 0; i <= 512; i += tileSize) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 512);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, i);
+    ctx.lineTo(512, i);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(16, 12);
+  return texture;
+}
+
+/**
+ * Construye el Techo Técnico del Laboratorio con Luminarias Cleanroom LED Troffers,
+ * Difusores de Aire Acondicionado HVAC, Detectores de Humo y Rociadores Contra Incendios.
+ */
+export function buildLaboratoryCeilingAndLighting(): THREE.Group {
+  const ceilingGroup = new THREE.Group();
+  ceilingGroup.name = 'LaboratoryCeilingAndLighting';
+  const ceilingY = 3.65;
+
+  // 1. Plano del Falso Techo Registrable
+  const ceilingTex = createLabCeilingTexture();
+  const ceilingMat = new THREE.MeshStandardMaterial({
+    map: ceilingTex,
+    roughness: 0.88,
+    metalness: 0.05
+  });
+  const ceilingMesh = new THREE.Mesh(new THREE.PlaneGeometry(42, 28), ceilingMat);
+  ceilingMesh.rotation.x = Math.PI / 2;
+  ceilingMesh.position.set(0, ceilingY, 1.5);
+  ceilingGroup.add(ceilingMesh);
+
+  // 2. Luminarias Cleanroom LED Troffers (120x60 cm empotradas en falso techo)
+  const trofferMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    toneMapped: false
+  });
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    roughness: 0.25,
+    metalness: 0.8
+  });
+
+  const lightPositions: [number, number][] = [
+    // 4 paneles sobre Química Central
+    [-1.2, -0.6],
+    [1.2, -0.6],
+    [-1.2, 0.7],
+    [1.2, 0.7],
+    // 2 paneles sobre Biología
+    [-4.3, -0.5],
+    [-4.3, 0.7],
+    // 2 paneles sobre STEAM
+    [4.3, -0.5],
+    [4.3, 0.7],
+    // 2 paneles sobre Pasillo y Seguridad
+    [-6.3, 0.3],
+    [-6.3, 2.0]
+  ];
+
+  lightPositions.forEach(([lx, lz]) => {
+    // Marco exterior de aluminio
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.03, 0.68), frameMat);
+    frame.position.set(lx, ceilingY - 0.015, lz);
+    ceilingGroup.add(frame);
+
+    // Difusor opal blanco radiante
+    const diffuser = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), trofferMat);
+    diffuser.rotation.x = Math.PI / 2;
+    diffuser.position.set(lx, ceilingY - 0.028, lz);
+    ceilingGroup.add(diffuser);
+  });
+
+  // 3. Luces cenitales de laboratorio (proyectan luz pura 5000K sobre las mesas)
+  const chemOverheadLight = new THREE.DirectionalLight(0xf8fbff, 1.8);
+  chemOverheadLight.position.set(0, ceilingY - 0.2, 0.5);
+  chemOverheadLight.target.position.set(0, 0, 0.2);
+  ceilingGroup.add(chemOverheadLight);
+  ceilingGroup.add(chemOverheadLight.target);
+
+  const bioOverheadLight = new THREE.SpotLight(0xf0fdf4, 3.2, 7, Math.PI / 3, 0.6);
+  bioOverheadLight.position.set(-4.3, ceilingY - 0.2, 0.5);
+  bioOverheadLight.target.position.set(-4.3, 0, 0.2);
+  ceilingGroup.add(bioOverheadLight);
+  ceilingGroup.add(bioOverheadLight.target);
+
+  const steamOverheadLight = new THREE.SpotLight(0xfefce8, 3.2, 7, Math.PI / 3, 0.6);
+  steamOverheadLight.position.set(4.3, ceilingY - 0.2, 0.5);
+  steamOverheadLight.target.position.set(4.3, 0, 0.2);
+  ceilingGroup.add(steamOverheadLight);
+  ceilingGroup.add(steamOverheadLight.target);
+
+  // 4. Difusores de aire acondicionado HVAC (impulsión de aire filtrado)
+  const hvacMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35 });
+  const hvacPositions: [number, number][] = [
+    [0, -1.5],
+    [-4.3, -1.5],
+    [4.3, -1.5],
+    [0, 2.2]
+  ];
+  hvacPositions.forEach(([hx, hz]) => {
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.02, 0.6), hvacMat);
+    vent.position.set(hx, ceilingY - 0.01, hz);
+    ceilingGroup.add(vent);
+
+    // Ranuras concéntricas de impulsión
+    const inner = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.022, 0.42),
+      new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.5 })
+    );
+    inner.position.set(hx, ceilingY - 0.01, hz);
+    ceilingGroup.add(inner);
+  });
+
+  // 5. Rociadores automáticos contra incendios (Fire Sprinklers)
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.15, metalness: 0.9 });
+  const redBulbMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2, metalness: 0.1 });
+  const sprinklerPositions: [number, number][] = [
+    [-2.2, 0],
+    [2.2, 0],
+    [-4.3, 1.8],
+    [4.3, 1.8],
+    [0, 1.8]
+  ];
+  sprinklerPositions.forEach(([sx, sz]) => {
+    const escutcheon = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.008, 14), chromeMat);
+    escutcheon.position.set(sx, ceilingY - 0.004, sz);
+    ceilingGroup.add(escutcheon);
+
+    const deflector = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.025, 12), chromeMat);
+    deflector.position.set(sx, ceilingY - 0.02, sz);
+    ceilingGroup.add(deflector);
+
+    const bulb = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.014, 8), redBulbMat);
+    bulb.position.set(sx, ceilingY - 0.018, sz);
+    ceilingGroup.add(bulb);
+  });
+
+  // 6. Detectores ópticos de humo
+  const smokeDetectorPositions: [number, number][] = [
+    [-1.2, 1.5],
+    [1.2, 1.5]
+  ];
+  smokeDetectorPositions.forEach(([dx, dz]) => {
+    const detector = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.085, 0.035, 18),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 })
+    );
+    detector.position.set(dx, ceilingY - 0.018, dz);
+    ceilingGroup.add(detector);
+
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 8, 8), new THREE.MeshBasicMaterial({ color: 0x22c55e }));
+    led.position.set(dx + 0.05, ceilingY - 0.035, dz);
+    ceilingGroup.add(led);
+  });
+
+  return ceilingGroup;
+}
+
+/**
+ * Paredes perimetrales del laboratorio con revestimiento sanitario blanco y zócalo cóncavo
+ */
+export function buildLaboratoryPerimeterWalls(): THREE.Group {
+  const wallsGroup = new THREE.Group();
+  wallsGroup.name = 'LaboratoryPerimeterWalls';
+
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: 0xedf3f6, // Revestimiento fenólico higiénico lavable blanco-grisáceo
+    roughness: 0.65,
+    metalness: 0.05
+  });
+
+  const baseboardMat = new THREE.MeshStandardMaterial({
+    color: 0x334155, // Zócalo sanitario cóncavo gris pizarra (media caña)
+    roughness: 0.75,
+    metalness: 0.1
+  });
+
+  const wallHeight = 5.3;
+  const wallY = 1.05; // desde -1.55 hasta 3.75
+
+  // 1. Pared Posterior (Norte, z = -2.4)
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(42, wallHeight, 0.15), wallMat);
+  backWall.position.set(0, wallY, -2.4);
+  backWall.receiveShadow = true;
+  wallsGroup.add(backWall);
+
+  const backBaseboard = new THREE.Mesh(new THREE.BoxGeometry(42, 0.16, 0.18), baseboardMat);
+  backBaseboard.position.set(0, -1.47, -2.4);
+  wallsGroup.add(backBaseboard);
+
+  // 2. Pared Izquierda (Oeste, x = -8.2)
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 28), wallMat);
+  leftWall.position.set(-8.2, wallY, 1.5);
+  leftWall.receiveShadow = true;
+  wallsGroup.add(leftWall);
+
+  const leftBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 28), baseboardMat);
+  leftBaseboard.position.set(-8.2, -1.47, 1.5);
+  wallsGroup.add(leftBaseboard);
+
+  // 3. Pared Derecha (Este, x = 8.2)
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 28), wallMat);
+  rightWall.position.set(8.2, wallY, 1.5);
+  rightWall.receiveShadow = true;
+  wallsGroup.add(rightWall);
+
+  const rightBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 28), baseboardMat);
+  rightBaseboard.position.set(8.2, -1.47, 1.5);
+  wallsGroup.add(rightBaseboard);
+
+  return wallsGroup;
+}
+
+/**
  * Construye una Mesa Profesional de Laboratorio con Encimera Fenólica Marina,
  * Bastidor de Acero en C, Cajoneras Técnicas y Servicios Integrados.
  */

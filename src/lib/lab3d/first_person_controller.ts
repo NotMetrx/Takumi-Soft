@@ -81,15 +81,15 @@ export class FirstPersonController {
   // Cajas de colisión AABB para impedir atravesar mesas y muros
   colliders: FirstPersonColliderBox[] = [
     // Perímetro del Laboratorio (Muros)
-    { minX: -7.2, maxX: 7.2, minZ: -0.7, maxZ: 5.5, name: 'bounds' },
-    // Mesa Central Química
-    { minX: -1.75, maxX: 1.75, minZ: -1.15, maxZ: 1.15, name: 'chem_table' },
-    // Mesa Biología
-    { minX: -4.95, maxX: -2.05, minZ: -0.9, maxZ: 1.2, name: 'bio_table' },
-    // Mesa STEAM
-    { minX: 2.05, maxX: 4.95, minZ: -0.9, maxZ: 1.2, name: 'steam_table' },
+    { minX: -8.0, maxX: 8.0, minZ: -1.2, maxZ: 6.5, name: 'bounds' },
+    // Mesa Central Química (4.4m x 2.6m ampliada)
+    { minX: -2.25, maxX: 2.25, minZ: -1.35, maxZ: 1.35, name: 'chem_table' },
+    // Mesa Biología (3.5m x 2.4m en x = -4.3)
+    { minX: -6.1, maxX: -2.5, minZ: -1.1, maxZ: 1.4, name: 'bio_table' },
+    // Mesa STEAM (3.5m x 2.4m en x = 4.3)
+    { minX: 2.5, maxX: 6.1, minZ: -1.1, maxZ: 1.4, name: 'steam_table' },
     // Estación de Bioseguridad y Vestidor EPP
-    { minX: -6.2, maxX: -5.1, minZ: 1.5, maxZ: 2.5, name: 'ppe_station' }
+    { minX: -7.2, maxX: -5.8, minZ: 1.5, maxZ: 2.5, name: 'ppe_station' }
   ];
 
   constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement, scene?: THREE.Scene) {
@@ -677,14 +677,10 @@ export class FirstPersonController {
    * Detecta si el jugador está a corta distancia de alguna de las 3 estaciones
    */
   getNearbyStation(): LabStationId | null {
-    const distChem = Math.hypot(this.position.x - 0, this.position.z - 1.6);
-    if (distChem < 1.45) return 'quimica';
-
-    const distBio = Math.hypot(this.position.x - -3.5, this.position.z - 1.6);
-    if (distBio < 1.45) return 'biologia';
-
-    const distSteam = Math.hypot(this.position.x - 3.5, this.position.z - 1.6);
-    if (distSteam < 1.45) return 'steam';
+    if (Math.abs(this.position.z - 1.8) > 1.25) return null;
+    if (Math.abs(this.position.x - 0) < 1.8) return 'quimica';
+    if (this.position.x <= -2.2 && this.position.x >= -6.0) return 'biologia';
+    if (this.position.x >= 2.2 && this.position.x <= 6.0) return 'steam';
 
     return null;
   }

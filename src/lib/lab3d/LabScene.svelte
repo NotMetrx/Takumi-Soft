@@ -12,7 +12,12 @@
   import { FirstPersonController } from './first_person_controller';
   import { ARHandMeshRig } from './ar_hand_mesh';
   import { LabSafetyFXSystem } from './safety_fx_particles';
-  import { buildProfessionalLabBench, createLabFloorTexture } from './lab_furniture';
+  import {
+    buildProfessionalLabBench,
+    createLabFloorTexture,
+    buildLaboratoryCeilingAndLighting,
+    buildLaboratoryPerimeterWalls
+  } from './lab_furniture';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
@@ -116,7 +121,7 @@
   let microscopeProxyMesh: THREE.Object3D | null = null;
 
   // Posición fija realista del Microscopio en la Estación de Biología
-  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-3.5, 0, 0.15);
+  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-4.3, 0, 0.15);
   const MICROSCOPE_BIOLOGY_ROT_Y = 0.35;
   const MICROSCOPE_HOME_POS = MICROSCOPE_BIOLOGY_POS;
   const MICROSCOPE_HOME_ROT_Y = MICROSCOPE_BIOLOGY_ROT_Y;
@@ -127,22 +132,22 @@
   // Poses de cámara cinemática para cada una de las 3 estaciones de laboratorio
   const STATION_VIEW_POSES: Record<LabStationId, { camPos: THREE.Vector3; target: THREE.Vector3 }> = {
     quimica: {
-      camPos: new THREE.Vector3(0.08, 1.88, 3.42),
+      camPos: new THREE.Vector3(0.08, 2.05, 3.85),
       target: new THREE.Vector3(0, 0.55, 0)
     },
     biologia: {
-      camPos: new THREE.Vector3(-3.5, 1.45, 1.95),
-      target: new THREE.Vector3(-3.5, 0.52, 0.15)
+      camPos: new THREE.Vector3(-4.3, 1.55, 2.35),
+      target: new THREE.Vector3(-4.3, 0.52, 0.15)
     },
     steam: {
-      camPos: new THREE.Vector3(3.5, 1.55, 2.15),
-      target: new THREE.Vector3(3.5, 0.55, 0.15)
+      camPos: new THREE.Vector3(4.3, 1.65, 2.35),
+      target: new THREE.Vector3(4.3, 0.55, 0.15)
     }
   };
 
   const BIOLOGY_MICROSCOPE_FOCUS_POSE = {
-    camPos: new THREE.Vector3(-3.18, 0.98, 1.15),
-    target: new THREE.Vector3(-3.5, 0.55, 0.15)
+    camPos: new THREE.Vector3(-3.98, 0.98, 1.15),
+    target: new THREE.Vector3(-4.3, 0.55, 0.15)
   };
 
   let isTransitioningStation = false;
@@ -803,7 +808,7 @@
 
   function buildInteractiveHomeBook(): THREE.Group {
     const group = new THREE.Group();
-    group.position.set(3.25, 0.02, 0.28);
+    group.position.set(4.05, 0.02, 0.28);
     group.scale.setScalar(0.72);
     group.rotation.y = -0.28;
     group.userData = { isHomeBook: true };
@@ -1041,7 +1046,7 @@
    */
   function buildBiologyWorkstationAccessories(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const group = new THREE.Group();
-    group.position.set(-3.5, 0, 0.15);
+    group.position.set(-4.3, 0, 0.15);
 
     // 1. Bandeja de madera pulida con 6 portaobjetos de muestras preparadas
     const trayGroup = new THREE.Group();
@@ -2281,7 +2286,7 @@
    */
   function buildClassifiedComponentsCabinet(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const cabinet = new THREE.Group();
-    cabinet.position.set(4.2, 0, -0.32);
+    cabinet.position.set(5.05, 0, -0.32);
     cabinet.rotation.y = -0.42;
 
     const woodDarkMat = new THREE.MeshStandardMaterial({
@@ -2933,8 +2938,8 @@
     const height = container.clientHeight;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x142833);
-    scene.fog = new THREE.FogExp2(0x142833, 0.045);
+    scene.background = new THREE.Color(0xdce7ec);
+    scene.fog = new THREE.FogExp2(0xdce7ec, 0.015);
 
     camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
     camera.position.set(0.08, 1.9, 3.45);
@@ -3004,11 +3009,11 @@
     }
     window.addEventListener('keydown', onGlobalShortcuts);
 
-    // Iluminación
-    const ambientLight = new THREE.HemisphereLight(0xd7e9ed, 0x293b43, 1.35);
+    // Iluminación diáfana de laboratorio profesional (Luz blanca pura de alto rendimiento)
+    const ambientLight = new THREE.HemisphereLight(0xffffff, 0xc8dce5, 1.65);
     scene.add(ambientLight);
 
-    keyLight = new THREE.DirectionalLight(0xfff5e6, 2.4);
+    keyLight = new THREE.DirectionalLight(0xfffbf5, 2.2);
     keyLight.position.set(2.5, 4.5, 3.0);
     keyLight.castShadow = !lowTier && !basicGraphics;
     keyLight.shadow.mapSize.set(1024, 1024);
@@ -3019,10 +3024,10 @@
     rimLight.position.set(-2.5, 3.0, -2.0);
     scene.add(rimLight);
 
-    // Luz cálida focalizada sobre la Estación STEAM
+    // Luz focalizada sobre la Estación STEAM
     const bookSpotLight = new THREE.SpotLight(0xfef3c7, 6.0, 7, Math.PI / 4, 0.5);
-    bookSpotLight.position.set(3.5, 2.4, 1.2);
-    bookSpotLight.target.position.set(3.5, 0.2, 0.2);
+    bookSpotLight.position.set(4.3, 2.4, 1.2);
+    bookSpotLight.target.position.set(4.3, 0.2, 0.2);
     scene.add(bookSpotLight);
     scene.add(bookSpotLight.target);
 
@@ -3030,16 +3035,24 @@
     underGlowLight.position.set(0, 0.25, 0);
     scene.add(underGlowLight);
 
+    // Falso Techo Modular Técnico con Luminarias LED Cleanroom, Difusores HVAC y Sprinklers
+    const ceilingAndLighting = buildLaboratoryCeilingAndLighting();
+    scene.add(ceilingAndLighting);
+
+    // Paredes Perimetrales Higiénicas con Zócalo Sanitario
+    const perimeterWalls = buildLaboratoryPerimeterWalls();
+    scene.add(perimeterWalls);
+
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x334c59, roughness: 0.4, metalness: 0.45 });
 
     // =========================================================================
     // 1. MESA CENTRAL: QUÍMICA ANALÍTICA Y REACCIONES (x = 0)
-    // Estilo Clínico / Universitario Europeo con Encimera Epoxi Marina y Servicios
+    // Dimensiones ampliadas: 4.4m ancho × 2.6m profundidad (Mesa Isla Profesional)
     // =========================================================================
     const chemBench = buildProfessionalLabBench({
       stationId: 'quimica',
-      width: 3.4,
-      depth: 2.2,
+      width: 4.4,
+      depth: 2.6,
       position: new THREE.Vector3(0, 0, 0),
       label: '1. Química Analítica & Reacciones',
       labelAccentColor: '#38bdf8',
@@ -3053,13 +3066,14 @@
     scene.add(chemBench);
 
     // =========================================================================
-    // 2. MESA LATERAL IZQUIERDA: BIOLOGÍA Y MICROSCOPÍA ÓPTICA (x = -3.5)
+    // 2. MESA LATERAL IZQUIERDA: BIOLOGÍA Y MICROSCOPÍA ÓPTICA (x = -4.3)
+    // Dimensiones ampliadas: 3.5m ancho × 2.4m profundidad
     // =========================================================================
     const bioBench = buildProfessionalLabBench({
       stationId: 'biologia',
-      width: 2.8,
-      depth: 2.0,
-      position: new THREE.Vector3(-3.5, 0, 0.15),
+      width: 3.5,
+      depth: 2.4,
+      position: new THREE.Vector3(-4.3, 0, 0.15),
       label: '2. Biología Celular & Microscopía',
       labelAccentColor: '#4ade80',
       hasReagentOverheadRack: false, // Área diáfana para el microscopio
@@ -3070,13 +3084,14 @@
     scene.add(bioBench);
 
     // =========================================================================
-    // 3. MESA LATERAL DERECHA: CIENCIAS STEAM Y FÍSICA (x = 3.5)
+    // 3. MESA LATERAL DERECHA: CIENCIAS STEAM Y FÍSICA (x = 4.3)
+    // Dimensiones ampliadas: 3.5m ancho × 2.4m profundidad
     // =========================================================================
     const steamBench = buildProfessionalLabBench({
       stationId: 'steam',
-      width: 2.8,
-      depth: 2.0,
-      position: new THREE.Vector3(3.5, 0, 0.15),
+      width: 3.5,
+      depth: 2.4,
+      position: new THREE.Vector3(4.3, 0, 0.15),
       label: '3. Ciencias STEAM & Física Cotidiana',
       labelAccentColor: '#facc15',
       hasReagentOverheadRack: true,
@@ -3182,14 +3197,14 @@
     const biologyAccessories = buildBiologyWorkstationAccessories(borosilicateGlassMat);
     scene.add(biologyAccessories);
 
-    // Matraces Erlenmeyer (Izquierda y Derecha)
+    // Matraces Erlenmeyer (Izquierda y Derecha) con separación holgada
     const hclRig = buildErlenmeyerFlask(
       'hcl',
       labStore.reagents[0].formula,
       labStore.reagents[0].name,
       parseInt(labStore.reagents[0].colorHex.slice(1), 16),
       labStore.reagents[0].colorHex,
-      -1.08,
+      -1.25,
       borosilicateGlassMat
     );
     const naohRig = buildErlenmeyerFlask(
@@ -3198,7 +3213,7 @@
       labStore.reagents[1].name,
       parseInt(labStore.reagents[1].colorHex.slice(1), 16),
       labStore.reagents[1].colorHex,
-      1.08,
+      1.25,
       borosilicateGlassMat
     );
     flasks = { hcl: hclRig, naoh: naohRig };
