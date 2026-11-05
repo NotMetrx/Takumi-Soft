@@ -895,53 +895,133 @@
   }
 
   /**
-   * Construye la señalética temática y pósters científicos montados sobre el muro perimetral norte
-   * (Química, Biología y Ciencias STEAM) sin muros obsoletos que bloqueen la vista de las mesas.
+   * Construye un Pizarrón Científico / Pizarra de Laboratorio con superficie de pizarra oscura,
+   * marco perimetral de aluminio cepillado, bandeja porta-rotuladores/tizas y borrador.
+   */
+  function buildLabBlackboard(
+    width: number,
+    height: number,
+    position: THREE.Vector3,
+    accentColor: number
+  ): THREE.Group {
+    const boardGroup = new THREE.Group();
+    boardGroup.name = 'LabBlackboard';
+    boardGroup.position.copy(position);
+
+    // Marco exterior de aluminio anodizado cepillado
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.35,
+      metalness: 0.8
+    });
+    const frame = roundedBox(width + 0.08, height + 0.08, 0.024, 0.015, frameMat);
+    frame.position.z = -0.004;
+    boardGroup.add(frame);
+
+    // Superficie de pizarra técnica de laboratorio (verde oscuro pizarra / grafito científico)
+    const slateMat = new THREE.MeshStandardMaterial({
+      color: 0x162d38, // Verde grafito oscuro pizarra de alto contraste
+      roughness: 0.88,
+      metalness: 0.06
+    });
+    const slate = roundedBox(width, height, 0.018, 0.008, slateMat);
+    slate.position.z = 0.002;
+    boardGroup.add(slate);
+
+    // Filete decorativo superior del color de la estación
+    const accentTrimMat = new THREE.MeshBasicMaterial({ color: accentColor });
+    const accentLine = new THREE.Mesh(new THREE.BoxGeometry(width - 0.04, 0.014, 0.006), accentTrimMat);
+    accentLine.position.set(0, height / 2 - 0.02, 0.012);
+    boardGroup.add(accentLine);
+
+    // Bandeja porta-tizas / rotuladores en el borde inferior
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(width - 0.3, 0.016, 0.06), frameMat);
+    tray.position.set(0, -height / 2 - 0.008, 0.03);
+    boardGroup.add(tray);
+
+    // Borrador de pizarra
+    const eraserMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
+    const eraser = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.035, 0.038), eraserMat);
+    eraser.position.set(-width * 0.28, -height / 2 + 0.012, 0.03);
+    boardGroup.add(eraser);
+
+    // Tizas / rotuladores de colores en la bandeja
+    const chalkMat1 = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.7 });
+    const chalk1 = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.075, 8), chalkMat1);
+    chalk1.rotation.z = Math.PI / 2;
+    chalk1.position.set(width * 0.22, -height / 2 + 0.008, 0.03);
+    boardGroup.add(chalk1);
+
+    const chalkMat2 = new THREE.MeshBasicMaterial({ color: accentColor });
+    const chalk2 = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.07, 8), chalkMat2);
+    chalk2.rotation.z = Math.PI / 2;
+    chalk2.position.set(width * 0.22 + 0.1, -height / 2 + 0.008, 0.03);
+    boardGroup.add(chalk2);
+
+    return boardGroup;
+  }
+
+  /**
+   * Construye los pizarrones de laboratorio con su marco y bandeja porta-tizas,
+   * letreros de estación y pósters temáticos montados sobre la pared norte.
    */
   function buildLabEnvironmentAndRack(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const group = new THREE.Group();
 
-    // 1. SECCIÓN DE BIOLOGÍA Y MICROSCOPÍA (IZQUIERDA: x = -4.3, montado en muro norte z = -2.32)
+    // =========================================================================
+    // PIZARRONES CIENTÍFICOS DE LABORATORIO (BLACKBOARDS) EN LA PARED NORTE
+    // Superficie oscura de alto contraste con marco de aluminio y bandeja porta-tizas
+    // =========================================================================
+    const boardBio = buildLabBlackboard(3.5, 2.15, new THREE.Vector3(-4.3, 1.95, -2.315), 0x4ade80);
+    group.add(boardBio);
+
+    const boardChem = buildLabBlackboard(4.5, 2.15, new THREE.Vector3(0, 1.95, -2.315), 0x38bdf8);
+    group.add(boardChem);
+
+    const boardSteam = buildLabBlackboard(3.5, 2.15, new THREE.Vector3(4.3, 1.95, -2.315), 0xfacc15);
+    group.add(boardSteam);
+
+    // 1. SECCIÓN DE BIOLOGÍA Y MICROSCOPÍA (IZQUIERDA: x = -4.3, montado en pizarrón z = -2.298)
     const posterBio = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.25, 0.75),
+      new THREE.PlaneGeometry(1.35, 0.80),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('biology_cells') })
     );
-    posterBio.position.set(-4.3, 1.85, -2.32);
+    posterBio.position.set(-4.3, 1.82, -2.298);
     group.add(posterBio);
 
     const signBio = textPlate('SYMBIOLAB  /  2. BIOLOGÍA & MICROSCOPÍA', 1.75, 0.15, '#86efac', '#14532d');
-    signBio.position.set(-4.3, 2.38, -2.32);
+    signBio.position.set(-4.3, 2.76, -2.298);
     group.add(signBio);
 
-    // 2. SECCIÓN DE QUÍMICA ANALÍTICA (CENTRO: x = 0, montado en muro norte z = -2.32)
+    // 2. SECCIÓN DE QUÍMICA ANALÍTICA (CENTRO: x = 0, montado en pizarrón z = -2.298)
     const posterChem1 = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.05, 0.68),
+      new THREE.PlaneGeometry(1.15, 0.72),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('ph_scale') })
     );
-    posterChem1.position.set(-0.85, 1.85, -2.32);
+    posterChem1.position.set(-1.10, 1.82, -2.298);
     group.add(posterChem1);
 
     const posterChem2 = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.05, 0.68),
+      new THREE.PlaneGeometry(1.15, 0.72),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('lab_rules') })
     );
-    posterChem2.position.set(0.85, 1.85, -2.32);
+    posterChem2.position.set(1.10, 1.82, -2.298);
     group.add(posterChem2);
 
     const signChem = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA & REACCIONES', 1.95, 0.15, '#93c5fd', '#1e293b');
-    signChem.position.set(0, 2.38, -2.32);
+    signChem.position.set(0, 2.76, -2.298);
     group.add(signChem);
 
-    // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 4.3, montado en muro norte z = -2.32)
+    // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 4.3, montado en pizarrón z = -2.298)
     const posterSteam = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.25, 0.75),
+      new THREE.PlaneGeometry(1.35, 0.80),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('steam_physics') })
     );
-    posterSteam.position.set(4.3, 1.85, -2.32);
+    posterSteam.position.set(4.3, 1.82, -2.298);
     group.add(posterSteam);
 
     const signSteam = textPlate('SYMBIOLAB  /  3. CIENCIAS STEAM & FÍSICA', 1.75, 0.15, '#fde047', '#713f12');
-    signSteam.position.set(4.3, 2.38, -2.32);
+    signSteam.position.set(4.3, 2.76, -2.298);
     group.add(signSteam);
 
     // Gradilla de 5 Tubos de Ensayo (altura 0.34 u, proporcional frente al microscopio de 1.50 u)

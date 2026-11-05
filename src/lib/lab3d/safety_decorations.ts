@@ -2027,35 +2027,35 @@ export function buildSafetyEnvironmentSignage(): THREE.Group {
   const signageGroup = new THREE.Group();
   signageGroup.name = 'SafetyEnvironmentSignage';
 
-  // 1. Pictogramas SGA en la pared norte detrás de Química
+  // 1. Pictogramas SGA en las esquinas superiores del pizarrón de Química (sin colisión con letrero)
   const ghsCorrosive = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.42, 0.42),
-    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_corrosive'), transparent: true })
+    new THREE.PlaneGeometry(0.36, 0.36),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_corrosive'), transparent: true, depthWrite: false })
   );
-  ghsCorrosive.position.set(-0.85, 2.45, -2.32);
+  ghsCorrosive.position.set(-1.80, 2.74, -2.296);
   signageGroup.add(ghsCorrosive);
 
   const ghsToxic = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.42, 0.42),
-    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_toxic'), transparent: true })
+    new THREE.PlaneGeometry(0.36, 0.36),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_toxic'), transparent: true, depthWrite: false })
   );
-  ghsToxic.position.set(0.85, 2.45, -2.32);
+  ghsToxic.position.set(1.80, 2.74, -2.296);
   signageGroup.add(ghsToxic);
 
-  // 2. Pictograma de Riesgo Biológico en pared detrás de Biología
+  // 2. Pictograma de Riesgo Biológico en la esquina superior izquierda del pizarrón de Biología
   const biohazardSign = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.48, 0.48),
-    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_biohazard'), transparent: true })
+    new THREE.PlaneGeometry(0.38, 0.38),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_biohazard'), transparent: true, depthWrite: false })
   );
-  biohazardSign.position.set(-4.3, 2.5, -2.32);
+  biohazardSign.position.set(-5.50, 2.74, -2.296);
   signageGroup.add(biohazardSign);
 
-  // 3. Pictograma Inflamable / STEAM en pared detrás de STEAM
+  // 3. Pictograma Inflamable en la esquina superior derecha del pizarrón de STEAM
   const flammableSign = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.42, 0.42),
-    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_flammable'), transparent: true })
+    new THREE.PlaneGeometry(0.36, 0.36),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_flammable'), transparent: true, depthWrite: false })
   );
-  flammableSign.position.set(4.3, 2.5, -2.32);
+  flammableSign.position.set(5.50, 2.74, -2.296);
   signageGroup.add(flammableSign);
 
   // 4. Salida de Emergencia superior (ISO 7010) sobre las puertas automáticas principales (Pared Sur Z = 9.92)
