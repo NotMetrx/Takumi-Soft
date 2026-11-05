@@ -89,7 +89,7 @@ export class FirstPersonController {
     // Mesa STEAM (3.5m x 2.4m en x = 4.3)
     { minX: 2.5, maxX: 6.1, minZ: -1.1, maxZ: 1.4, name: 'steam_table' },
     // Estación de Bioseguridad y Vestidor EPP
-    { minX: -7.2, maxX: -5.8, minZ: 1.5, maxZ: 2.5, name: 'ppe_station' }
+    { minX: -7.35, maxX: -6.55, minZ: 1.4, maxZ: 2.9, name: 'ppe_station' }
   ];
 
   constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement, scene?: THREE.Scene) {

@@ -116,7 +116,7 @@ export class LabSafetyFXSystem {
 
   // --- DUCHA DE SEGURIDAD ---
   private resetShowerParticles() {
-    const origin = new THREE.Vector3(-6.0, 2.32, 0.35); // Boca de la ducha
+    const origin = new THREE.Vector3(-6.49, 2.32, 0.51); // Boca de la campana de ducha
     for (let i = 0; i < 60; i++) {
       const idx = i * 3;
       const angle = Math.random() * Math.PI * 2;
@@ -140,10 +140,10 @@ export class LabSafetyFXSystem {
 
   // --- LAVAOJOS ---
   private resetEyewashParticles() {
-    const origin = new THREE.Vector3(-6.0, 1.04, 0.63); // Boquillas del lavaojos
+    const origin = new THREE.Vector3(-6.6, 1.055, 0.4); // Boquillas del lavaojos
     for (let i = 0; i < 35; i++) {
       const idx = i * 3;
-      const side = i % 2 === 0 ? -0.055 : 0.055;
+      const side = i % 2 === 0 ? -0.045 : 0.045;
       this.eyewashPositions[idx] = origin.x + side;
       this.eyewashPositions[idx + 1] = origin.y + Math.random() * 0.12;
       this.eyewashPositions[idx + 2] = origin.z;
@@ -181,7 +181,7 @@ export class LabSafetyFXSystem {
 
   // --- EXTINTOR CO2 ---
   private resetCO2Particles() {
-    const nozzlePos = new THREE.Vector3(-1.76, 1.1, -0.8);
+    const nozzlePos = new THREE.Vector3(-2.0, 1.09, -1.23);
     for (let i = 0; i < 70; i++) {
       const idx = i * 3;
       this.co2Positions[idx] = nozzlePos.x;
@@ -214,8 +214,8 @@ export class LabSafetyFXSystem {
         this.showerPoints.visible = false;
       } else {
         const topY = 2.32;
-        const originX = -6.0;
-        const originZ = 0.35;
+        const originX = -6.49;
+        const originZ = 0.51;
         for (let i = 0; i < 60; i++) {
           const idx = i * 3;
           this.showerPositions[idx + 1] += this.showerVelocities[idx + 1] * dt;
@@ -242,9 +242,9 @@ export class LabSafetyFXSystem {
         this.eyewashActive = false;
         this.eyewashPoints.visible = false;
       } else {
-        const originX = -6.0;
-        const originY = 1.04;
-        const originZ = 0.63;
+        const originX = -6.6;
+        const originY = 1.055;
+        const originZ = 0.4;
         for (let i = 0; i < 35; i++) {
           const idx = i * 3;
           this.eyewashVelocities[idx + 1] -= 3.8 * dt; // Gravedad
@@ -253,7 +253,7 @@ export class LabSafetyFXSystem {
           this.eyewashPositions[idx + 2] += this.eyewashVelocities[idx + 2] * dt;
 
           if (this.eyewashPositions[idx + 1] < originY) {
-            const side = i % 2 === 0 ? -0.055 : 0.055;
+            const side = i % 2 === 0 ? -0.045 : 0.045;
             this.eyewashPositions[idx] = originX + side;
             this.eyewashPositions[idx + 1] = originY;
             this.eyewashPositions[idx + 2] = originZ;
@@ -290,9 +290,9 @@ export class LabSafetyFXSystem {
         this.co2Active = false;
         this.co2Points.visible = false;
       } else {
-        const nozzleX = -1.85;
-        const nozzleY = 1.1;
-        const nozzleZ = -0.8;
+        const nozzleX = -2.0;
+        const nozzleY = 1.09;
+        const nozzleZ = -1.23;
         for (let i = 0; i < 70; i++) {
           const idx = i * 3;
           this.co2Positions[idx] += this.co2Velocities[idx] * dt;
