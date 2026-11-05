@@ -12,6 +12,7 @@
   import { FirstPersonController } from './first_person_controller';
   import { ARHandMeshRig } from './ar_hand_mesh';
   import { LabSafetyFXSystem } from './safety_fx_particles';
+  import { buildProfessionalLabBench, createLabFloorTexture } from './lab_furniture';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
@@ -3033,86 +3034,66 @@
 
     // =========================================================================
     // 1. MESA CENTRAL: QUÍMICA ANALÍTICA Y REACCIONES (x = 0)
+    // Estilo Clínico / Universitario Europeo con Encimera Epoxi Marina y Servicios
     // =========================================================================
-    const chemBenchMat = new THREE.MeshStandardMaterial({ color: 0x819397, roughness: 0.58, metalness: 0.15 });
-    const chemBench = roundedBox(3.4, 0.16, 2.2, 0.06, chemBenchMat);
-    chemBench.position.set(0, -0.08, 0);
-    scene.add(chemBench);
-    const chemTrim = roundedBox(3.28, 0.08, 2.08, 0.035, trimMat);
-    chemTrim.position.set(0, -0.2, 0);
-    scene.add(chemTrim);
-    [-1.5, 1.5].forEach((x) => {
-      const legFront = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      legFront.position.set(x, -0.88, 0.7);
-      scene.add(legFront);
-      const legBack = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      legBack.position.set(x, -0.88, -0.7);
-      scene.add(legBack);
+    const chemBench = buildProfessionalLabBench({
+      stationId: 'quimica',
+      width: 3.4,
+      depth: 2.2,
+      position: new THREE.Vector3(0, 0, 0),
+      label: '1. Química Analítica & Reacciones',
+      labelAccentColor: '#38bdf8',
+      hasReagentOverheadRack: true,
+      hasPlumbingAndSink: true,
+      hasGasTurret: true,
+      hasElectricalStrip: true,
+      hasTestTubeRack: true,
+      hasWashBottle: true
     });
-    const chemMat = roundedBox(3.0, 0.008, 1.8, 0.003, new THREE.MeshStandardMaterial({ color: 0x253d47, roughness: 0.95 }));
-    chemMat.position.set(0, 0.004, 0.02);
-    scene.add(chemMat);
-    const chemLabel = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA', 1.05, 0.055, '#819da7', '#253d47');
-    chemLabel.rotation.x = -Math.PI / 2;
-    chemLabel.position.set(-0.95, 0.009, -0.86);
-    scene.add(chemLabel);
+    scene.add(chemBench);
 
     // =========================================================================
     // 2. MESA LATERAL IZQUIERDA: BIOLOGÍA Y MICROSCOPÍA ÓPTICA (x = -3.5)
     // =========================================================================
-    const bioBenchMat = new THREE.MeshStandardMaterial({ color: 0x22332c, roughness: 0.45, metalness: 0.25 });
-    const bioBench = roundedBox(2.8, 0.16, 2.0, 0.06, bioBenchMat);
-    bioBench.position.set(-3.5, -0.08, 0.15);
-    scene.add(bioBench);
-    const bioTrim = roundedBox(2.68, 0.08, 1.88, 0.035, trimMat);
-    bioTrim.position.set(-3.5, -0.2, 0.15);
-    scene.add(bioTrim);
-    [-4.7, -2.3].forEach((x) => {
-      const legFront = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      legFront.position.set(x, -0.88, 0.75);
-      scene.add(legFront);
-      const legBack = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      legBack.position.set(x, -0.88, -0.45);
-      scene.add(legBack);
+    const bioBench = buildProfessionalLabBench({
+      stationId: 'biologia',
+      width: 2.8,
+      depth: 2.0,
+      position: new THREE.Vector3(-3.5, 0, 0.15),
+      label: '2. Biología Celular & Microscopía',
+      labelAccentColor: '#4ade80',
+      hasReagentOverheadRack: false, // Área diáfana para el microscopio
+      hasPlumbingAndSink: false,
+      hasElectricalStrip: true,
+      hasWashBottle: true
     });
-    const bioMat = roundedBox(2.4, 0.008, 1.6, 0.003, new THREE.MeshStandardMaterial({ color: 0x16281e, roughness: 0.95 }));
-    bioMat.position.set(-3.5, 0.004, 0.15);
-    scene.add(bioMat);
-    const bioLabel = textPlate('SYMBIOLAB  /  2. BIOLOGÍA & MICROSCOPÍA', 1.15, 0.055, '#86efac', '#16281e');
-    bioLabel.rotation.x = -Math.PI / 2;
-    bioLabel.position.set(-3.5, 0.009, -0.68);
-    scene.add(bioLabel);
+    scene.add(bioBench);
 
     // =========================================================================
     // 3. MESA LATERAL DERECHA: CIENCIAS STEAM Y FÍSICA (x = 3.5)
     // =========================================================================
-    const steamBenchMat = new THREE.MeshStandardMaterial({ color: 0x3d3528, roughness: 0.5, metalness: 0.2 });
-    const steamBench = roundedBox(2.8, 0.16, 2.0, 0.06, steamBenchMat);
-    steamBench.position.set(3.5, -0.08, 0.15);
-    scene.add(steamBench);
-    const steamTrim = roundedBox(2.68, 0.08, 1.88, 0.035, trimMat);
-    steamTrim.position.set(3.5, -0.2, 0.15);
-    scene.add(steamTrim);
-    [2.3, 4.7].forEach((x) => {
-      const legFront = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      legFront.position.set(x, -0.88, 0.75);
-      scene.add(legFront);
-      const legBack = roundedBox(0.09, 1.3, 0.12, 0.025, trimMat);
-      legBack.position.set(x, -0.88, -0.45);
-      scene.add(legBack);
+    const steamBench = buildProfessionalLabBench({
+      stationId: 'steam',
+      width: 2.8,
+      depth: 2.0,
+      position: new THREE.Vector3(3.5, 0, 0.15),
+      label: '3. Ciencias STEAM & Física Cotidiana',
+      labelAccentColor: '#facc15',
+      hasReagentOverheadRack: true,
+      hasElectricalStrip: true,
+      hasTestTubeRack: true
     });
-    const steamMat = roundedBox(2.4, 0.008, 1.6, 0.003, new THREE.MeshStandardMaterial({ color: 0x2a2214, roughness: 0.95 }));
-    steamMat.position.set(3.5, 0.004, 0.15);
-    scene.add(steamMat);
-    const steamLabel = textPlate('SYMBIOLAB  /  3. CIENCIAS STEAM & FÍSICA', 1.15, 0.055, '#fde047', '#2a2214');
-    steamLabel.rotation.x = -Math.PI / 2;
-    steamLabel.position.set(3.5, 0.009, -0.68);
-    scene.add(steamLabel);
+    scene.add(steamBench);
 
-    // Suelo panorámico del laboratorio
+    // Suelo técnico de laboratorio (Losas higiénicas termosoldadas de linóleo)
+    const floorTexture = createLabFloorTexture();
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(60, 40),
-      new THREE.MeshStandardMaterial({ color: 0x111c24, roughness: 0.95 })
+      new THREE.MeshStandardMaterial({
+        map: floorTexture,
+        roughness: 0.65,
+        metalness: 0.12
+      })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -1.55;
