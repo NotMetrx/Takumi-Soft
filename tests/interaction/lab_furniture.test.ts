@@ -30,11 +30,40 @@ describe('Mobiliario Profesional de Laboratorio (lab_furniture.ts)', () => {
     expect(ceiling.children.length).toBeGreaterThan(15);
   });
 
-  it('construye las paredes perimetrales del laboratorio con zócalos sanitarios', () => {
+  it('construye las paredes perimetrales del laboratorio con zócalos sanitarios y puertas automáticas dobles', () => {
     const walls = buildLaboratoryPerimeterWalls();
     expect(walls).toBeInstanceOf(THREE.Group);
     expect(walls.name).toBe('LaboratoryPerimeterWalls');
     expect(walls.children.length).toBeGreaterThan(4);
+
+    // Rig de puertas automáticas correderas que se juntan en el centro
+    const doubleDoors = walls.userData.doubleDoors;
+    expect(doubleDoors).toBeDefined();
+    expect(doubleDoors.leftLeaf).toBeDefined();
+    expect(doubleDoors.rightLeaf).toBeDefined();
+    expect(doubleDoors.sensorLed).toBeDefined();
+
+    // En reposo están juntas en el centro (-0.585 y +0.585)
+    expect(doubleDoors.leftLeaf.position.x).toBeCloseTo(-0.585, 2);
+    expect(doubleDoors.rightLeaf.position.x).toBeCloseTo(0.585, 2);
+
+    // Al acercarse el usuario (distancia < 2.8m a la puerta en z = 4.8)
+    const nearPos = new THREE.Vector3(0, 1.68, 4.0);
+    for (let i = 0; i < 20; i++) {
+      doubleDoors.update(nearPos, 0.1);
+    }
+    expect(doubleDoors.currentOpen).toBeGreaterThan(0.8);
+    expect(doubleDoors.leftLeaf.position.x).toBeLessThan(-1.2);
+    expect(doubleDoors.rightLeaf.position.x).toBeGreaterThan(1.2);
+
+    // Al alejarse el usuario (distancia > 2.8m)
+    const farPos = new THREE.Vector3(0, 1.68, 0.0);
+    for (let i = 0; i < 30; i++) {
+      doubleDoors.update(farPos, 0.1);
+    }
+    expect(doubleDoors.currentOpen).toBeLessThan(0.05);
+    expect(doubleDoors.leftLeaf.position.x).toBeCloseTo(-0.585, 1);
+    expect(doubleDoors.rightLeaf.position.x).toBeCloseTo(0.585, 1);
   });
 
   it('construye la mesa de Química con encimera marina, bastidor en C, grifo y repisa', () => {

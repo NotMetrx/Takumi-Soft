@@ -283,9 +283,19 @@ export function buildLaboratoryCeilingAndLighting(): THREE.Group {
   return ceilingGroup;
 }
 
+export interface DoubleDoorsRig {
+  group: THREE.Group;
+  leftLeaf: THREE.Mesh;
+  rightLeaf: THREE.Mesh;
+  sensorLed: THREE.Mesh;
+  currentOpen: number;
+  update: (playerPos: THREE.Vector3, dt: number) => void;
+}
+
 /**
  * Paredes perimetrales del laboratorio con revestimiento sanitario blanco, zócalo cóncavo
- * y Cámara de Descontaminación & Esclusa SAS (Personnel Airlock PAL) con mampara de cristal.
+ * y Esclusa SAS de Descontaminación & Vestidor de Bioseguridad en el acceso principal sur,
+ * provista de puertas automáticas dobles correderas que se juntan en el centro.
  */
 export function buildLaboratoryPerimeterWalls(): THREE.Group {
   const wallsGroup = new THREE.Group();
@@ -304,18 +314,9 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   });
 
   const stainlessMat = new THREE.MeshStandardMaterial({
-    color: 0x94a3b8, // Perfilería estéril de acero inoxidable cepillado
+    color: 0x94a3b8, // Perfilería estéril de acero inoxidable cepillado AISI 316L
     metalness: 0.85,
     roughness: 0.25
-  });
-
-  const cleanroomGlassMat = new THREE.MeshPhysicalMaterial({
-    color: 0xe0f2fe, // Vidrio doble de bioseguridad
-    transparent: true,
-    opacity: 0.35,
-    roughness: 0.08,
-    transmission: 0.88,
-    ior: 1.52
   });
 
   const airlockFloorMat = new THREE.MeshStandardMaterial({
@@ -342,241 +343,328 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   // =========================================================================
   // 2. PARED DERECHA DEL LABORATORIO (Este, x = 8.2)
   // =========================================================================
-  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 28), wallMat);
-  rightWall.position.set(8.2, wallY, 1.5);
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 14.4), wallMat);
+  rightWall.position.set(8.2, wallY, 1.2);
   rightWall.receiveShadow = true;
   wallsGroup.add(rightWall);
 
-  const rightBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 28), baseboardMat);
-  rightBaseboard.position.set(8.2, -1.47, 1.5);
+  const rightBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 14.4), baseboardMat);
+  rightBaseboard.position.set(8.2, -1.47, 1.2);
   wallsGroup.add(rightBaseboard);
 
   // =========================================================================
-  // 3. PARED IZQUIERDA DIVISORIA CON LA ESCLUSA SAS (Oeste, x = -8.2)
+  // 3. PARED IZQUIERDA DEL LABORATORIO (Oeste, x = -8.2) - COMPLETAMENTE CONTINUA Y DIÁFANA
+  // Deja el pasillo lateral de la estación de Biología libre y limpio
   // =========================================================================
-  // Tramo sólido Norte (desde z = -2.4 hasta z = 0.2)
-  const leftWallNorth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 2.6), wallMat);
-  leftWallNorth.position.set(-8.2, wallY, -1.1);
-  leftWallNorth.receiveShadow = true;
-  wallsGroup.add(leftWallNorth);
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 14.4), wallMat);
+  leftWall.position.set(-8.2, wallY, 1.2);
+  leftWall.receiveShadow = true;
+  wallsGroup.add(leftWall);
 
-  const leftBaseboardNorth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 2.6), baseboardMat);
-  leftBaseboardNorth.position.set(-8.2, -1.47, -1.1);
-  wallsGroup.add(leftBaseboardNorth);
+  const leftBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 14.4), baseboardMat);
+  leftBaseboard.position.set(-8.2, -1.47, 1.2);
+  wallsGroup.add(leftBaseboard);
 
-  // Tramo sólido Sur (desde z = 3.8 hasta z = 14.0)
-  const leftWallSouth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 10.2), wallMat);
-  leftWallSouth.position.set(-8.2, wallY, 8.9);
-  leftWallSouth.receiveShadow = true;
-  wallsGroup.add(leftWallSouth);
+  // =========================================================================
+  // 4. PARED SUR DEL LABORATORIO (z = 4.8) CON VANO CENTRAL PARA ACCESO Y PUERTAS DOBLES
+  // =========================================================================
+  // Tramo sólido Oeste (desde x = -8.2 hasta x = -1.2)
+  const southWallWest = new THREE.Mesh(new THREE.BoxGeometry(7.0, wallHeight, 0.15), wallMat);
+  southWallWest.position.set(-4.7, wallY, 4.8);
+  southWallWest.receiveShadow = true;
+  wallsGroup.add(southWallWest);
 
-  const leftBaseboardSouth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 10.2), baseboardMat);
-  leftBaseboardSouth.position.set(-8.2, -1.47, 8.9);
-  wallsGroup.add(leftBaseboardSouth);
+  const southBaseboardWest = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.16, 0.18), baseboardMat);
+  southBaseboardWest.position.set(-4.7, -1.47, 4.8);
+  wallsGroup.add(southBaseboardWest);
 
-  // Dintel superior sobre la puerta y ventana de la esclusa (y = 2.45 a 3.75)
-  const lintelWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.3, 3.6), wallMat);
-  lintelWall.position.set(-8.2, 3.1, 2.0);
-  wallsGroup.add(lintelWall);
+  // Tramo sólido Este (desde x = 1.2 hasta x = 8.2)
+  const southWallEast = new THREE.Mesh(new THREE.BoxGeometry(7.0, wallHeight, 0.15), wallMat);
+  southWallEast.position.set(4.7, wallY, 4.8);
+  southWallEast.receiveShadow = true;
+  wallsGroup.add(southWallEast);
 
-  // Antepecho inferior bajo la ventana panorámica de la esclusa (z = 0.2 a 2.2, y = -1.55 a 0.85)
-  const windowSill = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.4, 2.0), wallMat);
-  windowSill.position.set(-8.2, -0.35, 1.2);
-  wallsGroup.add(windowSill);
+  const southBaseboardEast = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.16, 0.18), baseboardMat);
+  southBaseboardEast.position.set(4.7, -1.47, 4.8);
+  wallsGroup.add(southBaseboardEast);
 
-  // Ventana panorámica de observación de bioseguridad (z = 0.2 a 2.2, y = 0.85 a 2.45)
-  const obsWindowGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.55, 1.95), cleanroomGlassMat);
-  obsWindowGlass.position.set(-8.2, 1.65, 1.2);
-  wallsGroup.add(obsWindowGlass);
+  // Dintel superior sobre el vano de las puertas automáticas (x = -1.2 a 1.2, y = 1.20 a 3.75)
+  const southDoorLintel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.55, 0.15), wallMat);
+  southDoorLintel.position.set(0, 2.475, 4.8);
+  wallsGroup.add(southDoorLintel);
 
-  // Marco de acero inoxidable de la ventana
-  const windowFrameHTop = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 2.0), stainlessMat);
-  windowFrameHTop.position.set(-8.2, 2.45, 1.2);
-  wallsGroup.add(windowFrameHTop);
+  // Rótulo de Esclusa SAS sobre el dintel de acceso
+  const airlockSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 0.42),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('airlock_door_sign') })
+  );
+  airlockSign.position.set(0, 1.75, 4.72);
+  airlockSign.rotation.y = Math.PI; // Orientado hacia el interior del laboratorio
+  wallsGroup.add(airlockSign);
 
-  const windowFrameHBot = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 2.0), stainlessMat);
-  windowFrameHBot.position.set(-8.2, 0.85, 1.2);
-  wallsGroup.add(windowFrameHBot);
-
-  const windowFrameVPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.65, 0.05), stainlessMat);
-  windowFrameVPost.position.set(-8.2, 1.65, 2.2);
-  wallsGroup.add(windowFrameVPost);
-
-  // Pilar vertical divisorio con panel Magnehelic y control de accesos (z = 2.2)
-  const pilarMagnehelic = new THREE.Mesh(
+  // Panel Magnehelic de Presión Diferencial en la jamba este de la puerta
+  const magnehelicPanel = new THREE.Mesh(
     new THREE.PlaneGeometry(0.55, 0.35),
     new THREE.MeshBasicMaterial({ map: createSafetyTexture('magnehelic_gauge') })
   );
-  pilarMagnehelic.position.set(-8.12, 1.6, 1.85);
-  pilarMagnehelic.rotation.y = Math.PI / 2;
-  wallsGroup.add(pilarMagnehelic);
-
-  // Compuerta corredera hermética de bioseguridad hacia el laboratorio (z = 2.2 a 3.8)
-  const doorTrack = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.6), stainlessMat);
-  doorTrack.position.set(-8.16, 2.48, 3.0);
-  wallsGroup.add(doorTrack);
-
-  // Hoja corredera de vidrio y acero entreabierta (permitiendo el paso libre)
-  const slidingDoor = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.4, 0.7), stainlessMat);
-  slidingDoor.position.set(-8.16, 1.2, 3.45);
-  wallsGroup.add(slidingDoor);
-
-  const slidingDoorGlass = new THREE.Mesh(new THREE.BoxGeometry(0.02, 1.8, 0.5), cleanroomGlassMat);
-  slidingDoorGlass.position.set(-8.16, 1.3, 3.45);
-  wallsGroup.add(slidingDoorGlass);
-
-  // Semáforo LED de enclavamiento sobre la puerta (Verde activo / Rojo standby)
-  const ledHousing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.22), baseboardMat);
-  ledHousing.position.set(-8.12, 2.58, 2.8);
-  wallsGroup.add(ledHousing);
-
-  const greenLed = new THREE.Mesh(
-    new THREE.SphereGeometry(0.024, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0x22c55e })
-  );
-  greenLed.position.set(-8.08, 2.58, 2.74);
-  wallsGroup.add(greenLed);
-
-  const redLed = new THREE.Mesh(
-    new THREE.SphereGeometry(0.018, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0x7f1d1d })
-  );
-  redLed.position.set(-8.08, 2.58, 2.86);
-  wallsGroup.add(redLed);
-
-  // Cartel superior de la esclusa
-  const airlockSign = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.2, 0.38),
-    new THREE.MeshBasicMaterial({ map: createSafetyTexture('airlock_door_sign') })
-  );
-  airlockSign.position.set(-8.12, 2.88, 2.8);
-  airlockSign.rotation.y = Math.PI / 2;
-  wallsGroup.add(airlockSign);
+  magnehelicPanel.position.set(1.45, 0.15, 4.72);
+  magnehelicPanel.rotation.y = Math.PI;
+  wallsGroup.add(magnehelicPanel);
 
   // =========================================================================
-  // 4. ESTRUCTURA ARQUITECTÓNICA DE LA CÁMARA DE DESCONTAMINACIÓN SAS
+  // 5. PUERTAS AUTOMÁTICAS DOBLES DE SALA LIMPIA ("SE JUNTAN SOLAS EN EL CENTRO")
+  // =========================================================================
+  const doorsGroup = new THREE.Group();
+  doorsGroup.name = 'DoubleCleanroomDoorsRig';
+
+  // Guía / Carcasa superior del operador motorizado telescópico de acero inoxidable
+  const operatorHousing = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 0.22), stainlessMat);
+  operatorHousing.position.set(0, 1.28, 4.8);
+  doorsGroup.add(operatorHousing);
+
+  // Sensor Cleanroom Radar Doppler sobre la guía (cara laboratorio y cara esclusa)
+  const radarSensorLab = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.08, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
+  );
+  radarSensorLab.position.set(0, 1.34, 4.68);
+  doorsGroup.add(radarSensorLab);
+
+  const radarSensorAirlock = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.08, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
+  );
+  radarSensorAirlock.position.set(0, 1.34, 4.92);
+  doorsGroup.add(radarSensorAirlock);
+
+  // LED de estado del sensor (Azul standby / Verde apertura)
+  const sensorLed = new THREE.Mesh(
+    new THREE.SphereGeometry(0.02, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+  );
+  sensorLed.position.set(0, 1.34, 4.64);
+  doorsGroup.add(sensorLed);
+
+  // Textura y materiales de las hojas de las puertas correderas
+  const doorLeafTex = createSafetyTexture('cleanroom_door_leaf');
+  const doorFaceMat = new THREE.MeshStandardMaterial({
+    map: doorLeafTex,
+    roughness: 0.4,
+    metalness: 0.1
+  });
+  const leafMaterials = [
+    stainlessMat, // derecha (+X)
+    stainlessMat, // izquierda (-X)
+    stainlessMat, // superior (+Y)
+    stainlessMat, // inferior (-Y)
+    doorFaceMat,  // frontal (+Z, cara esclusa)
+    doorFaceMat   // posterior (-Z, cara laboratorio)
+  ];
+
+  const leafWidth = 1.18;
+  const leafHeight = 2.70;
+  const leafThickness = 0.05;
+  const leafY = -1.55 + leafHeight / 2; // = -0.20
+
+  // Hoja Izquierda
+  const leftLeaf = new THREE.Mesh(
+    new THREE.BoxGeometry(leafWidth, leafHeight, leafThickness),
+    leafMaterials
+  );
+  leftLeaf.position.set(-0.585, leafY, 4.80);
+  leftLeaf.castShadow = true;
+  doorsGroup.add(leftLeaf);
+
+  // Hoja Derecha
+  const rightLeaf = new THREE.Mesh(
+    new THREE.BoxGeometry(leafWidth, leafHeight, leafThickness),
+    leafMaterials
+  );
+  rightLeaf.position.set(0.585, leafY, 4.80);
+  rightLeaf.castShadow = true;
+  doorsGroup.add(rightLeaf);
+
+  // Guía de suelo empotrada de acero inoxidable (ranura guía continua al ras)
+  const floorTrack = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.008, 0.08), stainlessMat);
+  floorTrack.position.set(0, -1.546, 4.8);
+  doorsGroup.add(floorTrack);
+
+  // Rig cinemático con método update optimizado O(1) 0 GC
+  const doubleDoorsRig: DoubleDoorsRig = {
+    group: doorsGroup,
+    leftLeaf,
+    rightLeaf,
+    sensorLed,
+    currentOpen: 0,
+    update(playerPos: THREE.Vector3, dt: number) {
+      // Distancia horizontal al umbral central de la puerta (0, Y, 4.8)
+      const dx = playerPos.x;
+      const dz = playerPos.z - 4.8;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      // Si el usuario está a menos de 2.8m, las puertas se abren automáticamente;
+      // al alejarse, vuelven al centro y se juntan solas de forma fluida.
+      const targetOpen = dist < 2.8 ? 1.0 : 0.0;
+      const speed = targetOpen > this.currentOpen ? 3.5 : 2.4;
+      this.currentOpen = THREE.MathUtils.damp(this.currentOpen, targetOpen, speed, dt);
+
+      // Desplazamiento simétrico de ambas hojas correderas
+      this.leftLeaf.position.x = THREE.MathUtils.lerp(-0.585, -1.72, this.currentOpen);
+      this.rightLeaf.position.x = THREE.MathUtils.lerp(0.585, 1.72, this.currentOpen);
+
+      // Actualizar color del indicador luminoso del radar de aproximación
+      const ledMat = this.sensorLed.material as THREE.MeshBasicMaterial;
+      if (this.currentOpen > 0.05) {
+        ledMat.color.setHex(0x22c55e); // Verde activo
+      } else {
+        ledMat.color.setHex(0x38bdf8); // Azul standby
+      }
+    }
+  };
+
+  wallsGroup.userData.doubleDoors = doubleDoorsRig;
+  wallsGroup.add(doorsGroup);
+
+  // =========================================================================
+  // 6. CÁMARA SAS DE DESCONTAMINACIÓN & VESTIDOR DE BIOSEGURIDAD (z = 4.8 a 8.2)
+  // Antecámara previa al laboratorio con suelo continuo exacto a Y = -1.548
   // =========================================================================
   const airlockGroup = new THREE.Group();
   airlockGroup.name = 'AirlockChamberStructure';
 
-  // Suelo continuo de resina epoxi oscura estéril (3.4m x 3.6m)
-  const airlockFloor = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.6), airlockFloorMat);
+  // Suelo continuo de resina epoxi estéril (9.0m x 3.4m) al nivel real del suelo (-1.548)
+  const airlockFloor = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 3.4), airlockFloorMat);
   airlockFloor.rotation.x = -Math.PI / 2;
-  airlockFloor.position.set(-9.9, 0.002, 2.0);
+  airlockFloor.position.set(0, -1.548, 6.5);
+  airlockFloor.receiveShadow = true;
   airlockGroup.add(airlockFloor);
 
-  // Pared Norte de la esclusa (z = 0.2, desde x = -11.6 hasta -8.2)
-  const airlockWallNorth = new THREE.Mesh(new THREE.BoxGeometry(3.4, wallHeight, 0.15), wallMat);
-  airlockWallNorth.position.set(-9.9, wallY, 0.2);
-  airlockGroup.add(airlockWallNorth);
-
-  const airlockBaseboardNorth = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.16, 0.18), baseboardMat);
-  airlockBaseboardNorth.position.set(-9.9, -1.47, 0.2);
-  airlockGroup.add(airlockBaseboardNorth);
-
-  // Pared Sur de la esclusa (z = 3.8, desde x = -11.6 hasta -8.2)
-  const airlockWallSouth = new THREE.Mesh(new THREE.BoxGeometry(3.4, wallHeight, 0.15), wallMat);
-  airlockWallSouth.position.set(-9.9, wallY, 3.8);
-  airlockGroup.add(airlockWallSouth);
-
-  const airlockBaseboardSouth = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.16, 0.18), baseboardMat);
-  airlockBaseboardSouth.position.set(-9.9, -1.47, 3.8);
-  airlockGroup.add(airlockBaseboardSouth);
-
-  // Pared Oeste exterior de la esclusa (x = -11.6, desde z = 0.2 hasta 3.8)
-  const airlockWallWest = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 3.6), wallMat);
-  airlockWallWest.position.set(-11.6, wallY, 2.0);
+  // Pared Oeste de la esclusa (x = -4.5, desde z = 4.8 hasta 8.2)
+  const airlockWallWest = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 3.4), wallMat);
+  airlockWallWest.position.set(-4.5, wallY, 6.5);
   airlockGroup.add(airlockWallWest);
 
-  const airlockBaseboardWest = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 3.6), baseboardMat);
-  airlockBaseboardWest.position.set(-11.6, -1.47, 2.0);
+  const airlockBaseboardWest = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 3.4), baseboardMat);
+  airlockBaseboardWest.position.set(-4.5, -1.47, 6.5);
   airlockGroup.add(airlockBaseboardWest);
 
-  // Puerta de acceso exterior del pasillo hacia la esclusa (x = -11.6, z = 2.0)
-  const exteriorDoorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.3, 1.2), stainlessMat);
-  exteriorDoorFrame.position.set(-11.6, 1.15, 2.0);
+  // Pared Este de la esclusa (x = 4.5, desde z = 4.8 hasta 8.2)
+  const airlockWallEast = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 3.4), wallMat);
+  airlockWallEast.position.set(4.5, wallY, 6.5);
+  airlockGroup.add(airlockWallEast);
+
+  const airlockBaseboardEast = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 3.4), baseboardMat);
+  airlockBaseboardEast.position.set(4.5, -1.47, 6.5);
+  airlockGroup.add(airlockBaseboardEast);
+
+  // Pared Sur exterior de la esclusa (z = 8.2, desde x = -4.5 hasta 4.5)
+  // Tramo izquierdo
+  const airlockWallSouthL = new THREE.Mesh(new THREE.BoxGeometry(3.7, wallHeight, 0.15), wallMat);
+  airlockWallSouthL.position.set(-2.65, wallY, 8.2);
+  airlockGroup.add(airlockWallSouthL);
+
+  const airlockBaseboardSouthL = new THREE.Mesh(new THREE.BoxGeometry(3.7, 0.16, 0.18), baseboardMat);
+  airlockBaseboardSouthL.position.set(-2.65, -1.47, 8.2);
+  airlockGroup.add(airlockBaseboardSouthL);
+
+  // Tramo derecho
+  const airlockWallSouthR = new THREE.Mesh(new THREE.BoxGeometry(3.7, wallHeight, 0.15), wallMat);
+  airlockWallSouthR.position.set(2.65, wallY, 8.2);
+  airlockGroup.add(airlockWallSouthR);
+
+  const airlockBaseboardSouthR = new THREE.Mesh(new THREE.BoxGeometry(3.7, 0.16, 0.18), baseboardMat);
+  airlockBaseboardSouthR.position.set(2.65, -1.47, 8.2);
+  airlockGroup.add(airlockBaseboardSouthR);
+
+  // Dintel de acceso exterior (x = -0.8 a 0.8, y = 0.85 a 3.75)
+  const exteriorDoorLintel = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.9, 0.15), wallMat);
+  exteriorDoorLintel.position.set(0, 2.30, 8.2);
+  airlockGroup.add(exteriorDoorLintel);
+
+  // Marco de puerta de acceso exterior del pasillo general (x = 0, z = 8.2)
+  const exteriorDoorFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.18), stainlessMat);
+  exteriorDoorFrame.position.set(0, -0.35, 8.2);
   airlockGroup.add(exteriorDoorFrame);
 
   // Lector biométrico / RFID de control de accesos exterior
   const rfidScanner = new THREE.Mesh(
-    new THREE.BoxGeometry(0.04, 0.18, 0.12),
+    new THREE.BoxGeometry(0.12, 0.18, 0.04),
     new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 })
   );
-  rfidScanner.position.set(-11.48, 1.35, 1.25);
+  rfidScanner.position.set(0.95, -0.15, 8.12);
   airlockGroup.add(rfidScanner);
 
   const rfidLed = new THREE.Mesh(
     new THREE.SphereGeometry(0.012, 10, 10),
     new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
   );
-  rfidLed.position.set(-11.45, 1.4, 1.25);
+  rfidLed.position.set(0.95, -0.10, 8.1);
   airlockGroup.add(rfidLed);
 
-  // Banqueta de cruce de zona limpia / sucia (Step-Over Bench a z = 1.6)
+  // Banqueta de cruce de zona limpia / sucia (Step-Over Bench a z = 7.0, apoyada en Y = -1.55)
   const benchWoodMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.45 });
-  const stepOverBench = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.45, 0.35), benchWoodMat);
-  stepOverBench.position.set(-10.5, 0.225, 1.6);
+  const stepOverBench = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.45, 0.35), benchWoodMat);
+  stepOverBench.position.set(0, -1.325, 7.0);
   airlockGroup.add(stepOverBench);
 
   // Patas de acero de la banqueta
-  [-11.4, -9.6].forEach((bx) => {
+  [-1.5, -0.5, 0.5, 1.5].forEach((bx) => {
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.45, 12), stainlessMat);
-    leg.position.set(bx, 0.225, 1.6);
+    leg.position.set(bx, -1.325, 7.0);
     airlockGroup.add(leg);
   });
 
   // Franja en el suelo que divide zona exterior y zona limpia
   const stripeTex = createSafetyTexture('safety_stripes');
-  stripeTex.repeat.set(4, 1);
+  stripeTex.repeat.set(8, 1);
   const dividerLine = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.4, 0.1),
+    new THREE.PlaneGeometry(8.8, 0.1),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
   );
   dividerLine.rotation.x = -Math.PI / 2;
-  dividerLine.position.set(-9.9, 0.003, 1.6);
+  dividerLine.position.set(0, -1.545, 7.0);
   airlockGroup.add(dividerLine);
 
-  // Pórtico de Ducha de Aire ciclónica HEPA (Air Shower) en el umbral hacia el lab
-  const airShowerArch = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.45, 1.25), stainlessMat);
-  airShowerArch.position.set(-8.45, 1.225, 2.85);
+  // Pórtico de Ducha de Aire ciclónica HEPA (Air Shower) en el umbral hacia el lab (z = 5.25)
+  const airShowerArch = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.65, 0.32), stainlessMat);
+  airShowerArch.position.set(0, -0.225, 5.25);
   airlockGroup.add(airShowerArch);
 
-  // Hueco interior del pórtico
+  // Hueco interior del pórtico para paso fluido
   const airShowerOpening = new THREE.Mesh(
-    new THREE.BoxGeometry(0.26, 2.35, 1.05),
+    new THREE.BoxGeometry(1.7, 2.45, 0.34),
     new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 })
   );
-  airShowerOpening.position.set(-8.45, 1.175, 2.85);
+  airShowerOpening.position.set(0, -0.325, 5.25);
   airlockGroup.add(airShowerOpening);
 
-  // Boquillas cromadas de soplado ciclónico de aire (25 m/s)
-  [-1.0, 1.0].forEach((side) => {
-    [0.7, 1.2, 1.7, 2.1].forEach((ny) => {
-      const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.02, 10), stainlessMat);
-      jet.rotation.x = Math.PI / 2;
-      jet.position.set(-8.45, ny, 2.85 + side * 0.48);
+  // Boquillas cromadas de soplado ciclónico de aire (25 m/s) en ambas paredes del pórtico
+  [-0.82, 0.82].forEach((sideX) => {
+    [-1.0, -0.5, 0.0, 0.5].forEach((ny) => {
+      const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.03, 10), stainlessMat);
+      jet.rotation.z = Math.PI / 2;
+      jet.position.set(sideX, ny, 5.25);
       airlockGroup.add(jet);
     });
   });
 
   // Cartel de Ducha de Aire
   const airShowerSign = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.0, 0.28),
+    new THREE.PlaneGeometry(1.2, 0.32),
     new THREE.MeshBasicMaterial({ map: createSafetyTexture('air_shower_sign') })
   );
-  airShowerSign.position.set(-8.6, 2.55, 2.85);
-  airShowerSign.rotation.y = Math.PI / 2;
+  airShowerSign.position.set(0, 1.25, 5.08);
   airlockGroup.add(airShowerSign);
 
   // 2 Paneles de iluminación LED Cleanroom en el techo de la esclusa
   const trofferMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  [-10.6, -9.2].forEach((tx) => {
+  [-1.5, 1.5].forEach((tx) => {
     const lightTroffer = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 1.2), trofferMat);
-    lightTroffer.position.set(tx, 3.63, 2.0);
+    lightTroffer.position.set(tx, 3.63, 6.5);
     airlockGroup.add(lightTroffer);
 
     const frame = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.02, 1.26), stainlessMat);
-    frame.position.set(tx, 3.65, 2.0);
+    frame.position.set(tx, 3.65, 6.5);
     airlockGroup.add(frame);
   });
 

@@ -27,7 +27,8 @@ export type SafetyTextureKind =
   | 'symbiolab_coat_badge'
   | 'magnehelic_gauge'
   | 'airlock_door_sign'
-  | 'air_shower_sign';
+  | 'air_shower_sign'
+  | 'cleanroom_door_leaf';
 
 const textureCache = new Map<string, THREE.CanvasTexture>();
 
@@ -877,6 +878,125 @@ export function createSafetyTexture(kind: SafetyTextureKind): THREE.CanvasTextur
     ctx.fillStyle = '#94a3b8';
     ctx.font = '12px sans-serif';
     ctx.fillText('Rotar 360° con los brazos alzados durante el soplado', 256, 114);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    textureCache.set(kind, tex);
+    return tex;
+  }
+
+  // 20. Hoja de puerta corredera hermética de sala limpia (Cleanroom Double Sliding Door Leaf)
+  if (kind === 'cleanroom_door_leaf') {
+    canvas.width = 512;
+    canvas.height = 1024;
+
+    // Acabado lacado epoxi blanco puro esterilizable para sala limpia (RAL 9010)
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, 512, 1024);
+
+    // Marco perimetral estanco de acero inoxidable cepillado AISI 316L
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 28;
+    ctx.strokeRect(14, 14, 484, 996);
+
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(30, 30, 452, 964);
+
+    // Ojo de buey / Ventana de observación oblonga con esquinas redondeadas
+    const winX = 136;
+    const winY = 140;
+    const winW = 240;
+    const winH = 420;
+    const winR = 70;
+
+    // Junta perimetral de estanqueidad de EPDM / neopreno negro
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.roundRect(winX - 18, winY - 18, winW + 36, winH + 36, winR + 14);
+    ctx.fill();
+
+    // Marco biselado de acero inoxidable de la ventana
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 10;
+    ctx.stroke();
+
+    // Cristal de seguridad laminar doble (vidrio tintado azul cleanroom)
+    const glassGrad = ctx.createLinearGradient(winX, winY, winX + winW, winY + winH);
+    glassGrad.addColorStop(0, '#38bdf8');
+    glassGrad.addColorStop(0.3, '#0284c7');
+    glassGrad.addColorStop(0.7, '#0369a1');
+    glassGrad.addColorStop(1, '#075985');
+    ctx.fillStyle = glassGrad;
+    ctx.beginPath();
+    ctx.roundRect(winX, winY, winW, winH, winR);
+    ctx.fill();
+
+    // Reflejo especular blanco en el vidrio (línea diagonal suave)
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(winX, winY, winW, winH, winR);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.beginPath();
+    ctx.moveTo(winX + 20, winY);
+    ctx.lineTo(winX + 100, winY);
+    ctx.lineTo(winX + 30, winY + winH);
+    ctx.lineTo(winX - 50, winY + winH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Señalética reglamentaria en la puerta a la altura de la vista
+    ctx.fillStyle = '#0284c7';
+    ctx.beginPath();
+    ctx.roundRect(80, 590, 352, 64, 12);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PUERTA AUTOMÁTICA', 256, 620);
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText('SALA LIMPIA BSL-2 · MANTENER LIBRE', 256, 642);
+
+    // Pictograma sin contacto "WAVE / SENSOR" a la altura de cintura
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath();
+    ctx.arc(256, 715, 36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.fillStyle = '#0284c7';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('👋', 256, 725);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('SENSOR SIN CONTACTO', 256, 768);
+
+    // Placa zócalo inferior de protección contra impactos (Kickplate de acero AISI 304)
+    const kickGrad = ctx.createLinearGradient(0, 810, 0, 990);
+    kickGrad.addColorStop(0, '#94a3b8');
+    kickGrad.addColorStop(0.5, '#cbd5e1');
+    kickGrad.addColorStop(1, '#64748b');
+    ctx.fillStyle = kickGrad;
+    ctx.fillRect(28, 810, 456, 180);
+
+    // Remaches avellanados del kickplate
+    ctx.fillStyle = '#334155';
+    [48, 150, 256, 362, 464].forEach((rx) => {
+      [825, 900, 975].forEach((ry) => {
+        ctx.beginPath();
+        ctx.arc(rx, ry, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    });
 
     const tex = new THREE.CanvasTexture(canvas);
     textureCache.set(kind, tex);
@@ -1938,54 +2058,54 @@ export function buildSafetyEnvironmentSignage(): THREE.Group {
   flammableSign.position.set(4.3, 2.5, -2.32);
   signageGroup.add(flammableSign);
 
-  // 4. Salida de Emergencia superior (ISO 7010) sobre el ala de bioseguridad
+  // 4. Salida de Emergencia superior (ISO 7010) sobre las puertas automáticas principales (Pared Sur Z = 4.75)
   const exitSign = new THREE.Mesh(
     new THREE.PlaneGeometry(1.0, 0.42),
     new THREE.MeshBasicMaterial({ map: createSafetyTexture('iso_emergency_exit') })
   );
-  exitSign.position.set(-8.12, 2.85, 1.8);
-  exitSign.rotation.y = Math.PI / 2;
+  exitSign.position.set(0, 1.45, 4.75);
+  exitSign.rotation.y = Math.PI; // Orientado hacia el interior del laboratorio (-Z)
   signageGroup.add(exitSign);
 
-  // Marco de puerta de salida de emergencia sobre la pared oeste
+  // Marco perimetral estanco de la salida de emergencia
   const doorFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(0.04, 2.3, 1.15),
+    new THREE.BoxGeometry(1.08, 0.48, 0.04),
     new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })
   );
-  doorFrame.position.set(-8.12, 1.15, 1.8);
+  doorFrame.position.set(0, 1.45, 4.77);
   signageGroup.add(doorFrame);
 
   // 5. Franjas de suelo perimetrales amarillas y negras
   const stripeTex = createSafetyTexture('safety_stripes');
 
-  // Franja perímetro Mesa Central Química (4.4m x 2.6m ampliada)
+  // Franja perímetro Mesa Central Química (4.4m x 2.6m ampliada) en el suelo
   const chemBorder = new THREE.Mesh(
     new THREE.RingGeometry(2.3, 2.45, 4),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
   );
   chemBorder.rotation.x = -Math.PI / 2;
   chemBorder.rotation.z = Math.PI / 4;
-  chemBorder.position.set(0, 0.003, 0.15);
+  chemBorder.position.set(0, -1.545, 0.15);
   signageGroup.add(chemBorder);
 
-  // Franja perímetro Mesa Biología (3.5m x 2.4m)
+  // Franja perímetro Mesa Biología (3.5m x 2.4m) en el suelo
   const bioBorder = new THREE.Mesh(
     new THREE.RingGeometry(1.85, 2.0, 4),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
   );
   bioBorder.rotation.x = -Math.PI / 2;
   bioBorder.rotation.z = Math.PI / 4;
-  bioBorder.position.set(-4.3, 0.003, 0.15);
+  bioBorder.position.set(-4.3, -1.545, 0.15);
   signageGroup.add(bioBorder);
 
-  // Franja perímetro Mesa STEAM (3.5m x 2.4m)
+  // Franja perímetro Mesa STEAM (3.5m x 2.4m) en el suelo
   const steamBorder = new THREE.Mesh(
     new THREE.RingGeometry(1.85, 2.0, 4),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
   );
   steamBorder.rotation.x = -Math.PI / 2;
   steamBorder.rotation.z = Math.PI / 4;
-  steamBorder.position.set(4.3, 0.003, 0.15);
+  steamBorder.position.set(4.3, -1.545, 0.15);
   signageGroup.add(steamBorder);
 
   return signageGroup;
@@ -2001,21 +2121,23 @@ export function buildCompleteLabSafetyInfrastructure(
   masterGroup.name = 'CompleteLabSafetyInfrastructure';
 
   // 1. Ducha de emergencia y lavaojos combinado DENTRO de la cámara SAS de bioseguridad
+  // Montada contra la pared oeste de la esclusa, descansando flush sobre el suelo real (Y = -1.55)
   const shower = buildEmergencyShowerAndEyewash(interactiveList);
-  shower.position.set(-10.0, 0, 3.25);
-  shower.rotation.y = Math.PI; // Orientada hacia el interior norte de la esclusa
+  shower.position.set(-3.8, -1.55, 6.2);
+  shower.rotation.y = Math.PI / 2; // Orientada hacia el interior del SAS
   masterGroup.add(shower);
 
-  // 2. Estación / Vestidor de Bioseguridad y EPP DENTRO de la cámara SAS (Pared norte)
+  // 2. Estación / Vestidor de Bioseguridad y EPP DENTRO de la cámara SAS
+  // Montada contra la pared este de la esclusa, apoyada al suelo real (Y = -1.55)
   const ppeStation = buildSafetyPPEStation(interactiveList);
-  ppeStation.position.set(-10.0, 0, 0.52);
-  ppeStation.rotation.y = 0; // Orientada hacia el sur (+Z) de frente a quien entra
+  ppeStation.position.set(3.8, -1.55, 6.2);
+  ppeStation.rotation.y = -Math.PI / 2; // Orientada hacia el centro del vestidor
   masterGroup.add(ppeStation);
 
-  // 3. Extintor de incendios CO2 montado en la pared divisoria del laboratorio junto al acceso
+  // 3. Extintor de incendios CO2 montado en la pared sur junto al paso de las puertas automáticas
   const extinguisher = buildFireExtinguisherStation(interactiveList);
-  extinguisher.position.set(-8.12, 0.95, 1.0);
-  extinguisher.rotation.y = Math.PI / 2; // Orientado hacia el interior del laboratorio
+  extinguisher.position.set(-1.6, -0.45, 4.75);
+  extinguisher.rotation.y = Math.PI; // Orientado hacia el interior del laboratorio
   masterGroup.add(extinguisher);
 
   // 4. Señalética mural, pictogramas SGA/GHS y franjas perimetrales de suelo

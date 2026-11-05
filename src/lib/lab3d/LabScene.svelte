@@ -16,7 +16,8 @@
     buildProfessionalLabBench,
     createLabFloorTexture,
     buildLaboratoryCeilingAndLighting,
-    buildLaboratoryPerimeterWalls
+    buildLaboratoryPerimeterWalls,
+    type DoubleDoorsRig
   } from './lab_furniture';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
@@ -99,6 +100,7 @@
   let fpController: FirstPersonController | null = null;
   let arHandRig: ARHandMeshRig | null = null;
   let safetyFx: LabSafetyFXSystem | null = null;
+  let doubleDoorsRig: DoubleDoorsRig | null = null;
   let keyLight: THREE.DirectionalLight | null = null;
   let lastShowerRev = 0;
   let lastEyewashRev = 0;
@@ -893,85 +895,74 @@
   }
 
   /**
-   * Construye el fondo arquitectónico panorámico que abarca las 3 estaciones de trabajo
-   * (Química, Biología y Ciencias STEAM) con sus respectivos letreros y pósters temáticos.
+   * Construye la señalética temática y pósters científicos montados sobre el muro perimetral norte
+   * (Química, Biología y Ciencias STEAM) sin muros obsoletos que bloqueen la vista de las mesas.
    */
   function buildLabEnvironmentAndRack(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const group = new THREE.Group();
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x193340, roughness: 0.9 });
-    const wall = roundedBox(14.8, 3.6, 0.14, 0.04, wallMat);
-    wall.position.set(0, 1.25, -1.55);
-    group.add(wall);
 
-    const panelMat = new THREE.MeshStandardMaterial({ color: 0x203e4b, roughness: 0.85 });
-    [-3.5, 0, 3.5].forEach((x) => {
-      const panel = roundedBox(3.4, 2.5, 0.02, 0.01, panelMat);
-      panel.position.set(x, 1.25, -1.47);
-      group.add(panel);
-    });
-
-    // 1. SECCIÓN DE BIOLOGÍA Y MICROSCOPÍA (IZQUIERDA: x = -3.5)
+    // 1. SECCIÓN DE BIOLOGÍA Y MICROSCOPÍA (IZQUIERDA: x = -4.3, montado en muro norte z = -2.32)
     const posterBio = new THREE.Mesh(
       new THREE.PlaneGeometry(1.25, 0.75),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('biology_cells') })
     );
-    posterBio.position.set(-3.5, 1.85, -1.45);
+    posterBio.position.set(-4.3, 1.85, -2.32);
     group.add(posterBio);
 
     const signBio = textPlate('SYMBIOLAB  /  2. BIOLOGÍA & MICROSCOPÍA', 1.75, 0.15, '#86efac', '#14532d');
-    signBio.position.set(-3.5, 2.38, -1.45);
+    signBio.position.set(-4.3, 2.38, -2.32);
     group.add(signBio);
 
-    // 2. SECCIÓN DE QUÍMICA ANALÍTICA (CENTRO: x = 0)
+    // 2. SECCIÓN DE QUÍMICA ANALÍTICA (CENTRO: x = 0, montado en muro norte z = -2.32)
     const posterChem1 = new THREE.Mesh(
       new THREE.PlaneGeometry(1.05, 0.68),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('ph_scale') })
     );
-    posterChem1.position.set(-0.72, 1.85, -1.45);
+    posterChem1.position.set(-0.85, 1.85, -2.32);
     group.add(posterChem1);
 
     const posterChem2 = new THREE.Mesh(
       new THREE.PlaneGeometry(1.05, 0.68),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('lab_rules') })
     );
-    posterChem2.position.set(0.72, 1.85, -1.45);
+    posterChem2.position.set(0.85, 1.85, -2.32);
     group.add(posterChem2);
 
     const signChem = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA & REACCIONES', 1.95, 0.15, '#93c5fd', '#1e293b');
-    signChem.position.set(0, 2.38, -1.45);
+    signChem.position.set(0, 2.38, -2.32);
     group.add(signChem);
 
-    // Repisa en Química con frascos reactivos
+    // Repisa en Química con frascos reactivos sobre el puente de servicio (z = -1.15)
     const shelfMat = new THREE.MeshStandardMaterial({ color: 0x40545c, roughness: 0.45, metalness: 0.35 });
     const shelf = roundedBox(3.2, 0.04, 0.3, 0.015, shelfMat);
-    shelf.position.set(0, 1.38, -1.35);
+    shelf.position.set(0, 1.38, -1.15);
     group.add(shelf);
     const diffuser = new THREE.Mesh(
       new THREE.BoxGeometry(3.0, 0.008, 0.016),
       new THREE.MeshBasicMaterial({ color: 0xaddbd7 })
     );
-    diffuser.position.set(0, 1.353, -1.21);
+    diffuser.position.set(0, 1.353, -1.01);
     group.add(diffuser);
     const amber = new THREE.MeshStandardMaterial({ color: 0x5b4630, roughness: 0.3, metalness: 0.1 });
     [-1.2, -0.9, 0.9, 1.2].forEach((x) => {
       const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.21, 20), amber);
-      bottle.position.set(x, 1.505, -1.35);
+      bottle.position.set(x, 1.505, -1.15);
       group.add(bottle);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.041, 0.041, 0.04, 16), shelfMat);
-      cap.position.set(x, 1.63, -1.35);
+      cap.position.set(x, 1.63, -1.15);
       group.add(cap);
     });
 
-    // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 3.5)
+    // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 4.3, montado en muro norte z = -2.32)
     const posterSteam = new THREE.Mesh(
       new THREE.PlaneGeometry(1.25, 0.75),
       new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('steam_physics') })
     );
-    posterSteam.position.set(3.5, 1.85, -1.45);
+    posterSteam.position.set(4.3, 1.85, -2.32);
     group.add(posterSteam);
 
     const signSteam = textPlate('SYMBIOLAB  /  3. CIENCIAS STEAM & FÍSICA', 1.75, 0.15, '#fde047', '#713f12');
-    signSteam.position.set(3.5, 2.38, -1.45);
+    signSteam.position.set(4.3, 2.38, -2.32);
     group.add(signSteam);
 
     // Gradilla de 5 Tubos de Ensayo (altura 0.34 u, proporcional frente al microscopio de 1.50 u)
@@ -3041,6 +3032,7 @@
 
     // Paredes Perimetrales Higiénicas con Zócalo Sanitario
     const perimeterWalls = buildLaboratoryPerimeterWalls();
+    doubleDoorsRig = (perimeterWalls.userData.doubleDoors as DoubleDoorsRig) || null;
     scene.add(perimeterWalls);
 
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x334c59, roughness: 0.4, metalness: 0.45 });
@@ -4161,6 +4153,11 @@
           1,
           0.4 + labStore.microscopeDiaphragm * 0.8
         );
+      }
+
+      if (doubleDoorsRig) {
+        const checkPos = fpController && fpController.enabled ? fpController.position : camera.position;
+        doubleDoorsRig.update(checkPos, dt);
       }
 
       if (!labStore.isFirstPersonWalking && controls.enabled) controls.update(dt);
