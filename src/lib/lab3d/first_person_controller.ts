@@ -78,18 +78,26 @@ export class FirstPersonController {
   touchLookActive = false;
   touchLookPrev = { x: 0, y: 0 };
 
-  // Cajas de colisión AABB para impedir atravesar mesas y muros
+  // Cajas de colisión AABB para impedir atravesar mesas, muros y cámara SAS
   colliders: FirstPersonColliderBox[] = [
-    // Perímetro del Laboratorio (Muros)
-    { minX: -8.0, maxX: 8.0, minZ: -1.2, maxZ: 6.5, name: 'bounds' },
+    // Perímetro General (Laboratorio y Cámara de Descontaminación SAS)
+    { minX: -11.5, maxX: 8.0, minZ: -1.2, maxZ: 6.5, name: 'bounds' },
     // Mesa Central Química (4.4m x 2.6m ampliada)
     { minX: -2.25, maxX: 2.25, minZ: -1.35, maxZ: 1.35, name: 'chem_table' },
     // Mesa Biología (3.5m x 2.4m en x = -4.3)
     { minX: -6.1, maxX: -2.5, minZ: -1.1, maxZ: 1.4, name: 'bio_table' },
     // Mesa STEAM (3.5m x 2.4m en x = 4.3)
     { minX: 2.5, maxX: 6.1, minZ: -1.1, maxZ: 1.4, name: 'steam_table' },
-    // Estación de Bioseguridad y Vestidor EPP
-    { minX: -7.35, maxX: -6.55, minZ: 1.4, maxZ: 2.9, name: 'ppe_station' }
+    // Mampara divisoria y ventana panorámica de la esclusa SAS
+    { minX: -8.35, maxX: -8.05, minZ: 0.15, maxZ: 2.25, name: 'airlock_window_wall' },
+    { minX: -8.35, maxX: -8.05, minZ: 3.5, maxZ: 3.95, name: 'airlock_south_pillar' },
+    // Envolvente exterior de la esclusa SAS
+    { minX: -11.65, maxX: -8.2, minZ: -0.05, maxZ: 0.28, name: 'airlock_north_wall' },
+    { minX: -11.65, maxX: -8.2, minZ: 3.75, maxZ: 4.05, name: 'airlock_south_wall' },
+    { minX: -11.75, maxX: -11.45, minZ: 0.15, maxZ: 3.85, name: 'airlock_west_wall' },
+    // Equipamiento técnico dentro de la esclusa
+    { minX: -10.8, maxX: -9.2, minZ: 0.25, maxZ: 0.75, name: 'airlock_ppe_wardrobe' },
+    { minX: -10.6, maxX: -9.4, minZ: 2.9, maxZ: 3.75, name: 'airlock_shower' }
   ];
 
   constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement, scene?: THREE.Scene) {

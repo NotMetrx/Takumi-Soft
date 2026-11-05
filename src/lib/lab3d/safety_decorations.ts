@@ -24,7 +24,10 @@ export type SafetyTextureKind =
   | 'donning_protocol_sign'
   | 'push_flag_texture'
   | 'pressure_gauge_dial'
-  | 'symbiolab_coat_badge';
+  | 'symbiolab_coat_badge'
+  | 'magnehelic_gauge'
+  | 'airlock_door_sign'
+  | 'air_shower_sign';
 
 const textureCache = new Map<string, THREE.CanvasTexture>();
 
@@ -774,6 +777,106 @@ export function createSafetyTexture(kind: SafetyTextureKind): THREE.CanvasTextur
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('BAR', 128, 180);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    textureCache.set(kind, tex);
+    return tex;
+  }
+
+  // 17. Manómetro diferencial Magnehelic y pantalla de cascada de presión (ISO 14644-4)
+  if (kind === 'magnehelic_gauge') {
+    canvas.width = 512;
+    canvas.height = 256;
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 512, 256);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(6, 6, 500, 244);
+
+    // Cabecera
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('CASCADA DE PRESIÓN DIFERENCIAL · ISO 14644', 24, 40);
+
+    // Indicadores numéricos de presión en cascada
+    ctx.font = 'bold 15px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('1. EXTERIOR (PASILLO):', 24, 82);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('0.0 Pa', 320, 82);
+
+    ctx.fillStyle = '#facc15';
+    ctx.fillText('2. ESCLUSA SAS:', 24, 120);
+    ctx.fillText('-15.0 Pa [BUFFER]', 320, 120);
+
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText('3. NÚCLEO LAB BSL-2:', 24, 158);
+    ctx.fillText('-35.0 Pa [DEPRESIÓN]', 320, 158);
+
+    // Estado del sistema HEPA
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(20, 185, 472, 45);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Filtros HEPA H14 (99.995%) · Enclavamiento de compuertas ACTIVO', 256, 212);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    textureCache.set(kind, tex);
+    return tex;
+  }
+
+  // 18. Cartel de puerta de esclusa SAS
+  if (kind === 'airlock_door_sign') {
+    canvas.width = 512;
+    canvas.height = 180;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 512, 180);
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(0, 0, 512, 55);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ESCLUSA SAS DE DESCONTAMINACIÓN', 256, 38);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('PERSONNEL AIRLOCK (PAL) · NIVEL BSL-2', 256, 95);
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.fillText('Uso obligatorio de EPP completo para franquear la esclusa', 256, 125);
+    ctx.fillStyle = '#16a34a';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('● COMPUERTA NEUMÁTICA HERMÉTICA · ESPERAR LUZ VERDE', 256, 152);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    textureCache.set(kind, tex);
+    return tex;
+  }
+
+  // 19. Rótulo de la Ducha de Aire ciclónica
+  if (kind === 'air_shower_sign') {
+    canvas.width = 512;
+    canvas.height = 140;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 512, 140);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(6, 6, 500, 128);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DUCHA DE AIRE HEPA · AIR SHOWER', 256, 48);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('Soplado ciclónico 25 m/s · Purgado de partículas 5 seg', 256, 85);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('Rotar 360° con los brazos alzados durante el soplado', 256, 114);
 
     const tex = new THREE.CanvasTexture(canvas);
     textureCache.set(kind, tex);
@@ -1897,21 +2000,22 @@ export function buildCompleteLabSafetyInfrastructure(
   const masterGroup = new THREE.Group();
   masterGroup.name = 'CompleteLabSafetyInfrastructure';
 
-  // 1. Ducha de emergencia y lavaojos combinado en el ala de seguridad
+  // 1. Ducha de emergencia y lavaojos combinado DENTRO de la cámara SAS de bioseguridad
   const shower = buildEmergencyShowerAndEyewash(interactiveList);
-  shower.position.set(-6.8, 0, 0.2);
-  shower.rotation.y = Math.PI / 4;
+  shower.position.set(-10.0, 0, 3.25);
+  shower.rotation.y = Math.PI; // Orientada hacia el interior norte de la esclusa
   masterGroup.add(shower);
 
-  // 2. Estación / Vestidor de Bioseguridad y EPP (bata, gafas, nitrilo y látex)
+  // 2. Estación / Vestidor de Bioseguridad y EPP DENTRO de la cámara SAS (Pared norte)
   const ppeStation = buildSafetyPPEStation(interactiveList);
-  ppeStation.position.set(-7.0, 0, 2.15);
-  ppeStation.rotation.y = Math.PI / 2;
+  ppeStation.position.set(-10.0, 0, 0.52);
+  ppeStation.rotation.y = 0; // Orientada hacia el sur (+Z) de frente a quien entra
   masterGroup.add(ppeStation);
 
-  // 3. Extintor de incendios CO2 montado en la pared / pedestal
+  // 3. Extintor de incendios CO2 montado en la pared divisoria del laboratorio junto al acceso
   const extinguisher = buildFireExtinguisherStation(interactiveList);
-  extinguisher.position.set(-2.1, 0.95, -1.25);
+  extinguisher.position.set(-8.12, 0.95, 1.0);
+  extinguisher.rotation.y = Math.PI / 2; // Orientado hacia el interior del laboratorio
   masterGroup.add(extinguisher);
 
   // 4. Señalética mural, pictogramas SGA/GHS y franjas perimetrales de suelo
