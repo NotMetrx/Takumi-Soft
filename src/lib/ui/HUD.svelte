@@ -23,6 +23,7 @@
     SlidersHorizontal,
     Plus
   } from '@lucide/svelte';
+  import { fly } from 'svelte/transition';
 
   const result = $derived(labStore.beaker.currentResult);
   const band = $derived(result?.indicatorBand);
@@ -88,33 +89,33 @@
      1. DYNAMIC LAB ISLAND (CÁPSULA SUPERIOR ADAPTATIVA ESTILO APPLE)
      =========================================================================== -->
 <header
-  class="fixed top-4 left-1/2 -translate-x-1/2 z-30 w-[94vw] max-w-3xl pointer-events-none flex flex-col items-center"
+  class="fixed top-4 left-1/2 -translate-x-1/2 z-30 w-[96vw] max-w-5xl pointer-events-none flex flex-col items-center"
   aria-label="Telemetría y control de nivel de SymbioLab"
 >
   <div
     class="pointer-events-auto apple-island w-full {isIslandExpanded
       ? 'rounded-[28px] p-3.5'
-      : 'rounded-full px-3.5 py-2'}"
+      : 'rounded-full px-3 sm:px-4 py-2'}"
   >
     <!-- Fila principal siempre visible en la Dynamic Island -->
-    <div class="flex items-center justify-between gap-2 sm:gap-4">
-      <!-- Identidad de marca + Experimento activo -->
+    <div class="flex items-center justify-between gap-1.5 sm:gap-3">
+      <!-- Identidad de marca + Experimento activo (SymbioLab siempre visible sin recortarse) -->
       <button
         type="button"
         onclick={() => toggleDockSheet('experiments')}
-        class="lab-btn flex items-center gap-2.5 min-w-0 text-left group cursor-pointer pl-1"
+        class="lab-btn flex items-center gap-2 text-left group cursor-pointer pl-1 shrink-0"
         title="Cambiar práctica experimental"
       >
         <span
           class="w-2.5 h-2.5 rounded-full shrink-0 transition-transform duration-200 group-hover:scale-125"
           style="background-color: {band?.colorHex || '#10b981'}; box-shadow: 0 0 12px {band?.colorHex || '#10b981'};"
         ></span>
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="font-semibold text-[13px] tracking-[-0.02em] text-white shrink-0">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="font-bold text-[13px] tracking-[-0.02em] text-white shrink-0">
             SymbioLab
           </span>
-          <span class="text-white/20 text-xs hidden sm:inline">/</span>
-          <span class="text-[12px] text-white/70 font-medium truncate hidden sm:inline max-w-[190px] group-hover:text-white transition-colors">
+          <span class="text-white/20 text-xs hidden lg:inline">/</span>
+          <span class="text-[12px] text-white/70 font-medium truncate hidden lg:inline max-w-[140px] xl:max-w-[200px] group-hover:text-white transition-colors">
             {activePreset.title}
           </span>
         </div>
@@ -129,41 +130,41 @@
         <button
           type="button"
           onclick={() => labStore.setStation('quimica')}
-          class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'quimica'
+          class="lab-btn px-2 sm:px-2.5 md:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'quimica'
             ? 'bg-white text-black font-semibold shadow-sm'
             : 'text-white/70 hover:text-white'}"
           title="Mesa de Química Analítica (Reactor, Bureta, pH)"
         >
           <span>🧪</span>
-          <span class="hidden sm:inline">Química</span>
+          <span class="hidden md:inline">Química</span>
         </button>
         <button
           type="button"
           onclick={() => labStore.setStation('biologia')}
-          class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'biologia'
+          class="lab-btn px-2 sm:px-2.5 md:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'biologia'
             ? 'bg-white text-black font-semibold shadow-sm'
             : 'text-white/70 hover:text-white'}"
           title="Mesa de Biología & Microscopía Óptica"
         >
           <span>🔬</span>
-          <span class="hidden sm:inline">Biología</span>
+          <span class="hidden md:inline">Biología</span>
         </button>
         <button
           type="button"
           onclick={() => labStore.setStation('steam')}
-          class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'steam'
+          class="lab-btn px-2 sm:px-2.5 md:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer {labStore.activeStation === 'steam'
             ? 'bg-white text-black font-semibold shadow-sm'
             : 'text-white/70 hover:text-white'}"
           title="Mesa de Ciencias Cotidianas & Fenómenos STEAM"
         >
           <span>📚</span>
-          <span class="hidden sm:inline">STEAM</span>
+          <span class="hidden md:inline">STEAM</span>
         </button>
       </div>
 
       <!-- Control de Nivel Educativo -->
       <div
-        class="hidden lg:flex items-center bg-white/[0.06] p-0.5 rounded-full border border-white/[0.08] shrink-0"
+        class="hidden xl:flex items-center bg-white/[0.06] p-0.5 rounded-full border border-white/[0.08] shrink-0"
         role="group"
         aria-label="Selector de nivel educativo"
       >
@@ -191,7 +192,7 @@
       <button
         type="button"
         onclick={() => labStore.equipAllPPE()}
-        class="lab-btn px-2.5 py-1 rounded-full text-[10.5px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer shrink-0 {labStore.isFullyProtected
+        class="lab-btn px-2 sm:px-2.5 py-1 rounded-full text-[10.5px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer shrink-0 {labStore.isFullyProtected
           ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
           : 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'}"
         title={labStore.isFullyProtected
@@ -199,7 +200,7 @@
           : 'Atención: Falta equipar EPP reglamentario (haz clic para auto-equipar)'}
       >
         <span>{labStore.isFullyProtected ? '🛡️' : '⚠️'}</span>
-        <span class="hidden md:inline font-semibold">
+        <span class="hidden sm:inline font-semibold">
           {labStore.isFullyProtected ? 'EPP OK' : 'Falta EPP'}
         </span>
       </button>
@@ -474,57 +475,72 @@
   </div>
 </header>
 
-<!-- Notificación Flotante de Protocolo de Seguridad (Alertas Didácticas) -->
+<!-- Notificación Flotante de Protocolo de Seguridad (Alertas Didácticas con auto-descarte de 5 segundos) -->
 {#if labStore.safetyAlert}
   <aside
-    class="pointer-events-auto fixed top-20 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-xl animate-in fade-in slide-in-from-top-2 duration-200"
+    class="pointer-events-auto fixed top-20 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-xl"
+    transition:fly={{ y: -16, duration: 250 }}
     role="alert"
     aria-live="assertive"
   >
     <div
-      class="px-4 py-3 rounded-2xl backdrop-blur-xl border flex items-start gap-3 shadow-2xl {labStore.safetyAlert.type === 'warning'
-        ? 'bg-amber-950/85 border-amber-500/40 text-amber-200'
+      class="px-4 py-3 rounded-2xl backdrop-blur-xl border flex flex-col gap-2.5 shadow-2xl {labStore.safetyAlert.type === 'warning'
+        ? 'bg-amber-950/90 border-amber-500/40 text-amber-200'
         : labStore.safetyAlert.type === 'success'
-          ? 'bg-emerald-950/85 border-emerald-500/40 text-emerald-200'
-          : 'bg-sky-950/85 border-sky-500/40 text-sky-200'}"
+          ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200'
+          : 'bg-sky-950/90 border-sky-500/40 text-sky-200'}"
     >
-      <span class="text-xl shrink-0 mt-0.5">
-        {labStore.safetyAlert.type === 'warning' ? '⚠️' : labStore.safetyAlert.type === 'success' ? '🛡️' : 'ℹ️'}
-      </span>
-      <div class="flex-1 min-w-0">
-        <h4 class="text-[13px] font-bold tracking-tight text-white">
-          {labStore.safetyAlert.title}
-        </h4>
-        <p class="text-[12px] opacity-90 leading-relaxed mt-0.5">
-          {labStore.safetyAlert.message}
-        </p>
-        <div class="flex items-center gap-2 mt-2">
-          {#if !labStore.isFullyProtected}
+      <div class="flex items-start gap-3">
+        <span class="text-xl shrink-0 mt-0.5">
+          {labStore.safetyAlert.type === 'warning' ? '⚠️' : labStore.safetyAlert.type === 'success' ? '🛡️' : 'ℹ️'}
+        </span>
+        <div class="flex-1 min-w-0">
+          <h4 class="text-[13px] font-bold tracking-tight text-white">
+            {labStore.safetyAlert.title}
+          </h4>
+          <p class="text-[12px] opacity-90 leading-relaxed mt-0.5">
+            {labStore.safetyAlert.message}
+          </p>
+          <div class="flex items-center gap-2 mt-2">
+            {#if !labStore.isFullyProtected}
+              <button
+                type="button"
+                onclick={() => labStore.equipAllPPE()}
+                class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+              >
+                Equipar Todo el EPP
+              </button>
+            {/if}
             <button
               type="button"
-              onclick={() => labStore.equipAllPPE()}
-              class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+              onclick={() => labStore.clearSafetyAlert()}
+              class="px-2 py-1 rounded-lg text-[11px] font-medium opacity-70 hover:opacity-100 hover:bg-white/10 text-white transition-colors cursor-pointer"
             >
-              Equipar Todo el EPP
+              Entendido
             </button>
-          {/if}
-          <button
-            type="button"
-            onclick={() => labStore.clearSafetyAlert()}
-            class="px-2 py-1 rounded-lg text-[11px] font-medium opacity-70 hover:opacity-100 hover:bg-white/10 text-white transition-colors cursor-pointer"
-          >
-            Entendido
-          </button>
+          </div>
         </div>
+        <button
+          type="button"
+          onclick={() => labStore.clearSafetyAlert()}
+          class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer shrink-0"
+          aria-label="Cerrar notificación de seguridad"
+        >
+          <X class="w-4 h-4" />
+        </button>
       </div>
-      <button
-        type="button"
-        onclick={() => labStore.clearSafetyAlert()}
-        class="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
-        aria-label="Cerrar notificación de seguridad"
-      >
-        <X class="w-4 h-4" />
-      </button>
+
+      <!-- Barra de tiempo visual (desaparece en max 5 segundos) -->
+      <div class="w-full bg-white/10 h-0.5 rounded-full overflow-hidden">
+        <div
+          class="h-full rounded-full {labStore.safetyAlert.type === 'warning'
+            ? 'bg-amber-400/80'
+            : labStore.safetyAlert.type === 'success'
+              ? 'bg-emerald-400/80'
+              : 'bg-sky-400/80'}"
+          style="animation: alertCountdown 5s linear forwards;"
+        ></div>
+      </div>
     </div>
   </aside>
 {/if}

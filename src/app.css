@@ -115,6 +115,16 @@ body {
   animation: applePopoverIn 220ms var(--ease-apple-spring) forwards;
 }
 
+/* Animación de barra de progreso para auto-descarte de notificaciones (5 segundos) */
+@keyframes alertCountdown {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
     animation-duration: 0.01ms !important;

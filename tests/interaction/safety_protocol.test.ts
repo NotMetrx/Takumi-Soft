@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { LabStore } from '../../src/lib/interaction/lab_store.svelte';
 
 describe('Protocolo de Bioseguridad y Equipamiento EPP (ISO 7010 / SGA)', () => {
@@ -88,5 +88,27 @@ describe('Protocolo de Bioseguridad y Equipamiento EPP (ISO 7010 / SGA)', () => 
     store.enterStationFromWalk('biologia');
     expect(store.isFirstPersonWalking).toBe(false);
     expect(store.activeStation).toBe('biologia');
+  });
+
+  it('auto-descarta las notificaciones flotantes tras un máximo de 5 segundos', () => {
+    vi.useFakeTimers();
+    try {
+      const store = new LabStore();
+
+      // Al activar el modo paseo se emite la notificación
+      store.toggleFirstPersonWalk(true);
+      expect(store.safetyAlert).not.toBeNull();
+      expect(store.safetyAlert?.title).toContain('Modo Paseo');
+
+      // Avanzar 2 segundos: la notificación sigue activa
+      vi.advanceTimersByTime(2000);
+      expect(store.safetyAlert).not.toBeNull();
+
+      // Avanzar otros 3 segundos (total 5 seg): la notificación desaparece sola
+      vi.advanceTimersByTime(3000);
+      expect(store.safetyAlert).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -932,27 +932,6 @@
     signChem.position.set(0, 2.38, -2.32);
     group.add(signChem);
 
-    // Repisa en Química con frascos reactivos sobre el puente de servicio (z = -1.15)
-    const shelfMat = new THREE.MeshStandardMaterial({ color: 0x40545c, roughness: 0.45, metalness: 0.35 });
-    const shelf = roundedBox(3.2, 0.04, 0.3, 0.015, shelfMat);
-    shelf.position.set(0, 1.38, -1.15);
-    group.add(shelf);
-    const diffuser = new THREE.Mesh(
-      new THREE.BoxGeometry(3.0, 0.008, 0.016),
-      new THREE.MeshBasicMaterial({ color: 0xaddbd7 })
-    );
-    diffuser.position.set(0, 1.353, -1.01);
-    group.add(diffuser);
-    const amber = new THREE.MeshStandardMaterial({ color: 0x5b4630, roughness: 0.3, metalness: 0.1 });
-    [-1.2, -0.9, 0.9, 1.2].forEach((x) => {
-      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.21, 20), amber);
-      bottle.position.set(x, 1.505, -1.15);
-      group.add(bottle);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.041, 0.041, 0.04, 16), shelfMat);
-      cap.position.set(x, 1.63, -1.15);
-      group.add(cap);
-    });
-
     // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 4.3, montado en muro norte z = -2.32)
     const posterSteam = new THREE.Mesh(
       new THREE.PlaneGeometry(1.25, 0.75),
@@ -3005,10 +2984,16 @@
     scene.add(ambientLight);
 
     keyLight = new THREE.DirectionalLight(0xfffbf5, 2.2);
-    keyLight.position.set(2.5, 4.5, 3.0);
+    keyLight.position.set(2.0, 3.4, 2.5);
     keyLight.castShadow = !lowTier && !basicGraphics;
     keyLight.shadow.mapSize.set(1024, 1024);
-    keyLight.shadow.bias = -0.0005;
+    keyLight.shadow.bias = -0.0002;
+    keyLight.shadow.camera.left = -6;
+    keyLight.shadow.camera.right = 6;
+    keyLight.shadow.camera.top = 4;
+    keyLight.shadow.camera.bottom = -4;
+    keyLight.shadow.camera.near = 0.5;
+    keyLight.shadow.camera.far = 10;
     scene.add(keyLight);
 
     const rimLight = new THREE.SpotLight(0xa8d9e0, 6, 10, Math.PI / 3, 0.5);

@@ -1628,6 +1628,7 @@ export class LabStore {
   safetyGlovesType = $state<SafetyGlovesType>('none');
   safetyStrictMode = $state<boolean>(false);
   safetyAlert = $state<SafetyProtocolAlert | null>(null);
+  private safetyAlertTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Efectos de partículas de seguridad (Ducha, Lavaojos, Extintor)
   showerFxRevision = $state<number>(0);
@@ -2025,17 +2026,31 @@ export class LabStore {
   setSafetyAlert(
     title: string,
     message: string,
-    type: 'warning' | 'info' | 'success' = 'warning'
+    type: 'warning' | 'info' | 'success' = 'warning',
+    durationMs = 5000
   ) {
+    if (this.safetyAlertTimer) {
+      clearTimeout(this.safetyAlertTimer);
+      this.safetyAlertTimer = null;
+    }
     this.safetyAlert = {
       title,
       message,
       type,
       timestamp: Date.now()
     };
+    if (durationMs > 0) {
+      this.safetyAlertTimer = setTimeout(() => {
+        this.clearSafetyAlert();
+      }, durationMs);
+    }
   }
 
   clearSafetyAlert() {
+    if (this.safetyAlertTimer) {
+      clearTimeout(this.safetyAlertTimer);
+      this.safetyAlertTimer = null;
+    }
     this.safetyAlert = null;
   }
 

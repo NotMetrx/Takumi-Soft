@@ -333,7 +333,6 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   // =========================================================================
   const backWall = new THREE.Mesh(new THREE.BoxGeometry(42, wallHeight, 0.15), wallMat);
   backWall.position.set(0, wallY, -2.4);
-  backWall.receiveShadow = true;
   wallsGroup.add(backWall);
 
   const backBaseboard = new THREE.Mesh(new THREE.BoxGeometry(42, 0.16, 0.18), baseboardMat);
@@ -345,7 +344,6 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   // =========================================================================
   const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 14.4), wallMat);
   rightWall.position.set(8.2, wallY, 1.2);
-  rightWall.receiveShadow = true;
   wallsGroup.add(rightWall);
 
   const rightBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 14.4), baseboardMat);
@@ -358,7 +356,6 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   // =========================================================================
   const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 14.4), wallMat);
   leftWall.position.set(-8.2, wallY, 1.2);
-  leftWall.receiveShadow = true;
   wallsGroup.add(leftWall);
 
   const leftBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 14.4), baseboardMat);
@@ -371,7 +368,6 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   // Tramo sólido Oeste (desde x = -8.2 hasta x = -1.2)
   const southWallWest = new THREE.Mesh(new THREE.BoxGeometry(7.0, wallHeight, 0.15), wallMat);
   southWallWest.position.set(-4.7, wallY, 4.8);
-  southWallWest.receiveShadow = true;
   wallsGroup.add(southWallWest);
 
   const southBaseboardWest = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.16, 0.18), baseboardMat);
@@ -381,7 +377,6 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   // Tramo sólido Este (desde x = 1.2 hasta x = 8.2)
   const southWallEast = new THREE.Mesh(new THREE.BoxGeometry(7.0, wallHeight, 0.15), wallMat);
   southWallEast.position.set(4.7, wallY, 4.8);
-  southWallEast.receiveShadow = true;
   wallsGroup.add(southWallEast);
 
   const southBaseboardEast = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.16, 0.18), baseboardMat);
