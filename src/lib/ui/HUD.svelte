@@ -3,6 +3,8 @@
     labStore,
     EXPERIMENT_PRESETS,
     CABINET_COMPONENTS,
+    BENZENE_LEGAL_WARNING_TEXT,
+    BENZENE_LEGAL_CONSENT_TEXT,
     type EducationLevel
   } from '$lib/interaction/lab_store.svelte';
   import { labSound } from '$lib/audio/lab_sound';
@@ -75,6 +77,7 @@
   }
 </script>
 
+{#if labStore.microscopeFsmState === 'EXPLORING'}
 <!-- Fondo invisible para cerrar popovers del Dock al hacer clic fuera -->
 {#if activeDockSheet !== null}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -119,6 +122,20 @@
             {activePreset.title}
           </span>
         </div>
+      </button>
+
+      <!-- Control de Modo Primera Persona (Paseo libre 3D con [V]) -->
+      <button
+        type="button"
+        onclick={() => labStore.toggleFirstPersonWalk()}
+        class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer border transition-all shrink-0 {labStore.isFirstPersonWalking
+          ? 'bg-cyan-400 text-black border-cyan-300 font-bold shadow-[0_0_12px_rgba(34,211,238,0.4)]'
+          : 'bg-white/[0.06] hover:bg-white/[0.12] text-white/80 border-white/[0.1]'}"
+        title="Modo Primera Persona (Tecla V): Camina libremente por el laboratorio e interactúa con instrumentos"
+      >
+        <span>🚶</span>
+        <span class="hidden sm:inline">Primera Persona</span>
+        <kbd class="px-1 py-0.2 rounded text-[9px] font-mono {labStore.isFirstPersonWalking ? 'bg-black/20 text-black' : 'bg-white/15 text-white/70'}">V</kbd>
       </button>
 
       <!-- Control Segmentado de Estaciones de Laboratorio 3D -->
@@ -562,20 +579,21 @@
 {/if}
 
 <!-- HUD y Controles de Navegación en 1ª Persona (Paseo por el Laboratorio) -->
-{#if labStore.isFirstPersonWalking}
-  <!-- Retícula Central (Crosshair) para interacción en 1ª Persona -->
+{#if labStore.isFirstPersonWalking && !labStore.isAnyModalBlockingFirstPerson}
+  <!-- Punto Central Fijo (estilo Minecraft) que reemplaza al cursor en 1ª Persona -->
   <div class="pointer-events-none fixed inset-0 z-20 flex items-center justify-center">
     <div class="relative flex items-center justify-center">
+      <!-- Siempre se mantiene como un único punto central nítido -->
+      <div
+        class="w-2.5 h-2.5 rounded-full transition-colors duration-100 {labStore.firstPersonTargetPrompt
+          ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.95)] border border-white'
+          : 'bg-white/90 shadow-[0_0_6px_rgba(0,0,0,0.85)] border border-black/50'}"
+      ></div>
+
       {#if labStore.firstPersonTargetPrompt}
-        <!-- Retícula activa cuando apunta a un objeto interactivo -->
+        <!-- Tarjeta flotante cuando el punto central está alineado con una mesa u objeto -->
         <div
-          class="w-7 h-7 rounded-full border-2 border-emerald-400 bg-emerald-400/20 animate-pulse flex items-center justify-center shadow-[0_0_16px_rgba(52,211,153,0.6)]"
-        >
-          <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
-        </div>
-        <!-- Tarjeta flotante con nombre del objeto e indicación de acción -->
-        <div
-          class="absolute top-6 px-3.5 py-1.5 rounded-xl bg-black/85 backdrop-blur-md border border-emerald-400/60 shadow-2xl flex items-center gap-2 whitespace-nowrap text-white text-xs animate-in fade-in zoom-in-95 duration-100"
+          class="absolute top-5 px-3.5 py-1.5 rounded-xl bg-black/85 backdrop-blur-md border border-emerald-400/60 shadow-2xl flex items-center gap-2 whitespace-nowrap text-white text-xs animate-in fade-in zoom-in-95 duration-100"
         >
           <span class="text-sm">{labStore.firstPersonTargetPrompt.icon}</span>
           <span class="font-semibold text-white">{labStore.firstPersonTargetPrompt.title}</span>
@@ -583,9 +601,6 @@
           <span class="text-emerald-300 font-medium">{labStore.firstPersonTargetPrompt.actionHint}</span>
           <kbd class="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono border border-white/30 text-white font-bold">E</kbd>
         </div>
-      {:else}
-        <!-- Retícula en reposo (minimal dot) -->
-        <div class="w-2 h-2 rounded-full bg-white/70 shadow-sm border border-black/40"></div>
       {/if}
     </div>
   </div>
@@ -957,7 +972,19 @@
 
     <div class="w-px h-5 bg-white/12 mx-0.5"></div>
 
-    <!-- Controles rápidos de sistema (Sonido y Reiniciar) -->
+    <!-- Controles rápidos de sistema (Ajustes F2, Sonido y Reiniciar) -->
+    <button
+      type="button"
+      onclick={() => labStore.toggleSettingsModal()}
+      class="lab-btn w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:bg-white/[0.09] hover:text-white cursor-pointer {labStore.isSettingsModalOpen
+        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/35'
+        : ''}"
+      title="Configuración y Optimización (F2)"
+      aria-label="Abrir menú de configuración y optimización"
+    >
+      <SlidersHorizontal class="w-4 h-4" />
+    </button>
+
     <button
       type="button"
       onclick={() => labStore.toggleSound()}
@@ -986,3 +1013,139 @@
     </button>
   </div>
 </nav>
+
+<!-- Telemetría en vivo de la Máquina de Estados DELICATE_POUR cuando el Módulo de Benceno está activo -->
+{#if !labStore.isExplorationMode && activePreset.fsmModeRequired === 'DELICATE_POUR'}
+  <div
+    class="fixed top-20 right-5 z-20 pointer-events-auto apple-glass rounded-2xl px-3.5 py-2.5 border border-rose-500/35 shadow-xl max-w-xs"
+  >
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+        <span class="text-[10.5px] font-bold uppercase tracking-wider text-rose-300">
+          FSM: DELICATE_POUR
+        </span>
+      </div>
+      <button
+        type="button"
+        onclick={() => labStore.requestRiskLevelConsent(activePreset.id)}
+        class="text-[10px] font-semibold text-amber-300 hover:underline cursor-pointer"
+      >
+        Ver Aviso Legal
+      </button>
+    </div>
+    <div class="mt-1 flex items-center justify-between text-[11px] text-white/85 font-mono-numbers">
+      <span>Ángulo mano: <strong>{labStore.delicatePourHandAngleDeg}°</strong> (Óptimo 25°–48°)</span>
+      <span class="px-1.5 py-0.5 rounded bg-white/10 text-[9.5px] text-cyan-300">
+        {labStore.delicatePourState}
+      </span>
+    </div>
+  </div>
+{/if}
+{/if}
+
+<!-- ===========================================================================
+     4. MODAL EMERGENTE DE ADVERTENCIA Y CONSENTIMIENTO LEGAL (BLOQUEO DE HUD)
+     =========================================================================== -->
+{#if labStore.pendingLegalConsentPreset}
+  {@const legalPreset = labStore.pendingLegalConsentPreset}
+  <div
+    class="fixed inset-0 z-[100] bg-black/88 backdrop-blur-xl flex items-center justify-center p-4 select-none pointer-events-auto"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="legal-hazard-modal-title"
+    aria-describedby="legal-hazard-modal-desc"
+  >
+    <div
+      class="w-full max-w-2xl rounded-[24px] lab-panel border-2 border-rose-500/60 shadow-[0_0_80px_rgba(225,29,72,0.35)] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+    >
+      <!-- Cabecera de Bloqueo de Seguridad y Grado de Riesgo Extremo -->
+      <div class="px-6 py-4 bg-gradient-to-r from-rose-950/90 via-red-950/80 to-amber-950/70 border-b border-rose-500/40 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-2xl bg-rose-600/30 border border-rose-400/50 flex items-center justify-center text-xl shadow-inner">
+            ☣️
+          </span>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white">
+                Nivel de Riesgo: {legalPreset.riskLevel ?? 'Extremo'}
+              </span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-mono-numbers font-semibold bg-amber-500/20 border border-amber-400/40 text-amber-200">
+                Complejidad: {legalPreset.complexityLevel ?? 'Alta'} · {legalPreset.fsmModeRequired ?? 'DELICATE_POUR'}
+              </span>
+            </div>
+            <h2 id="legal-hazard-modal-title" class="text-base sm:text-lg font-bold text-white tracking-tight mt-1">
+              {legalPreset.title}
+            </h2>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cuerpo del Modal: Ficha Técnica + Textos Legales Obligatorios -->
+      <div id="legal-hazard-modal-desc" class="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
+        <!-- Resumen de Ficha Técnica del Manual de Investigación -->
+        <div class="rounded-2xl apple-card-inner p-3.5 text-xs text-white/85 flex flex-col gap-1.5">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-white/50">
+            Ficha Técnica · Manual de Investigación SymbioLab 2.0 (Mesa 3: Ciencias STEAM & Física)
+          </div>
+          <p class="leading-relaxed text-white/90">
+            <strong class="text-white">Descripción breve:</strong> {legalPreset.summary}
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-white/10 text-[11px]">
+            <div>
+              <strong class="text-rose-300">Nivel de Riesgo:</strong> {legalPreset.riskLevel} ({legalPreset.riskDetails})
+            </div>
+            <div>
+              <strong class="text-amber-300">Complejidad:</strong> {legalPreset.complexityLevel} ({legalPreset.complexityDetails})
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. MENSAJE DE ADVERTENCIA OBLIGATORIO -->
+        <div class="rounded-2xl bg-rose-950/60 border-2 border-rose-500/70 p-4 shadow-inner">
+          <div class="flex items-center gap-2 text-rose-300 font-bold text-xs uppercase tracking-wider mb-1.5">
+            <span>⚠️</span>
+            <span>Mensaje de Advertencia</span>
+          </div>
+          <p class="text-xs sm:text-[13.5px] font-bold text-rose-100 leading-relaxed">
+            {legalPreset.legalWarningText ?? BENZENE_LEGAL_WARNING_TEXT}
+          </p>
+        </div>
+
+        <!-- 2. CONSENTIMIENTO Y EXENCIÓN DE RESPONSABILIDAD OBLIGATORIO -->
+        <div class="rounded-2xl bg-amber-950/35 border border-amber-500/40 p-4">
+          <div class="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider mb-1.5">
+            <span>⚖️</span>
+            <span>Consentimiento y Exención de Responsabilidad</span>
+          </div>
+          <p class="text-xs sm:text-[13px] text-amber-100/95 leading-relaxed">
+            {legalPreset.legalConsentText ?? BENZENE_LEGAL_CONSENT_TEXT}
+          </p>
+        </div>
+      </div>
+
+      <!-- Pie del Modal: Bloqueo de HUD hasta aceptación explícita -->
+      <div class="px-6 py-4 bg-black/60 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <span class="text-[11px] text-white/55">
+          Interfaz HUD bloqueada preventivamente · Se requiere aceptación explícita para cargar la escena 3D.
+        </span>
+        <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          <button
+            type="button"
+            onclick={() => labStore.cancelLegalConsent()}
+            class="lab-btn px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white/80 hover:text-white text-xs font-medium cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onclick={() => labStore.acceptLegalConsent()}
+            class="lab-btn px-5 py-2 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold tracking-wide shadow-[0_0_24px_rgba(225,29,72,0.6)] cursor-pointer"
+          >
+            Aceptar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}

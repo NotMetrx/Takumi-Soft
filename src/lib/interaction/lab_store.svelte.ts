@@ -50,7 +50,24 @@ export type SteamVisualEffect =
   | 'antibubbles'
   | 'ice_convection'
   | 'tea_complex'
-  | 'botijo_cooling';
+  | 'botijo_cooling'
+  | 'benzene_invisible_fire';
+
+export type ExperimentRiskLevel = 'Bajo' | 'Moderado' | 'Alto' | 'Extremo';
+export type ExperimentComplexityLevel = 'Baja' | 'Media' | 'Alta';
+export type PourControlFsmMode = 'STANDARD_POUR' | 'DELICATE_POUR';
+export type DelicatePourFsmState =
+  | 'IDLE'
+  | 'DELICATE_POUR'
+  | 'VOLATILE_SPILL_WARNING'
+  | 'HEAVY_VAPOR_DESCENT'
+  | 'THERMAL_INVISIBLE_IGNITION';
+
+export const BENZENE_LEGAL_WARNING_TEXT =
+  'ATENCIÓN: Los procedimientos químicos y reacciones mostrados en esta simulación son ALTAMENTE PELIGROSOS. La manipulación de sustancias como el benceno presenta un riesgo extremo de toxicidad severa, cáncer, explosión y muerte. NO INTENTE ESTO EN LA VIDA REAL.';
+
+export const BENZENE_LEGAL_CONSENT_TEXT =
+  "Este simulador (SymbioLab 2.0) ha sido diseñado con fines estrictamente visuales y teóricos. Takumi-Soft, los desarrolladores y las entidades afiliadas no asumen ninguna responsabilidad civil o penal por daños, lesiones, fatalidades o daños a la propiedad derivados de cualquier intento de replicar estos procedimientos fuera de este entorno virtual. Al hacer clic en 'Aceptar', confirmas que comprendes la naturaleza letal de este experimento y eximes de toda responsabilidad a los creadores.";
 
 export type SafetyGlovesType = 'none' | 'nitrile_blue' | 'latex_white';
 
@@ -62,6 +79,14 @@ export interface SafetyProtocolAlert {
 }
 
 export type MicroscopeObjectivePower = 4 | 10 | 40 | 100;
+
+export type MicroscopeInteractionFSMState = 'EXPLORING' | 'INSPECTING_MICROSCOPE';
+
+export type MicroscopeTransitionPhase =
+  | 'IDLE'
+  | 'APPROACHING_OCULAR'
+  | 'OCULAR_LOCKED'
+  | 'RETURNING_TO_EXPLORING';
 
 export type MicroscopeOpticalMode = 'brightfield' | 'darkfield' | 'phase' | 'polarized';
 
@@ -762,6 +787,14 @@ export interface HomeExperimentPreset {
   summary: string;
   scientificPrinciple: string;
   safetyNote: string;
+  riskLevel?: ExperimentRiskLevel;
+  riskDetails?: string;
+  complexityLevel?: ExperimentComplexityLevel;
+  complexityDetails?: string;
+  fsmModeRequired?: PourControlFsmMode;
+  requiresLegalConsent?: boolean;
+  legalWarningText?: string;
+  legalConsentText?: string;
   steamEffect?: SteamVisualEffect;
   recommendedTools: LabToolInfo['id'][];
   householdMaterials: { name: string; role: string; icon: string }[];
@@ -1570,6 +1603,136 @@ export const EXPERIMENT_PRESETS: HomeExperimentPreset[] = [
       colorHex: '#06b6d4',
       hazardNotice: 'Caso 6 PDF: Solución alcalina para neutralizar condensados.'
     }
+  },
+  {
+    id: 'steam-benzene-invisible-fire',
+    level: 'secundaria',
+    gradeRange: 'Ciencias STEAM & Física · Módulo Especial de Riesgo Extremo',
+    title: 'Volatilidad y Fuego Invisible (Mezcla de Etanol y Benceno)',
+    subtitle: 'Decantación DELICATE_POUR, Gases Tóxicos Pesados y Shaders de Refracción Térmica',
+    badge: 'Riesgo Extremo · STEAM & Física',
+    difficulty: 'Secundaria · Laboratorio Analítico',
+    durationMin: 18,
+    summary:
+      'Demostración de la alta presión de vapor y combustión de solventes orgánicos. La simulación requiere decantar benceno puro y aplicar calor, visualizando la emanación de gases tóxicos pesados que caen sobre la mesa y culminan en una ignición de llama casi invisible mediante shaders de refracción térmica.',
+    scientificPrinciple:
+      'El benceno (C₆H₆, M = 78.11 g/mol, Pv = 10.0 kPa a 20 °C) y el etanol (C₂H₅OH, Pv = 5.95 kPa) poseen alta presión de vapor. El vapor de benceno tiene una densidad relativa respecto al aire de ρ_rel = 2.77 (aire = 1.0), por lo que en lugar de ascender se desploma y reptan gases tóxicos pesados sobre la superficie de la mesa de laboratorio hacia cualquier fuente térmica (punto de inflamación -11 °C), produciendo una combustión azul pálida/casi invisible dominada por gradientes de índice de refracción térmico (efecto Schlieren).',
+    safetyNote:
+      'Nivel de Riesgo: Extremo (Sustancia carcinógena Grupo 1 IARC, altamente inflamable, riesgo de explosión por acumulación de gases). Complejidad: Alta (Requiere la máquina de estados DELICATE_POUR para controlar el ángulo de la mano y evitar derrames volátiles).',
+    riskLevel: 'Extremo',
+    riskDetails:
+      'Sustancia carcinógena Grupo 1, altamente inflamable, riesgo de explosión por acumulación de gases',
+    complexityLevel: 'Alta',
+    complexityDetails:
+      'Requiere la máquina de estados DELICATE_POUR para controlar el ángulo de la mano y evitar derrames volátiles',
+    fsmModeRequired: 'DELICATE_POUR',
+    requiresLegalConsent: true,
+    legalWarningText: BENZENE_LEGAL_WARNING_TEXT,
+    legalConsentText: BENZENE_LEGAL_CONSENT_TEXT,
+    steamEffect: 'benzene_invisible_fire',
+    recommendedTools: ['thermometer', 'cabinet', 'ph_meter'],
+    householdMaterials: [
+      {
+        name: 'Benceno Puro Anhidro (C₆H₆)',
+        role: 'Solvente aromático volátil (Grupo 1 IARC · Densidad vapor 2.77× aire)',
+        icon: '☣️'
+      },
+      {
+        name: 'Etanol Absoluto (C₂H₅OH)',
+        role: 'Co-solvente orgánico que genera llama casi invisible en luz diurna',
+        icon: '🔥'
+      },
+      {
+        name: 'Controlador FSM DELICATE_POUR',
+        role: 'Regula el ángulo de inclinación de la mano (25°–48°) evitando derrames',
+        icon: '🦾'
+      },
+      {
+        name: 'Placa Térmica + Óptica Schlieren',
+        role: 'Aplica calor controlado (> 45 °C) y revela el shader de refracción térmica',
+        icon: '🌡️'
+      }
+    ],
+    videoChapters: [
+      {
+        timeSec: 0,
+        durationSec: 5,
+        title: '1. Decantación Controlada (FSM: DELICATE_POUR)',
+        caption:
+          'Decantamos benceno puro manteniendo el ángulo de la mano en la ventana segura (25°–48°) mediante la máquina de estados DELICATE_POUR para evitar turbulencia y derrames volátiles.',
+        actionType: 'prep',
+        simPh: 7.0,
+        simColor: '#f59e0b'
+      },
+      {
+        timeSec: 5,
+        durationSec: 5,
+        title: '2. Emanación de Gases Tóxicos Pesados sobre la Mesa',
+        caption:
+          'Al mezclar con etanol y elevar la temperatura, la alta presión de vapor libera gases pesados (ρ = 2.77× aire) que caen por gravedad y se esparcen sobre la superficie de la mesa.',
+        actionType: 'pour_acid',
+        simPh: 6.4,
+        simColor: '#fbbf24'
+      },
+      {
+        timeSec: 10,
+        durationSec: 5,
+        title: '3. Ignición de Fuego Invisible y Shaders de Refracción Térmica',
+        caption:
+          'Al aplicar calor en la placa térmica (≥ 45 °C), la capa de vapor se inflama en una llama casi invisible percibida mediante ondas de distorsión y refracción térmica sobre el reactor.',
+        actionType: 'pour_base',
+        simPh: 6.8,
+        simColor: '#38bdf8'
+      }
+    ],
+    interactiveGoals: [
+      {
+        id: 'goal-bz1',
+        description:
+          'Decanta al menos 10 mL de Benceno Puro (Matraz A) con ángulo controlado (DELICATE_POUR) para observar la caída de gases pesados sobre la mesa.',
+        checkFn: (b) => b.acidVolumeMl >= 10
+      },
+      {
+        id: 'goal-bz2',
+        description:
+          'Añade 10 mL de Etanol Absoluto (Matraz B) y eleva la temperatura (≥ 45 °C) con el Termómetro 3D para activar la ignición de llama casi invisible por refracción térmica.',
+        checkFn: (b) => b.acidVolumeMl >= 10 && b.baseVolumeMl >= 10 && b.temperatureC >= 45
+      }
+    ],
+    quizQuestion: {
+      question:
+        '¿Por qué los vapores de benceno (C₆H₆) caen sobre la mesa de laboratorio en lugar de ascender como el vapor de agua, y por qué se requiere la máquina de estados DELICATE_POUR?',
+      options: [
+        'Porque la masa molar del benceno (78.11 g/mol) hace que su vapor sea 2.77 veces más denso que el aire, desplazándose a ras de mesa con riesgo extremo de ignición; DELICATE_POUR limita el ángulo de vertido para evitar salpicaduras volátiles',
+        'Porque el benceno es más ligero que el helio y se congela a 100 °C',
+        'Porque el benceno no se evapora nunca a temperatura ambiente'
+      ],
+      correctIndex: 0,
+      explanation:
+        '¡Correcto! La alta densidad de vapor del benceno (2.77 veces la del aire) provoca que los gases tóxicos desciendan y se acumulen sobre la mesa, pudiendo inflamarse a distancia ante cualquier fuente de calor.'
+    },
+    acidReagent: {
+      chemicalId: 'hcl',
+      name: 'Benceno Puro Decantado',
+      formula: 'C₆H₆ (l)',
+      concentrationMolPerL: 0.01,
+      initialMl: 100,
+      remainingMl: 100,
+      colorHex: '#f59e0b',
+      hazardNotice:
+        'RIESGO EXTREMO: Carcinógeno Grupo 1 IARC, altamente volátil e inflamable (FSM: DELICATE_POUR).'
+    },
+    baseReagent: {
+      chemicalId: 'naoh',
+      name: 'Etanol Absoluto Volátil',
+      formula: 'C₂H₅OH (l)',
+      concentrationMolPerL: 0.01,
+      initialMl: 100,
+      remainingMl: 100,
+      colorHex: '#38bdf8',
+      hazardNotice:
+        'RIESGO EXTREMO: Solvente orgánico inflamable de llama casi invisible (Refracción Térmica).'
+    }
   }
 ];
 
@@ -1589,6 +1752,9 @@ export class LabStore {
     this.stationRevision++;
     if (station !== 'biologia' && this.isMicroscopeActive) {
       this.isMicroscopeActive = false;
+      this.microscopeFsmState = 'EXPLORING';
+      this.microscopeTransitionPhase = 'IDLE';
+      this.microscopeTransitionProgress = 0;
     }
   }
 
@@ -1609,6 +1775,11 @@ export class LabStore {
 
   // Estado completo del Microscopio Óptico Compuesto Binocular 3D (Estación Óptica Interactiva)
   isMicroscopeActive = $state<boolean>(false);
+  microscopeFsmState = $state<MicroscopeInteractionFSMState>('EXPLORING');
+  microscopeTransitionPhase = $state<MicroscopeTransitionPhase>('IDLE');
+  microscopeTransitionProgress = $state<number>(0); // 0.0 (EXPLORING) -> 1.0 (OCULAR_LOCKED) en 1.2s
+  microscopeTransitionDirection = $state<1 | -1>(1);
+  wasWalkingBeforeMicroscope = $state<boolean>(false);
   microscopeObjective = $state<MicroscopeObjectivePower>(10);
   microscopeOpticalMode = $state<MicroscopeOpticalMode>('brightfield');
   microscopeSpecimenId = $state<MicroscopeSpecimenId>('reactor_live');
@@ -1712,9 +1883,58 @@ export class LabStore {
   isCameraModalOpen = $state<boolean>(false);
   isHomeBookOpen = $state<boolean>(false);
   isCatalogOpen = $state(false);
+  isSettingsModalOpen = $state<boolean>(false);
+
+  // Parámetros de Configuración, Optimización (F2) y Rendimiento en Equipos Limitados
+  masterVolume = $state<number>(0.8);
+  soundVolume = $state<number>(0.8);
+  footstepsEnabled = $state<boolean>(true);
+  graphicsQuality = $state<'low' | 'medium' | 'high'>('medium');
+  renderResolution = $state<number>(1.0);
+  shadowsEnabled = $state<boolean>(true);
+  particlesQuality = $state<'low' | 'high'>('high');
+  targetFps = $state<30 | 60 | 0>(60);
+  language = $state<'es' | 'en'>('es');
+  mouseSensitivity = $state<number>(1.0);
+  microscopeWheelSensitivity = $state<number>(1.0);
+  invertY = $state<boolean>(false);
+
+  // Modal Emergente de Advertencia y Consentimiento Legal (bloquea la interfaz de usuario del HUD antes de cargar escena 3D de riesgo extremo)
+  pendingLegalConsentPresetId = $state<string | null>(null);
+  acceptedLegalConsentPresets = $state<Record<string, boolean>>({});
+  delicatePourState = $state<DelicatePourFsmState>('IDLE');
+  delicatePourHandAngleDeg = $state<number>(0);
 
   constructor() {
     this.recalculate();
+  }
+
+  get pendingLegalConsentPreset(): HomeExperimentPreset | null {
+    if (!this.pendingLegalConsentPresetId) return null;
+    return (
+      EXPERIMENT_PRESETS.find((p) => p.id === this.pendingLegalConsentPresetId) ?? null
+    );
+  }
+
+  get isLegalConsentModalOpen(): boolean {
+    return this.pendingLegalConsentPresetId !== null;
+  }
+
+  /**
+   * Indica si el Manual de Investigación o cualquier modal UI está abierto,
+   * en cuyo caso el cursor normal debe reaparecer y la cámara 1ª persona debe dejar de rotar.
+   */
+  get isAnyModalBlockingFirstPerson(): boolean {
+    return (
+      this.isHomeBookOpen ||
+      this.isSettingsModalOpen ||
+      this.isLegalConsentModalOpen ||
+      this.isNotebookOpen ||
+      this.isHypothesisModalOpen ||
+      this.isCameraModalOpen ||
+      this.isCabinetModalOpen ||
+      this.isCatalogOpen
+    );
   }
 
   get activePreset(): HomeExperimentPreset {
@@ -1753,9 +1973,39 @@ export class LabStore {
 
   toggleSound() {
     this.soundEnabled = !this.soundEnabled;
-    labSound.enabled = this.soundEnabled;
+    labSound.setEnabled(this.soundEnabled);
     if (this.soundEnabled) {
       labSound.playInstrumentClick();
+    }
+  }
+
+  toggleSettingsModal(open?: boolean) {
+    labSound.playInstrumentClick();
+    this.isSettingsModalOpen = open !== undefined ? open : !this.isSettingsModalOpen;
+  }
+
+  setMasterVolume(vol: number) {
+    this.masterVolume = Math.max(0, Math.min(1, vol));
+    labSound.setVolume(this.masterVolume);
+  }
+
+  setGraphicsPreset(preset: 'low' | 'medium' | 'high') {
+    this.graphicsQuality = preset;
+    if (preset === 'low') {
+      this.renderResolution = 0.75;
+      this.shadowsEnabled = false;
+      this.particlesQuality = 'low';
+      this.targetFps = 30;
+    } else if (preset === 'medium') {
+      this.renderResolution = 1.0;
+      this.shadowsEnabled = true;
+      this.particlesQuality = 'high';
+      this.targetFps = 60;
+    } else {
+      this.renderResolution = 1.25;
+      this.shadowsEnabled = true;
+      this.particlesQuality = 'high';
+      this.targetFps = 60;
     }
   }
 
@@ -1862,10 +2112,25 @@ export class LabStore {
   }
 
   openMicroscope(partId?: MicroscopePartId) {
+    if (
+      this.microscopeFsmState === 'INSPECTING_MICROSCOPE' &&
+      (this.microscopeTransitionPhase === 'APPROACHING_OCULAR' ||
+        this.microscopeTransitionPhase === 'OCULAR_LOCKED')
+    ) {
+      if (partId) this.microscopeSelectedPartId = partId;
+      return;
+    }
     labSound.playInstrumentClick();
+    if (this.microscopeFsmState === 'EXPLORING' && !this.isMicroscopeActive) {
+      this.wasWalkingBeforeMicroscope = this.isFirstPersonWalking;
+    }
+    this.isFirstPersonWalking = false;
     this.activeStation = 'biologia';
     this.stationRevision++;
     this.isMicroscopeActive = true;
+    this.microscopeTransitionDirection = 1;
+    this.microscopeFsmState = 'INSPECTING_MICROSCOPE';
+    this.microscopeTransitionPhase = 'APPROACHING_OCULAR';
     this.inspectedToolId = 'microscope';
     this.selectedCabinetComponentId = null;
     if (partId) {
@@ -1875,16 +2140,87 @@ export class LabStore {
 
   openHomeBook() {
     labSound.playBookOpen();
+    if (typeof document !== 'undefined' && document.pointerLockElement) {
+      document.exitPointerLock?.();
+    }
+    this.firstPersonPointerLocked = false;
     this.activeStation = 'steam';
     this.stationRevision++;
     this.isHomeBookOpen = true;
   }
 
   closeMicroscope() {
+    if (!this.isMicroscopeActive && this.microscopeFsmState === 'EXPLORING') return;
+    if (this.microscopeTransitionPhase === 'RETURNING_TO_EXPLORING') return;
     labSound.playInstrumentClick();
-    this.isMicroscopeActive = false;
+    this.microscopeTransitionDirection = -1;
+    this.microscopeFsmState = 'INSPECTING_MICROSCOPE';
+    this.microscopeTransitionPhase = 'RETURNING_TO_EXPLORING';
     if (this.inspectedToolId === 'microscope') {
       this.inspectedToolId = null;
+    }
+  }
+
+  completeMicroscopeTransition() {
+    if (this.microscopeTransitionDirection === 1) {
+      this.microscopeTransitionProgress = 1;
+      this.microscopeFsmState = 'INSPECTING_MICROSCOPE';
+      this.microscopeTransitionPhase = 'OCULAR_LOCKED';
+      this.isMicroscopeActive = true;
+    } else {
+      this.microscopeTransitionProgress = 0;
+      this.microscopeFsmState = 'EXPLORING';
+      this.microscopeTransitionPhase = 'IDLE';
+      this.isMicroscopeActive = false;
+      if (this.wasWalkingBeforeMicroscope) {
+        this.wasWalkingBeforeMicroscope = false;
+        this.isFirstPersonWalking = true;
+      }
+    }
+  }
+
+  /**
+   * En modo INSPECTING_MICROSCOPE, el eje Y del mouse controla la variable de enfoque analítico (profundidad de campo / nitidez)
+   */
+  applyAnalyticalFocusAxisY(deltaY: number) {
+    if (!this.isMicroscopeActive && this.microscopeFsmState !== 'INSPECTING_MICROSCOPE') return;
+    const fineStep = Number((deltaY * 18.0).toFixed(1));
+    if (Math.abs(this.microscopeFineUm + fineStep) <= 145) {
+      this.adjustFineFocus(fineStep);
+    } else {
+      this.adjustCoarseFocus(Math.round(deltaY * 55));
+    }
+  }
+
+  /**
+   * Ajuste de enfoque de alta precisión con la rueda del ratón calibrado según el aumento del objetivo
+   * (con solo girar la rueda 4 a 8 muescas se recorre el rango y se clava el 100% de nitidez)
+   */
+  adjustMicroscopeFocusWheel(dir: number) {
+    if (!this.isMicroscopeActive && this.microscopeFsmState !== 'INSPECTING_MICROSCOPE') return;
+    const spec = this.activeMicroscopeObjectiveSpec;
+    const sens = this.microscopeWheelSensitivity;
+    let stepUm: number;
+    switch (spec.power) {
+      case 4:
+        stepUm = 16 * sens;
+        break;
+      case 10:
+        stepUm = 6.5 * sens;
+        break;
+      case 40:
+        stepUm = 1.6 * sens;
+        break;
+      case 100:
+      default:
+        stepUm = 0.5 * sens;
+        break;
+    }
+    const fineDelta = dir * stepUm;
+    if (Math.abs(this.microscopeFineUm + fineDelta) <= 140) {
+      this.adjustFineFocus(Number(fineDelta.toFixed(1)));
+    } else {
+      this.adjustCoarseFocus(Math.round(dir * Math.max(stepUm * 2, 8)));
     }
   }
 
@@ -2106,6 +2442,9 @@ export class LabStore {
     this.isFirstPersonWalking = enable !== undefined ? enable : !this.isFirstPersonWalking;
     if (this.isFirstPersonWalking) {
       this.isMicroscopeActive = false;
+      this.microscopeFsmState = 'EXPLORING';
+      this.microscopeTransitionPhase = 'IDLE';
+      this.microscopeTransitionProgress = 0;
       this.isHomeBookOpen = false;
       this.inspectedToolId = null;
       this.setSafetyAlert(
@@ -2190,16 +2529,92 @@ export class LabStore {
   }
 
   /**
-   * Equipa el laboratorio con el experimento de Primaria o Secundaria elegido en el Libro o Mueble 3D
+   * Abre el modal emergente de advertencia y consentimiento legal bloqueando el HUD al seleccionar el grado de riesgo del experimento
    */
-  loadExperimentPreset(presetId: string) {
+  requestRiskLevelConsent(presetId: string) {
+    labSound.playInstrumentClick();
     const preset = EXPERIMENT_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
+    this.pendingLegalConsentPresetId = preset.id;
+  }
+
+  /**
+   * Acepta explícitamente el consentimiento legal y exención de responsabilidad, desbloqueando el HUD y cargando la escena 3D
+   */
+  acceptLegalConsent() {
+    if (!this.pendingLegalConsentPresetId) return;
+    const presetId = this.pendingLegalConsentPresetId;
+    this.acceptedLegalConsentPresets = {
+      ...this.acceptedLegalConsentPresets,
+      [presetId]: true
+    };
+    this.pendingLegalConsentPresetId = null;
+    this.activeStation = 'steam';
+    this.stationRevision += 1;
+    this.loadExperimentPreset(presetId, true);
+    this.setSafetyAlert(
+      '☣️ MÓDULO BENCENO (DELICATE_POUR ACTIVO)',
+      'Consentimiento legal confirmado. Máquina de estados DELICATE_POUR activada para controlar el ángulo de la mano (25°–48°) y evitar derrames volátiles.',
+      'warning'
+    );
+  }
+
+  /**
+   * Cancela el modal legal sin cargar la escena 3D de riesgo extremo
+   */
+  cancelLegalConsent() {
+    labSound.playInstrumentClick();
+    this.pendingLegalConsentPresetId = null;
+  }
+
+  /**
+   * Actualiza la máquina de estados DELICATE_POUR para controlar el ángulo de la mano y evitar derrames volátiles
+   */
+  updateDelicatePourAngle(angleRad: number, isPouring: boolean) {
+    const deg = Math.round(Math.abs((angleRad * 180) / Math.PI));
+    this.delicatePourHandAngleDeg = deg;
+    if (this.activeSteamEffect !== 'benzene_invisible_fire') {
+      this.delicatePourState = 'IDLE';
+      return;
+    }
+    if (this.beaker.acidVolumeMl >= 5 && this.beaker.temperatureC >= 40) {
+      this.delicatePourState = 'THERMAL_INVISIBLE_IGNITION';
+    } else if (deg > 68 && isPouring) {
+      this.delicatePourState = 'VOLATILE_SPILL_WARNING';
+    } else if (deg >= 15 || isPouring) {
+      this.delicatePourState = 'DELICATE_POUR';
+    } else if (this.beaker.acidVolumeMl > 0) {
+      this.delicatePourState = 'HEAVY_VAPOR_DESCENT';
+    } else {
+      this.delicatePourState = 'IDLE';
+    }
+  }
+
+  /**
+   * Equipa el laboratorio con el experimento de Primaria o Secundaria elegido en el Libro o Mueble 3D.
+   * Si el experimento tiene nivel de riesgo Extremo (`requiresLegalConsent`), bloquea la interfaz de usuario del HUD
+   * con el modal emergente requiriendo aceptación explícita antes de cargar la escena 3D.
+   */
+  loadExperimentPreset(presetId: string, bypassConsentCheck = false) {
+    const preset = EXPERIMENT_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+
+    if (
+      preset.requiresLegalConsent &&
+      !bypassConsentCheck &&
+      !this.acceptedLegalConsentPresets[preset.id]
+    ) {
+      this.pendingLegalConsentPresetId = preset.id;
+      return;
+    }
 
     this.activePresetId = preset.id;
     this.educationLevel = preset.level;
     this.activeSteamEffect = preset.steamEffect ?? 'none';
     this.steamEffectRevision += 1;
+    this.delicatePourState =
+      preset.fsmModeRequired === 'DELICATE_POUR' ? 'DELICATE_POUR' : 'IDLE';
+    this.delicatePourHandAngleDeg = 0;
     this.reagents = [
       {
         reagentId: 'hcl',

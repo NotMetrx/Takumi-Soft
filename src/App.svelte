@@ -12,6 +12,7 @@
   import CameraCalibrationModal from '$lib/ui/CameraCalibrationModal.svelte';
   import HomeExperimentsBookModal from '$lib/ui/HomeExperimentsBookModal.svelte';
   import MicroscopeWorkstation from '$lib/ui/MicroscopeWorkstation.svelte';
+  import SettingsModal from '$lib/ui/SettingsModal.svelte';
   let sessionReady = $state(false);
   let storageEnabled = $state(false);
   let revision = 0;
@@ -90,3 +91,4 @@
 {/if}
 <HomeExperimentsBookModal />
 <CameraCalibrationModal />
+<SettingsModal />

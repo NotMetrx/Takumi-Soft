@@ -67,6 +67,10 @@
   // Al abrir el modal, el libro aparece cerrado (Portada) y en 180 ms gira su tapa dura con sonido real
   $effect(() => {
     if (labStore.isHomeBookOpen) {
+      if (typeof document !== 'undefined' && document.pointerLockElement) {
+        document.exitPointerLock?.();
+      }
+      labStore.firstPersonPointerLocked = false;
       currentSpread = 0;
       turningSheets = [];
       videoTimeSec = 0;
@@ -463,6 +467,47 @@
         ctx.arc(botX + Math.cos(ang) * 25, botY + Math.sin(ang) * 25, 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (preset.steamEffect === 'benzene_invisible_fire') {
+      // 1. Emanación de gases tóxicos pesados (ρ = 2.77x aire) que rebosan del vaso y caen sobre la mesa
+      for (let i = 0; i < 14; i++) {
+        const phase = (videoTimeSec * 0.55 + i * 0.14) % 1;
+        const side = i % 2 === 0 ? -1 : 1;
+        const vx = cx + side * (bw * 0.42 + phase * 95);
+        const vy = by + 18 + Math.pow(phase, 1.35) * (plateY - by - 8);
+        const radius = 8 + phase * 18;
+        const vapGrad = ctx.createRadialGradient(vx, vy, 1, vx, vy, radius);
+        vapGrad.addColorStop(0, 'rgba(251, 191, 36, 0.34)');
+        vapGrad.addColorStop(0.6, 'rgba(148, 163, 184, 0.18)');
+        vapGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+        ctx.fillStyle = vapGrad;
+        ctx.beginPath();
+        ctx.arc(vx, vy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 2. Ignición de llama casi invisible mediante shaders de refracción térmica (ondas Schlieren)
+      for (let wIdx = 0; wIdx < 5; wIdx++) {
+        const waveY = by + bh - liqH - 12 - ((videoTimeSec * 38 + wIdx * 22) % 95);
+        const shimmerX = cx + Math.sin(videoTimeSec * 6 + wIdx * 1.4) * 14;
+        ctx.strokeStyle =
+          wIdx % 2 === 0 ? 'rgba(125, 211, 252, 0.42)' : 'rgba(253, 224, 71, 0.28)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(shimmerX, waveY, 34 - wIdx * 4, 7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Indicador de máquina de estados DELICATE_POUR (control de ángulo de la mano)
+      ctx.fillStyle = 'rgba(127, 29, 29, 0.86)';
+      ctx.beginPath();
+      ctx.roundRect(12, 12, 196, 26, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(248, 113, 113, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#fecaca';
+      ctx.font = '700 9px "SF Mono", "JetBrains Mono", monospace';
+      ctx.fillText('FSM: DELICATE_POUR · ÁNGULO 34°', 20, 28);
     }
 
     // Pastilla magnética giratoria en el fondo del vaso
@@ -573,6 +618,14 @@
   }
 
   function launchExperimentFromPage(presetId: string) {
+    const preset = EXPERIMENT_PRESETS.find((p) => p.id === presetId);
+    if (
+      preset?.requiresLegalConsent &&
+      !labStore.acceptedLegalConsentPresets[preset.id]
+    ) {
+      labStore.requestRiskLevelConsent(preset.id);
+      return;
+    }
     labSound.playBookClose();
     currentSpread = 0;
     setTimeout(() => {
@@ -604,7 +657,7 @@
 {#if labStore.isHomeBookOpen}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
-    class="fixed inset-0 z-50 flex flex-col items-center justify-center p-2 sm:p-5 bg-black/80 backdrop-blur-xl select-none"
+    class="fixed inset-0 z-50 flex flex-col items-center justify-center p-2 sm:p-5 bg-black/80 backdrop-blur-xl select-none cursor-default"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
@@ -822,38 +875,50 @@
               {/each}
             </div>
 
-            <!-- SECCIÓN SECUNDARIA EN EL ÍNDICE (EXP 05 A 08) -->
+            <!-- SECCIÓN SECUNDARIA EN EL ÍNDICE (EXP 05 A 09) -->
             <div class="flex flex-col gap-1 pt-1">
               <div class="flex items-center justify-between py-0.5">
                 <span class="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500">
-                  II · Nivel Secundaria (Págs. 10–17)
+                  II · Nivel Secundaria & STEAM (Págs. 10–19)
                 </span>
                 <span class="text-[10px] text-stone-400">1.° a 5.° Secundaria</span>
               </div>
 
               {#each secundariaPresets as p, idx}
                 {@const spreadNum = primariaPresets.length + idx + 1}
-                <button
-                  type="button"
-                  onclick={() => goToSpread(spreadNum)}
-                  class="group text-left px-2.5 py-1.5 rounded-xl bg-stone-900/[0.03] hover:bg-stone-900/[0.08] border border-stone-900/[0.06] transition-colors cursor-pointer flex items-center justify-between gap-2"
-                >
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <span class="font-mono-numbers text-[10px] font-semibold text-stone-400">
-                      0{spreadNum}
+                <div class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onclick={() => goToSpread(spreadNum)}
+                    class="flex-1 group text-left px-2.5 py-1.5 rounded-xl bg-stone-900/[0.03] hover:bg-stone-900/[0.08] border border-stone-900/[0.06] transition-colors cursor-pointer flex items-center justify-between gap-2 min-w-0"
+                  >
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <span class="font-mono-numbers text-[10px] font-semibold text-stone-400">
+                        0{spreadNum}
+                      </span>
+                      <span
+                        class="w-2 h-2 rounded-full shrink-0"
+                        style="background-color: {p.acidReagent.colorHex};"
+                      ></span>
+                      <span class="font-semibold text-stone-900 text-xs truncate group-hover:text-black">
+                        {p.title}
+                      </span>
+                    </div>
+                    <span class="font-mono-numbers text-[11px] font-medium text-stone-500 shrink-0">
+                      Pág. {spreadNum * 2}
                     </span>
-                    <span
-                      class="w-2 h-2 rounded-full shrink-0"
-                      style="background-color: {p.acidReagent.colorHex};"
-                    ></span>
-                    <span class="font-semibold text-stone-900 text-xs truncate group-hover:text-black">
-                      {p.title}
-                    </span>
-                  </div>
-                  <span class="font-mono-numbers text-[11px] font-medium text-stone-500 shrink-0">
-                    Pág. {spreadNum * 2}
-                  </span>
-                </button>
+                  </button>
+                  {#if p.riskLevel === 'Extremo'}
+                    <button
+                      type="button"
+                      onclick={() => labStore.requestRiskLevelConsent(p.id)}
+                      class="shrink-0 px-2 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-[9.5px] font-bold uppercase tracking-wider cursor-pointer shadow-xs"
+                      title="Seleccionar Grado de Riesgo Extremo (Abre Advertencia y Consentimiento Legal)"
+                    >
+                      ☣️ Riesgo Extremo
+                    </button>
+                  {/if}
+                </div>
               {/each}
 
               <button
@@ -877,7 +942,7 @@
       </div>
 
       <!-- =========================================================================
-           HOJAS 1..8: LOS 8 EXPERIMENTOS CORRELATIVOS (FRENTE = TEORÍA+VIDEO, REVERSO = PRÁCTICA)
+           HOJAS 1..9: LOS EXPERIMENTOS CORRELATIVOS (FRENTE = FICHA TÉCNICA+VIDEO, REVERSO = PRÁCTICA)
            ========================================================================= -->
       {#each EXPERIMENT_PRESETS as preset, idx (preset.id)}
         {@const sheetIdx = idx + 1}
@@ -885,14 +950,16 @@
         {@const oddPage = evenPage + 1}
         {@const isPrimaria = preset.level === 'primaria'}
         {@const ch = getChapterForPreset(preset)}
+        {@const riskLabel = preset.riskLevel ?? (isPrimaria ? 'Bajo' : 'Moderado')}
+        {@const complexityLabel = preset.complexityLevel ?? (isPrimaria ? 'Baja' : 'Media')}
 
         <div
           class="book-sheet"
           style={getSheetStyle(sheetIdx)}
         >
-          <!-- FRENTE DE LA HOJA (PÁGINA PAR): FUNDAMENTO CIENTÍFICO, MATERIALES Y VIDEO SIMULADO -->
+          <!-- FRENTE DE LA HOJA (PÁGINA PAR): FICHA TÉCNICA, METADATOS ESTÁNDAR, MATERIALES Y VIDEO SIMULADO -->
           <div class="sheet-face sheet-front book-paper-right p-5 sm:p-6 flex flex-col justify-between">
-            <div class="flex flex-col gap-2.5">
+            <div class="flex flex-col gap-2">
               <!-- Encabezado editorial limpio -->
               <div class="flex items-center justify-between border-b border-stone-900/12 pb-1.5">
                 <div class="flex items-center gap-2">
@@ -901,19 +968,73 @@
                     style="background-color: {preset.acidReagent.colorHex};"
                   ></span>
                   <span class="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-500">
-                    {isPrimaria ? 'Sección I · Primaria' : 'Sección II · Secundaria'} · Práctica 0{sheetIdx}
+                    {isPrimaria ? 'Sección I · Primaria' : 'Sección II · Secundaria'} · Ficha Técnica 0{sheetIdx}
                   </span>
                 </div>
                 <span class="text-[10px] font-medium text-stone-400">{preset.gradeRange}</span>
               </div>
 
               <div>
-                <h2 class="text-base sm:text-lg font-semibold tracking-[-0.02em] text-stone-950 leading-snug">
+                <h2 class="text-base sm:text-[17px] font-semibold tracking-[-0.02em] text-stone-950 leading-snug">
                   {preset.title}
                 </h2>
-                <p class="text-[11px] text-stone-600 mt-0.5 leading-relaxed">
+                <p class="text-[10.5px] text-stone-600 mt-0.5 leading-relaxed">
                   {preset.summary}
                 </p>
+              </div>
+
+              <!-- METADATOS ESTÁNDAR DE LA FICHA TÉCNICA (NIVEL DE RIESGO & COMPLEJIDAD) -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onclick={() => {
+                    if (preset.requiresLegalConsent) {
+                      labStore.requestRiskLevelConsent(preset.id);
+                    }
+                  }}
+                  class="text-left rounded-xl px-2.5 py-1.5 border transition-colors {preset.riskLevel === 'Extremo'
+                    ? 'bg-rose-950/[0.08] border-rose-700/40 hover:bg-rose-950/[0.14] cursor-pointer'
+                    : 'bg-stone-900/[0.035] border-stone-900/[0.08] cursor-default'}"
+                  title={preset.requiresLegalConsent
+                    ? 'Haz clic para seleccionar el grado de riesgo y abrir el Modal de Advertencia y Consentimiento Legal'
+                    : 'Metadato de Nivel de Riesgo'}
+                >
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-stone-500">
+                      Nivel de Riesgo
+                    </span>
+                    <span
+                      class="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase {preset.riskLevel === 'Extremo'
+                        ? 'bg-rose-700 text-white'
+                        : isPrimaria
+                          ? 'bg-emerald-700/15 text-emerald-800'
+                          : 'bg-amber-700/15 text-amber-900'}"
+                    >
+                      {riskLabel}
+                    </span>
+                  </div>
+                  <p class="text-[9.5px] text-stone-700 font-medium leading-tight mt-0.5 line-clamp-2">
+                    {preset.riskDetails ?? preset.safetyNote}
+                  </p>
+                </button>
+
+                <div
+                  class="rounded-xl px-2.5 py-1.5 border {preset.complexityLevel === 'Alta'
+                    ? 'bg-amber-950/[0.07] border-amber-700/35'
+                    : 'bg-stone-900/[0.035] border-stone-900/[0.08]'}"
+                >
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[9px] font-bold uppercase tracking-wider text-stone-500">
+                      Complejidad
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full text-[9px] font-mono-numbers font-bold bg-stone-900/10 text-stone-800">
+                      {complexityLabel}{preset.fsmModeRequired ? ` · ${preset.fsmModeRequired}` : ''}
+                    </span>
+                  </div>
+                  <p class="text-[9.5px] text-stone-700 font-medium leading-tight mt-0.5 line-clamp-2">
+                    {preset.complexityDetails ?? `Protocolo guiado (${preset.durationMin} min) con instrumentación 3D.`}
+                  </p>
+                </div>
               </div>
 
               <!-- Materiales clasificados (diseño limpio sin emojis) -->
