@@ -5,14 +5,23 @@ import { LabSafetyFXSystem } from '$lib/lab3d/safety_fx_particles';
 import type { HandPoint } from '$lib/input/hand_gestures';
 
 describe('Opción 1: ARHandMeshRig (Manos 3D Articuladas con MediaPipe)', () => {
-  it('instancia el rig de mano 3D con 21 articulaciones, 20 huesos y almohadilla de palma sin errores', () => {
+  it('conserva las 21 articulaciones y todos los huesos en cuatro mallas', () => {
     const rig = new ARHandMeshRig();
     expect(rig.group).toBeInstanceOf(THREE.Group);
     expect(rig.group.name).toBe('ARHandMeshRig');
     expect(rig.group.visible).toBe(false);
 
-    // 21 esferas de articulaciones + 20 cilindros de huesos + 1 almohadilla de palma = 42 meshes
-    expect(rig.group.children.length).toBe(21 + HAND_CONNECTIONS.length + 1);
+    expect(rig.group.children.length).toBe(4);
+    const joints = rig.group.getObjectByName('HandJoints') as THREE.InstancedMesh;
+    const tips = rig.group.getObjectByName('HandFingertips') as THREE.InstancedMesh;
+    const bones = rig.group.getObjectByName('HandBones') as THREE.InstancedMesh;
+    expect(joints.count + tips.count).toBe(21);
+    expect(bones.count).toBe(HAND_CONNECTIONS.length);
+    const triangles = rig.group.children.reduce((sum, object) => {
+      const mesh = object as THREE.InstancedMesh;
+      return sum + mesh.geometry.index!.count / 3 * (mesh.isInstancedMesh ? mesh.count : 1);
+    }, 0);
+    expect(triangles).toBe(3020);
   });
 
   it('actualiza la pose completa a partir de 21 landmarks de MediaPipe y suavizado 1-Euro', () => {
@@ -93,8 +102,9 @@ describe('Opción 3: LabSafetyFXSystem (Fluidos, Vapores y Partículas Físicas)
     expect(showerPoints.visible).toBe(true);
 
     const posAttr = showerPoints.geometry.getAttribute('position') as THREE.BufferAttribute;
-    posAttr.setY(0, 2.0);
-    const initialY0 = 2.0;
+    // Keep this drop above the recycling threshold while testing its downward motion.
+    posAttr.setY(0, 2);
+    const initialY0 = posAttr.getY(0);
 
     // Simular un paso físico de 0.05 segundos
     fx.update(0.05);

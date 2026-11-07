@@ -38,7 +38,9 @@ class OneEuroFilter3D {
   private minCutoff: number;
   private beta: number;
   private dCutoff: number;
-  private xPrev: THREE.Vector3 | null = null;
+  private initialized = false;
+  private xPrev = new THREE.Vector3();
+  private derivative = new THREE.Vector3();
   private dxPrev: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   private tPrev = 0;
 
@@ -54,17 +56,18 @@ class OneEuroFilter3D {
   }
 
   filter(val: THREE.Vector3, timestampMs: number): THREE.Vector3 {
-    if (!this.xPrev) {
-      this.xPrev = val.clone();
+    if (!this.initialized) {
+      this.initialized = true;
+      this.xPrev.copy(val);
       this.tPrev = timestampMs;
-      return val.clone();
+      return this.xPrev;
     }
 
     const dt = Math.max(0.001, (timestampMs - this.tPrev) * 0.001);
     this.tPrev = timestampMs;
 
     // Derivada (velocidad del movimiento)
-    const dVal = val.clone().sub(this.xPrev).divideScalar(dt);
+    const dVal = this.derivative.copy(val).sub(this.xPrev).divideScalar(dt);
     const alphaD = this.smoothingFactor(dt, this.dCutoff);
     this.dxPrev.lerp(dVal, alphaD);
 
@@ -74,36 +77,39 @@ class OneEuroFilter3D {
     const alpha = this.smoothingFactor(dt, cutoff);
 
     this.xPrev.lerp(val, alpha);
-    return this.xPrev.clone();
+    return this.xPrev;
   }
 
   reset() {
-    this.xPrev = null;
+    this.initialized = false;
     this.dxPrev.set(0, 0, 0);
   }
 }
 
 /**
  * Mano 3D Articulada de Alta Fidelidad para Visión AR en Mesa
- * Optimizada para correr a 60 FPS en hardware de bajos recursos (<300 polígonos, 0 GC allocations).
+ * Joint and bone instances preserve the original geometry in four draw calls.
  */
 export class ARHandMeshRig {
   group: THREE.Group;
-  private jointMeshes: THREE.Mesh[] = [];
-  private boneMeshes: THREE.Mesh[] = [];
+  private jointInstances: THREE.InstancedMesh;
+  private tipInstances: THREE.InstancedMesh;
+  private boneInstances: THREE.InstancedMesh;
   private palmMesh: THREE.Mesh;
 
   private skinOrGloveMat: THREE.MeshStandardMaterial;
   private jointMat: THREE.MeshStandardMaterial;
+  private glovesType: SafetyGlovesType = 'none';
 
   private filters: OneEuroFilter3D[] = [];
   private currentLandmarks: THREE.Vector3[] = [];
 
   // Vectores temporales para evitar Garbage Collection
   private tempVecA = new THREE.Vector3();
-  private tempVecB = new THREE.Vector3();
   private tempMid = new THREE.Vector3();
   private tempDiff = new THREE.Vector3();
+  private instanceTransform = new THREE.Object3D();
+  private up = new THREE.Vector3(0, 1, 0);
 
   constructor() {
     this.group = new THREE.Group();
@@ -127,22 +133,20 @@ export class ARHandMeshRig {
     const tipJointGeo = new THREE.SphereGeometry(0.010, 8, 6);
     const boneGeo = new THREE.CylinderGeometry(0.008, 0.009, 1, 8, 1, true);
 
-    // 21 articulaciones esféricas
-    for (let i = 0; i < 21; i++) {
-      const isTip = i === 4 || i === 8 || i === 12 || i === 16 || i === 20;
-      const mesh = new THREE.Mesh(isTip ? tipJointGeo : jointGeo, isTip ? this.skinOrGloveMat : this.jointMat);
-      mesh.castShadow = false;
-      this.group.add(mesh);
-      this.jointMeshes.push(mesh);
-      this.filters.push(new OneEuroFilter3D(1.2, 0.008, 1.0));
-      this.currentLandmarks.push(new THREE.Vector3(0, 0, 0));
+    this.jointInstances = new THREE.InstancedMesh(jointGeo, this.jointMat, 16);
+    this.tipInstances = new THREE.InstancedMesh(tipJointGeo, this.skinOrGloveMat, 5);
+    this.boneInstances = new THREE.InstancedMesh(boneGeo, this.skinOrGloveMat, HAND_CONNECTIONS.length);
+    this.jointInstances.name = 'HandJoints';
+    this.tipInstances.name = 'HandFingertips';
+    this.boneInstances.name = 'HandBones';
+    for (const instances of [this.jointInstances, this.tipInstances, this.boneInstances]) {
+      instances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.group.add(instances);
     }
 
-    // 20 huesos cilíndricos de conexión
-    for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
-      const bone = new THREE.Mesh(boneGeo, this.skinOrGloveMat);
-      this.group.add(bone);
-      this.boneMeshes.push(bone);
+    for (let i = 0; i < 21; i++) {
+      this.filters.push(new OneEuroFilter3D(1.2, 0.008, 1.0));
+      this.currentLandmarks.push(new THREE.Vector3(0, 0, 0));
     }
 
     // Almohadilla central de la palma
@@ -159,6 +163,8 @@ export class ARHandMeshRig {
    * Actualiza el material de la mano en tiempo real según el EPP equipado
    */
   updateGloves(glovesType: SafetyGlovesType) {
+    if (glovesType === this.glovesType) return;
+    this.glovesType = glovesType;
     if (glovesType === 'nitrile_blue') {
       this.skinOrGloveMat.color.setHex(0x2563eb); // Nitrilo azul químico
       this.skinOrGloveMat.roughness = 0.26;
@@ -195,7 +201,7 @@ export class ARHandMeshRig {
     now: number
   ) {
     if (!landmarks || landmarks.length !== 21) {
-      this.group.visible = false;
+      this.hide();
       return;
     }
 
@@ -206,7 +212,6 @@ export class ARHandMeshRig {
 
     // 1. Calcular orientación e interpolar landmarks con el filtro 1-Euro
     const wristRaw = landmarks[0];
-    const middleMcpRaw = landmarks[9];
 
     for (let i = 0; i < 21; i++) {
       const p = landmarks[i];
@@ -232,8 +237,15 @@ export class ARHandMeshRig {
     }
 
     // 3. Posicionar articulaciones
+    const transform = this.instanceTransform;
+    transform.quaternion.identity();
+    transform.scale.setScalar(1);
+    let jointIndex = 0, tipIndex = 0;
     for (let i = 0; i < 21; i++) {
-      this.jointMeshes[i].position.copy(this.currentLandmarks[i]);
+      transform.position.copy(this.currentLandmarks[i]);
+      transform.updateMatrix();
+      if (i > 0 && i % 4 === 0) this.tipInstances.setMatrixAt(tipIndex++, transform.matrix);
+      else this.jointInstances.setMatrixAt(jointIndex++, transform.matrix);
     }
 
     // 4. Posicionar y orientar cilindros de conexión (huesos)
@@ -246,11 +258,19 @@ export class ARHandMeshRig {
       this.tempDiff.copy(posB).sub(posA);
       const len = this.tempDiff.length();
 
-      const bone = this.boneMeshes[c];
-      bone.position.copy(this.tempMid);
-      bone.scale.set(1, len, 1);
-      bone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.tempDiff.clone().normalize());
+      transform.position.copy(this.tempMid);
+      transform.scale.set(1, len, 1);
+      transform.quaternion.setFromUnitVectors(this.up, this.tempDiff.normalize());
+      transform.updateMatrix();
+      this.boneInstances.setMatrixAt(c, transform.matrix);
     }
+    this.jointInstances.instanceMatrix.needsUpdate = true;
+    this.tipInstances.instanceMatrix.needsUpdate = true;
+    this.boneInstances.instanceMatrix.needsUpdate = true;
+    // Poses change the local bounds; refresh them so fingers remain visible while moving.
+    this.jointInstances.computeBoundingSphere();
+    this.tipInstances.computeBoundingSphere();
+    this.boneInstances.computeBoundingSphere();
 
     // 5. Posicionar la palma central (punto medio entre muñeca y base de dedos)
     const wristPos = this.currentLandmarks[0];
@@ -260,6 +280,7 @@ export class ARHandMeshRig {
   }
 
   hide() {
+    if (!this.group.visible) return;
     this.group.visible = false;
     for (let i = 0; i < this.filters.length; i++) {
       this.filters[i].reset();

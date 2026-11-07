@@ -19,6 +19,8 @@
     buildLaboratoryPerimeterWalls,
     type DoubleDoorsRig
   } from './lab_furniture';
+  import { disposeOwnedResources } from './render_resources';
+  import { LAB_PROPS_URL, extractLabPropColliders, prepareLabPropsAsset } from './lab_props';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
@@ -36,6 +38,7 @@
   let { resetViewRevision = 0 }: { resetViewRevision?: number } = $props();
   let container: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
+  let sceneDisposed = false;
   let scene: THREE.Scene;
   let camera: THREE.PerspectiveCamera;
   let controls: OrbitControls;
@@ -1923,6 +1926,10 @@
 
   function loadMicroscopeModel(group: THREE.Group, proxy: THREE.Object3D) {
     new GLTFLoader().load('/models/instruments/microscope.glb', ({ scene: asset }) => {
+      if (sceneDisposed) {
+        disposeOwnedResources(asset);
+        return;
+      }
       // GLTFLoader preserves Blender's original names in userData after sanitizing node names.
       const modelObjects = new Map<string, THREE.Object3D>();
       asset.traverse((object) => modelObjects.set(object.userData.name ?? object.name, object));
@@ -2048,14 +2055,17 @@
         }
 
         group.scale.setScalar(3);
-        group.traverse((object) => {
-          if (object instanceof THREE.Mesh && movingParts.getObjectById(object.id)) {
+        movingParts.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
             object.castShadow = true;
             object.receiveShadow = true;
-          } else if (object !== proxy && object instanceof THREE.Mesh) {
-            object.visible = false;
           }
         });
+        const discarded = new THREE.Group();
+        for (const child of [...group.children]) {
+          if (child !== proxy && child !== movingParts) discarded.add(child);
+        }
+        disposeOwnedResources(discarded);
         proxy.scale.set(0.4, 0.31, 0.45);
         proxy.position.y = 0.205;
       } catch (error) {
@@ -3498,6 +3508,25 @@
     safetyInfrastructureGroup = buildCompleteLabSafetyInfrastructure(safetyInteractiveItems);
     scene.add(safetyInfrastructureGroup);
 
+    // Mobiliario perimetral modelado en Blender: campana, cabina de bioseguridad, armarios de seguridad,
+    // equipos de frío, mesada instrumental, perchero de batas, dispensadores de EPP, lavamanos y residuos.
+    new GLTFLoader().load(
+      LAB_PROPS_URL,
+      ({ scene: asset }) => {
+        if (sceneDisposed) {
+          disposeOwnedResources(asset);
+          return;
+        }
+        asset.name = 'LabPerimeterProps';
+        const colliders = extractLabPropColliders(asset);
+        prepareLabPropsAsset(asset, { basicGraphics, shadows: !lowTier && !basicGraphics });
+        scene.add(asset);
+        fpController?.setSceneColliders(colliders);
+      },
+      undefined,
+      (error) => console.warn('No se pudo cargar el mobiliario del laboratorio', error)
+    );
+
     // Manos 3D Articuladas con MediaPipe y Filtro 1-Euro (Opción 1)
     arHandRig = new ARHandMeshRig();
     scene.add(arHandRig.group);
@@ -3884,10 +3913,15 @@
     const onMotionChange = (ev: MediaQueryListEvent) => (isReducedMotion = ev.matches);
     mediaQuery.addEventListener('change', onMotionChange);
 
-    // Monitor Adaptativo de Rendimiento (Garantiza 60 FPS en PCs de bajos recursos / Chromebooks)
+    // Ajuste adaptativo de carga gráfica según el intervalo entre cuadros.
     let smoothedFps = 60;
     let lowFpsStreak = 0;
     let adaptiveOptimizationActive = lowTier;
+    const unitScale = new THREE.Vector3(1, 1, 1);
+    const scaleTarget = new THREE.Vector3();
+    const flaskTarget = new THREE.Vector3();
+    const nozzle = new THREE.Vector3();
+    const gestureDragPlane = new THREE.Plane();
 
     function animate(timestamp?: number) {
       timer.update(timestamp);
@@ -4007,7 +4041,7 @@
         dropperAnimTimer -= dt;
         dropperBulbMesh.scale.set(0.75, 0.85, 0.75);
       } else if (dropperBulbMesh) {
-        dropperBulbMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 8);
+        dropperBulbMesh.scale.lerp(unitScale, dt * 8);
       }
 
       // Animación de la tira de papel pH
@@ -4032,7 +4066,7 @@
         const cid = grp.userData?.cabinetComponentId;
         const isHot = cid === hoveredCabinetId || cid === labStore.selectedCabinetComponentId;
         const targetScale = isHot ? 1.16 : 1.0;
-        grp.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), dt * 10);
+        grp.scale.lerp(scaleTarget.setScalar(targetScale), dt * 10);
       });
 
       // Animación 3D en vivo de los Efectos STEAM en el Vaso Central (Prolongo & Pinto)
@@ -4144,7 +4178,8 @@
         pointer.set(hand.x * 2 - 1, 1 - hand.y * 2);
         raycaster.setFromCamera(pointer, camera);
         if (!gestureFlaskId) {
-          scene.updateMatrixWorld(true);
+          flasks.hcl.group.updateWorldMatrix(true, true);
+          flasks.naoh.group.updateWorldMatrix(true, true);
           const hits = raycaster.intersectObjects([flasks.hcl.group, flasks.naoh.group], true);
           let object: THREE.Object3D | null = hits[0]?.object ?? null;
           while (object && !object.userData.flaskId) object = object.parent;
@@ -4164,7 +4199,7 @@
         }
         if (!hand.pinched) releaseGesture();
         if (gestureFlaskId) {
-          const plane = gesturePlane.clone();
+          const plane = gestureDragPlane.copy(gesturePlane);
           plane.constant -= handDepthOffset(hand.palmSize, grabbedPalmSize);
           if (raycaster.ray.intersectPlane(plane, intersectPt)) {
             const rig = flasks[gestureFlaskId];
@@ -4239,7 +4274,7 @@
         const returning = !heldByHand && rig.targetPos.y < 0.5;
         rig.group.rotation.z = THREE.MathUtils.lerp(rig.group.rotation.z,
           !heldByHand && !returning && rig.group.position.y < 1.4 ? 0 : rig.targetRotZ, smoothing);
-        const safeTarget = rig.targetPos.clone();
+        const safeTarget = flaskTarget.copy(rig.targetPos);
         if (returning && Math.abs(rig.group.rotation.z) > 0.15) safeTarget.y = 1.65;
         if (returning && Math.hypot(rig.group.position.x, rig.group.position.z) < 0.76 && rig.group.position.y > 0.9) {
           safeTarget.y = Math.max(safeTarget.y, rig.group.position.y, 1.04);
@@ -4269,11 +4304,10 @@
         rig.ringMesh.scale.setScalar(isSel ? 1.08 : 1.0);
       });
 
-      const nozzle = flowingRig
-        ? new THREE.Vector3(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
-            .applyEuler(flowingRig.group.rotation)
-            .add(flowingRig.group.position)
-        : new THREE.Vector3();
+      if (flowingRig) {
+        nozzle.set(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
+          .applyEuler(flowingRig.group.rotation).add(flowingRig.group.position);
+      } else nozzle.set(0, 0, 0);
       if (flowingRig && streamHitsBeaker(nozzle)) {
         requestedFlow = pourRate(flowingRig.group.rotation.z, flowingRig.fluidHeight) * dt;
       }
@@ -4568,28 +4602,15 @@
   });
 
   onDestroy(() => {
+    sceneDisposed = true;
+    renderer?.setAnimationLoop(null);
     timer?.dispose();
     controls?.dispose();
     if (scene) {
-      const geometries = new Set<THREE.BufferGeometry>();
-      const materials = new Set<THREE.Material>();
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.geometry) geometries.add(mesh.geometry);
-        if (mesh.material)
-          (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) =>
-            materials.add(m)
-          );
-      });
-      geometries.forEach((g) => g.dispose());
-      materials.forEach((m) => {
-        for (const v of Object.values(m)) if (v instanceof THREE.Texture) v.dispose();
-        m.dispose();
-      });
+      disposeOwnedResources(scene);
       if (scene.environment instanceof THREE.Texture) scene.environment.dispose();
     }
     if (renderer) {
-      renderer.setAnimationLoop(null);
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
