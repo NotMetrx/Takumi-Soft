@@ -117,11 +117,21 @@
   let lastEyewashRev = 0;
   let lastExtinguisherRev = 0;
 
-  // Pizarra SmartBoard Interactiva Reactiva (Pared Norte)
+  // Pizarras SmartBoard Interactivas Reactivas en los 3 Salones (Pared Norte)
   let smartBoardCanvas: HTMLCanvasElement;
   let smartBoardCtx: CanvasRenderingContext2D | null = null;
   let smartBoardTexture: THREE.CanvasTexture;
   let smartBoardMesh: THREE.Mesh;
+
+  let bioSmartBoardCanvas: HTMLCanvasElement;
+  let bioSmartBoardCtx: CanvasRenderingContext2D | null = null;
+  let bioSmartBoardTexture: THREE.CanvasTexture;
+  let bioSmartBoardMesh: THREE.Mesh;
+
+  let steamSmartBoardCanvas: HTMLCanvasElement;
+  let steamSmartBoardCtx: CanvasRenderingContext2D | null = null;
+  let steamSmartBoardTexture: THREE.CanvasTexture;
+  let steamSmartBoardMesh: THREE.Mesh;
 
   // Referencias 3D articuladas del Microscopio Compuesto Binocular
   let microscopeGroup: THREE.Group;
@@ -139,8 +149,8 @@
   let microscopeLightBeamMat: THREE.MeshBasicMaterial;
   let microscopeProxyMesh: THREE.Object3D | null = null;
 
-  // Posición fija realista del Microscopio en la Estación de Biología
-  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-4.3, 0, 0.15);
+  // Posición fija realista del Microscopio en el Salón 2 de Biología (x = -12.0)
+  const MICROSCOPE_BIOLOGY_POS = new THREE.Vector3(-12.0, 0, 0.15);
   const MICROSCOPE_BIOLOGY_ROT_Y = 0.35;
   const MICROSCOPE_HOME_POS = MICROSCOPE_BIOLOGY_POS;
   const MICROSCOPE_HOME_ROT_Y = MICROSCOPE_BIOLOGY_ROT_Y;
@@ -148,25 +158,25 @@
   const MICROSCOPE_FOCUS_ROT_Y = MICROSCOPE_BIOLOGY_ROT_Y;
   const MICROSCOPE_REVOLVER_TILT = 0.35;
 
-  // Poses de cámara cinemática para cada una de las 3 estaciones de laboratorio
+  // Poses de cámara cinemática para cada uno de los 3 salones independientes (12m de ancho cada uno)
   const STATION_VIEW_POSES: Record<LabStationId, { camPos: THREE.Vector3; target: THREE.Vector3 }> = {
     quimica: {
       camPos: new THREE.Vector3(0.08, 2.05, 3.85),
       target: new THREE.Vector3(0, 0.55, 0)
     },
     biologia: {
-      camPos: new THREE.Vector3(-4.3, 1.55, 2.35),
-      target: new THREE.Vector3(-4.3, 0.52, 0.15)
+      camPos: new THREE.Vector3(-12.0, 1.65, 2.65),
+      target: new THREE.Vector3(-12.0, 0.52, 0.15)
     },
     steam: {
-      camPos: new THREE.Vector3(4.3, 1.65, 2.35),
-      target: new THREE.Vector3(4.3, 0.55, 0.15)
+      camPos: new THREE.Vector3(12.0, 1.72, 2.65),
+      target: new THREE.Vector3(12.0, 0.55, 0.15)
     }
   };
 
   const BIOLOGY_MICROSCOPE_FOCUS_POSE = {
-    camPos: new THREE.Vector3(-3.98, 0.98, 1.15),
-    target: new THREE.Vector3(-4.3, 0.55, 0.15)
+    camPos: new THREE.Vector3(-11.68, 0.98, 1.15),
+    target: new THREE.Vector3(-12.0, 0.55, 0.15)
   };
 
   let isTransitioningStation = false;
@@ -490,7 +500,356 @@
     }
   }
 
+  /**
+   * Pizarra Interactiva Viva del Salón 2 (Biología Celular & Microscopía Óptica, x = -12.0)
+   */
+  function drawBioSmartBoard() {
+    if (!bioSmartBoardCtx || !bioSmartBoardCanvas) return;
+    const ctx = bioSmartBoardCtx;
+    const w = bioSmartBoardCanvas.width;
+    const h = bioSmartBoardCanvas.height;
+
+    ctx.fillStyle = '#0c1f17';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(12, 12, w - 24, h - 24);
+
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 21px "JetBrains Mono", monospace';
+    ctx.fillText('SYMBIOLAB 2.0  /  SALÓN 2: BIOLOGÍA CELULAR & MICROSCOPÍA ÓPTICA', 32, 46);
+
+    ctx.fillStyle = '#86efac';
+    ctx.font = 'bold 15px "Outfit", sans-serif';
+    ctx.fillText(
+      `● TELEMETRÍA ÓPTICA EN VIVO · LEY DE ABBE Y CITOLOGÍA  (MODO: ${labStore.smartBoardMode.toUpperCase()})`,
+      32,
+      74
+    );
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 90);
+    ctx.lineTo(w - 32, 90);
+    ctx.stroke();
+
+    const specMap: Record<MicroscopeSpecimenId, { title: string; sub: string; color: string }> = {
+      onion_lugol: {
+        title: 'Allium cepa + Tinción de Lugol (I₂/KI)',
+        sub: 'Pared celulósica poligonal, núcleo teñido y amiloplastos',
+        color: '#f59e0b'
+      },
+      elodea_chloroplasts: {
+        title: 'Elodea canadensis (Hoja Hidrófila Viva)',
+        sub: 'Ciclosis citoplasmática de cloroplastos fotosintéticos',
+        color: '#22c55e'
+      },
+      blood_smear: {
+        title: 'Frotis Sanguíneo Periférico (Tinción Wright)',
+        sub: 'Eritrocitos bicóncavos (7.5 µm), neutrófilos y linfocitos',
+        color: '#ef4444'
+      },
+      tea_microplastics: {
+        title: 'Infusión de Té Comercial (Polímeros PET/Nylon)',
+        sub: 'Fibras microplásticas birrefringentes desprendidas a 95°C',
+        color: '#a855f7'
+      },
+      clay_nacl_crystals: {
+        title: 'Cristales Cúbicos de Halita (NaCl) & Esmectita',
+        sub: 'Hábito cristalino cúbico centrado en las caras (FCC)',
+        color: '#fb923c'
+      },
+      reactor_live: {
+        title: 'Alícuota en Vivo del Reactor Químico Central',
+        sub: 'Inspección coloidal y cristalización en tiempo real',
+        color: '#10b981'
+      }
+    };
+
+    const spec = specMap[labStore.microscopeSpecimenId] ?? specMap.onion_lugol;
+    const obj = labStore.microscopeObjective;
+    const totalMag = obj * 10;
+    const na = obj === 4 ? 0.1 : obj === 10 ? 0.25 : obj === 40 ? 0.65 : 1.25;
+    const abbeUm = (0.61 * 0.55) / na;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 23px "JetBrains Mono", monospace';
+    ctx.fillText(spec.title, 32, 134);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '500 15px "JetBrains Mono", monospace';
+    ctx.fillText(spec.sub, 32, 162);
+
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText(
+      `Límite de Difracción de Abbe:  d = 0.61·λ / NA = ${abbeUm.toFixed(2)} µm   (NA = ${na.toFixed(2)})`,
+      32,
+      194
+    );
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.fillRect(32, 218, 475, 148);
+    ctx.strokeStyle = spec.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(32, 218, 475, 148);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 14px "Outfit", sans-serif';
+    ctx.fillText('CONFIGURACIÓN ÓPTICA DEL MICROSCOPIO BINOCULAR', 48, 246);
+
+    ctx.fillStyle = spec.color;
+    ctx.font = 'bold 50px "JetBrains Mono", monospace';
+    ctx.fillText(`${totalMag}×`, 48, 304);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 17px "Outfit", sans-serif';
+    ctx.fillText(`OBJETIVO ${obj}×  ·  OCULAR 10×`, 215, 282);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '14px "JetBrains Mono", monospace';
+    ctx.fillText(
+      `Enfoque Z: ${labStore.microscopeCoarseUm.toFixed(0)} µm  ·  Aceite (n=1.515): ${labStore.microscopeImmersionOilApplied ? 'SÍ' : 'NO'}`,
+      48,
+      344
+    );
+
+    // Columna Derecha: Campo Óptico Histológico en Tiza Digital
+    const gx = 540,
+      gy = 112,
+      gw = 450,
+      gh = 254;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.strokeStyle = '#14532d';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(gx, gy, gw, gh);
+
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 13px "Outfit", sans-serif';
+    ctx.fillText('CAMPO VISUAL HISTOLÓGICO Y ESCALA MICROMÉTRICA', gx + 36, gy + 28);
+
+    const cx = gx + gw / 2;
+    const cy = gy + gh / 2 + 12;
+    const r = 86;
+
+    ctx.strokeStyle = spec.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Retícula micrométrica y células esquemáticas en tiza
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.45)';
+    ctx.lineWidth = 1.5;
+    for (let row = -1; row <= 1; row++) {
+      for (let col = -1; col <= 1; col++) {
+        const bx = cx + col * 38;
+        const by = cy + row * 28;
+        ctx.strokeRect(bx - 16, by - 11, 32, 22);
+        ctx.fillStyle = spec.color;
+        ctx.beginPath();
+        ctx.arc(bx, by, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '12px "JetBrains Mono", monospace';
+    ctx.fillText(`Escala: ${(200 / obj).toFixed(0)} µm/div`, gx + 24, gy + gh - 16);
+    ctx.fillText(`Luz Köhler: ${Math.round(labStore.microscopeDiaphragm * 100)}%`, gx + gw - 155, gy + gh - 16);
+
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 15px "Outfit", sans-serif';
+    ctx.fillText(
+      '💡 PREGUNTA DEL TUTOR: "¿Por qué el objetivo 100× exige aceite de inmersión (n=1.515) para captar los rayos refractados?"',
+      32,
+      412
+    );
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px "Outfit", sans-serif';
+    ctx.fillText(
+      'Bioseguridad BSL-2: Cabina Flujo Laminar HEPA · Incubadora CO₂ 37.0°C · [Clic en Pizarra o Tecla B para alternar]',
+      32,
+      455
+    );
+
+    if (bioSmartBoardTexture) {
+      bioSmartBoardTexture.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Pizarra Interactiva Viva del Salón 3 (Taller STEAM & Física Cotidiana, x = +12.0)
+   */
+  function drawSteamSmartBoard(
+    pH: number,
+    bandName: string,
+    hexColor: string,
+    volMl: number,
+    temperatureC: number
+  ) {
+    if (!steamSmartBoardCtx || !steamSmartBoardCanvas) return;
+    const ctx = steamSmartBoardCtx;
+    const w = steamSmartBoardCanvas.width;
+    const h = steamSmartBoardCanvas.height;
+
+    ctx.fillStyle = '#1f1608';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(12, 12, w - 24, h - 24);
+
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 21px "JetBrains Mono", monospace';
+    ctx.fillText('SYMBIOLAB 2.0  /  SALÓN 3: TALLER STEAM & FÍSICA COTIDIANA (RSEQ)', 32, 46);
+
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 15px "Outfit", sans-serif';
+    ctx.fillText(
+      `● FENOMENOLOGÍA EXPERIMENTAL · PROLONGO & PINTO (UPM / SCIENTIX) · MODO: ${labStore.smartBoardMode.toUpperCase()}`,
+      32,
+      74
+    );
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 90);
+    ctx.lineTo(w - 32, 90);
+    ctx.stroke();
+
+    const eff = labStore.activeSteamEffect;
+    let title = 'Termodinámica del Botijo & Enfriamiento Adiabático';
+    let eq = 'q_evap = m_v · ΔH_vap   (ΔH_vap = 2442 kJ/kg · Arcilla Porosa)';
+    let question =
+      '💡 PREGUNTA DEL TUTOR: "¿Por qué la exudación capilar a través de la arcilla porosa enfría el agua interna hasta 10°C bajo el ambiente?"';
+
+    if (eff === 'ice_convection') {
+      title = 'Convección Halina vs Estratificación en Salmuera';
+      eq = 'ρ(NaCl sat) = 1.20 g/cm³  >  ρ(H₂O fusión) = 1.00 g/cm³';
+      question =
+        '💡 PREGUNTA DEL TUTOR: "¿Por qué un cubito de hielo tarda mucho más en fundirse en agua salada saturada que en agua dulce?"';
+    } else if (eff === 'chupachups') {
+      title = 'Camaleón Químico Redox (Glucosa + KMnO₄ Alcalino)';
+      eq = 'MnO₄⁻ (+7 Púrpura) ⟶ MnO₄²⁻ (+6 Verde) ⟶ MnO₂ (+4 Ámbar)';
+      question =
+        '💡 PREGUNTA DEL TUTOR: "¿Qué papel cumple el remolino mecánico del Chupa-Chups en la transferencia electrónica paso a paso?"';
+    } else if (eff === 'antibubbles') {
+      title = 'Antipompas Hidrofóbicas y Película de Aire Invertida';
+      eq = 'ΔP = 4γ / R   (Doble interfase tensioactiva líquido-aire-líquido)';
+      question =
+        '💡 PREGUNTA DEL TUTOR: "¿Por qué una antipompa se hunde lentamente y refracta un anillo brillante por reflexión total?"';
+    } else if (eff === 'tea_complex') {
+      title = 'Quelación Polifenólica Fe³⁺-Taninos y Decoloración Redox';
+      eq = 'Fe³⁺ + 3 Tanino⁻ ⟶ [Fe(Tanino)₃] (Complejo Octaédrico Negro-Azulado)';
+      question =
+        '💡 PREGUNTA DEL TUTOR: "¿Cómo logra la ditionita de sodio (Na₂S₂O₄) revertir instantáneamente el color oscuro del complejo?"';
+    } else if (eff === 'benzene_invisible_fire') {
+      title = 'Densidad de Vapor Pesado y Pirólisis Controlada';
+      eq = 'ρ_rel(Vapor / Aire) = 2.70  ⟶  Flujo gravitatorio en rampa';
+      question =
+        '💡 PREGUNTA DEL TUTOR: "¿Por qué los vapores orgánicos más densos que el aire pueden inflamarse a distancia de la fuente?"';
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px "JetBrains Mono", monospace';
+    ctx.fillText(title, 32, 134);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '500 15px "JetBrains Mono", monospace';
+    ctx.fillText('Ley física y balance fenomenológico activo:', 32, 164);
+
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(eq, 32, 194);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.fillRect(32, 218, 475, 148);
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(32, 218, 475, 148);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 14px "Outfit", sans-serif';
+    ctx.fillText('VARIABLES FÍSICO-QUÍMICAS DEL SISTEMA STEAM', 48, 246);
+
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 48px "JetBrains Mono", monospace';
+    ctx.fillText(`${temperatureC.toFixed(1)} °C`, 48, 304);
+
+    ctx.fillStyle = hexColor;
+    ctx.font = 'bold 17px "Outfit", sans-serif';
+    ctx.fillText(bandName.toUpperCase(), 280, 282);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '14px "JetBrains Mono", monospace';
+    ctx.fillText(
+      `pH: ${pH.toFixed(2)}   ·   Volumen: ${volMl.toFixed(0)} mL   ·   Efecto: ${eff === 'none' ? 'ESTÁNDAR' : eff.toUpperCase()}`,
+      48,
+      344
+    );
+
+    // Columna Derecha: Diagrama Termodinámico / Psicrométrico en Tiza Digital
+    const gx = 540,
+      gy = 112,
+      gw = 450,
+      gh = 254;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.strokeStyle = '#713f12';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(gx, gy, gw, gh);
+
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 13px "Outfit", sans-serif';
+    ctx.fillText('PERFIL TERMODINÁMICO Y CINÉTICA DE TRANSPORTE', gx + 36, gy + 28);
+
+    // Curva de enfriamiento / potencial en tiza amarilla y cian
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i <= 20; i++) {
+      const u = i / 20;
+      const px = gx + 40 + u * (gw - 70);
+      const py = gy + 65 + (1 - Math.exp(-3.2 * u)) * (gh - 105);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = '#fde047';
+    ctx.font = '12px "JetBrains Mono", monospace';
+    ctx.fillText('T_amb = 32.0°C  ⟶  T_eq(bulbo húmedo) = 19.5°C', gx + 45, gy + gh - 18);
+
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 14px "Outfit", sans-serif';
+    ctx.fillText(question, 32, 412);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px "Outfit", sans-serif';
+    ctx.fillText(
+      'Didáctica STEAM: Libro 3D Interactivo + Vitrina de 9 Componentes Clasificados · [Clic en Pizarra o Tecla B]',
+      32,
+      455
+    );
+
+    if (steamSmartBoardTexture) {
+      steamSmartBoardTexture.needsUpdate = true;
+    }
+  }
+
   $effect(() => {
+    void labStore.smartBoardMode;
+    void labStore.microscopeSpecimenId;
+    void labStore.microscopeObjective;
+    void labStore.microscopeCoarseUm;
+    void labStore.microscopeImmersionOilApplied;
+    void labStore.microscopeDiaphragm;
+    void labStore.activeSteamEffect;
+    drawBioSmartBoard();
     if (labStore.isExplorationMode) {
       const r = explorationStore.result;
       const hex = explorationStore.indicator || r.coverage !== 'quantitative' ? r.color : '#b6d6e2';
@@ -504,6 +863,7 @@
       );
       drawThermometerScreen(r.temperatureC ?? 25);
       drawSmartBoard(r.pH ?? 7.0, r.pH === null ? 'SIN MODELO DE pH' : 'pH REF. 25 C', hex, totalVolume, r.temperatureC ?? 25);
+      drawSteamSmartBoard(r.pH ?? 7.0, r.pH === null ? 'SIN MODELO DE pH' : 'pH REF. 25 C', hex, totalVolume, r.temperatureC ?? 25);
     } else if (result) {
       let displayHex = result.indicatorBand.colorHex;
       let displayBand = result.indicatorBand.name;
@@ -544,6 +904,7 @@
       drawPhMeterScreen(result.pH, tempC, displayBand, displayHex, totalVolume);
       drawThermometerScreen(tempC);
       drawSmartBoard(result.pH, displayBand, displayHex, totalVolume, tempC);
+      drawSteamSmartBoard(result.pH, displayBand, displayHex, totalVolume, tempC);
     }
   });
 
@@ -866,7 +1227,15 @@
       lastStationId = station;
       lastStationRev = rev;
       lastMicroscopeActiveState = microActive;
-      if (labStore.microscopeFsmState === 'EXPLORING' && phase === 'IDLE') {
+      if (labStore.isFirstPersonWalking && fpController?.enabled) {
+        const walkPos =
+          station === 'biologia'
+            ? new THREE.Vector3(-12.0, fpController.position.y, 2.3)
+            : station === 'steam'
+              ? new THREE.Vector3(12.0, fpController.position.y, 2.3)
+              : new THREE.Vector3(0.0, fpController.position.y, 2.45);
+        fpController.enable(walkPos);
+      } else if (labStore.microscopeFsmState === 'EXPLORING' && phase === 'IDLE') {
         isTransitioningStation = true;
       }
     }
@@ -1150,7 +1519,7 @@
 
   function buildInteractiveHomeBook(): THREE.Group {
     const group = new THREE.Group();
-    group.position.set(4.05, 0.02, 0.28);
+    group.position.set(11.75, 0.02, 0.28);
     group.scale.setScalar(0.72);
     group.rotation.y = -0.28;
     group.userData = { isHomeBook: true };
@@ -1309,31 +1678,39 @@
     const group = new THREE.Group();
 
     // =========================================================================
-    // PIZARRONES CIENTÍFICOS DE LABORATORIO (BLACKBOARDS) EN LA PARED NORTE
-    // Superficie oscura de alto contraste con marco de aluminio y bandeja porta-tizas
+    // 3 PIZARRAS INTERACTIVAS SMARTBOARD EN LOS 3 SALONES INDEPENDIENTES
     // =========================================================================
-    const boardBio = buildLabBlackboard(3.5, 2.15, new THREE.Vector3(-4.3, 1.95, -2.315), 0x4ade80);
+    const boardBio = buildLabBlackboard(4.5, 2.15, new THREE.Vector3(-12.0, 1.95, -2.315), 0x4ade80);
     group.add(boardBio);
 
     const boardChem = buildLabBlackboard(4.5, 2.15, new THREE.Vector3(0, 1.95, -2.315), 0x38bdf8);
     group.add(boardChem);
 
-    const boardSteam = buildLabBlackboard(3.5, 2.15, new THREE.Vector3(4.3, 1.95, -2.315), 0xfacc15);
+    const boardSteam = buildLabBlackboard(4.5, 2.15, new THREE.Vector3(12.0, 1.95, -2.315), 0xfacc15);
     group.add(boardSteam);
 
-    // 1. SECCIÓN DE BIOLOGÍA Y MICROSCOPÍA (IZQUIERDA: x = -4.3, montado en pizarrón z = -2.298)
-    const posterBio = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.35, 0.80),
-      new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('biology_cells') })
-    );
-    posterBio.position.set(-4.3, 1.82, -2.298);
-    group.add(posterBio);
+    // 1. SALÓN DE BIOLOGÍA Y MICROSCOPÍA / PIZARRA SMARTBOARD ÓPTICA VIVA (OESTE: x = -12.0, z = -2.295)
+    bioSmartBoardCanvas = document.createElement('canvas');
+    bioSmartBoardCanvas.width = 1024;
+    bioSmartBoardCanvas.height = 512;
+    bioSmartBoardCtx = bioSmartBoardCanvas.getContext('2d');
+    bioSmartBoardTexture = new THREE.CanvasTexture(bioSmartBoardCanvas);
 
-    const signBio = textPlate('SYMBIOLAB  /  2. BIOLOGÍA & MICROSCOPÍA', 1.75, 0.15, '#86efac', '#14532d');
-    signBio.position.set(-4.3, 2.76, -2.298);
+    bioSmartBoardMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.35, 1.95),
+      new THREE.MeshBasicMaterial({ map: bioSmartBoardTexture })
+    );
+    bioSmartBoardMesh.position.set(-12.0, 1.95, -2.295);
+    bioSmartBoardMesh.userData = { toolId: 'smart_board' };
+    group.add(bioSmartBoardMesh);
+
+    drawBioSmartBoard();
+
+    const signBio = textPlate('SYMBIOLAB  /  2. SALÓN DE BIOLOGÍA & MICROSCOPÍA', 1.95, 0.15, '#86efac', '#14532d');
+    signBio.position.set(-12.0, 2.76, -2.298);
     group.add(signBio);
 
-    // 2. SECCIÓN DE QUÍMICA ANALÍTICA / PIZARRA SMARTBOARD MULTIUSUARIO VIVA (CENTRO: x = 0, z = -2.295)
+    // 2. SALÓN DE QUÍMICA ANALÍTICA / PIZARRA SMARTBOARD MULTIUSUARIO VIVA (CENTRO: x = 0, z = -2.295)
     smartBoardCanvas = document.createElement('canvas');
     smartBoardCanvas.width = 1024;
     smartBoardCanvas.height = 512;
@@ -1350,20 +1727,29 @@
 
     drawSmartBoard(7.0, 'Neutro', '#10b981', 50, 25);
 
-    const signChem = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA & REACCIONES', 1.95, 0.15, '#93c5fd', '#1e293b');
+    const signChem = textPlate('SYMBIOLAB  /  1. SALÓN DE QUÍMICA ANALÍTICA & REACCIONES', 2.05, 0.15, '#93c5fd', '#1e293b');
     signChem.position.set(0, 2.76, -2.298);
     group.add(signChem);
 
-    // 3. SECCIÓN STEAM Y CIENCIAS FENOMENOLÓGICAS (DERECHA: x = 4.3, montado en pizarrón z = -2.298)
-    const posterSteam = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.35, 0.80),
-      new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('steam_physics') })
-    );
-    posterSteam.position.set(4.3, 1.82, -2.298);
-    group.add(posterSteam);
+    // 3. SALÓN STEAM Y FÍSICA COTIDIANA / PIZARRA SMARTBOARD TERMODINÁMICA VIVA (ESTE: x = +12.0, z = -2.295)
+    steamSmartBoardCanvas = document.createElement('canvas');
+    steamSmartBoardCanvas.width = 1024;
+    steamSmartBoardCanvas.height = 512;
+    steamSmartBoardCtx = steamSmartBoardCanvas.getContext('2d');
+    steamSmartBoardTexture = new THREE.CanvasTexture(steamSmartBoardCanvas);
 
-    const signSteam = textPlate('SYMBIOLAB  /  3. CIENCIAS STEAM & FÍSICA', 1.75, 0.15, '#fde047', '#713f12');
-    signSteam.position.set(4.3, 2.76, -2.298);
+    steamSmartBoardMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.35, 1.95),
+      new THREE.MeshBasicMaterial({ map: steamSmartBoardTexture })
+    );
+    steamSmartBoardMesh.position.set(12.0, 1.95, -2.295);
+    steamSmartBoardMesh.userData = { toolId: 'smart_board' };
+    group.add(steamSmartBoardMesh);
+
+    drawSteamSmartBoard(7.0, 'Neutro', '#10b981', 50, 25);
+
+    const signSteam = textPlate('SYMBIOLAB  /  3. SALÓN DE CIENCIAS STEAM & FÍSICA', 1.95, 0.15, '#fde047', '#713f12');
+    signSteam.position.set(12.0, 2.76, -2.298);
     group.add(signSteam);
 
     // Gradilla de 5 Tubos de Ensayo (altura 0.34 u, proporcional frente al microscopio de 1.50 u)
@@ -1438,7 +1824,7 @@
    */
   function buildBiologyWorkstationAccessories(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const group = new THREE.Group();
-    group.position.set(-4.3, 0, 0.15);
+    group.position.set(-12.0, 0, 0.15);
 
     // 1. Bandeja de madera pulida con 6 portaobjetos de muestras preparadas
     const trayGroup = new THREE.Group();
@@ -2757,7 +3143,7 @@
    */
   function buildClassifiedComponentsCabinet(glassMaterial: THREE.MeshPhysicalMaterial): THREE.Group {
     const cabinet = new THREE.Group();
-    cabinet.position.set(5.05, 0, -0.32);
+    cabinet.position.set(14.8, 0, -0.32);
     cabinet.rotation.y = -0.42;
 
     const woodDarkMat = new THREE.MeshStandardMaterial({
@@ -3418,9 +3804,9 @@
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xdce7ec);
-    scene.fog = new THREE.FogExp2(0xdce7ec, 0.015);
+    scene.fog = new THREE.FogExp2(0xdce7ec, 0.0045);
 
-    camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
+    camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 90);
     camera.position.set(0.08, 1.9, 3.45);
 
     const isLowEndDevice = () => {
@@ -3465,12 +3851,12 @@
     controls.target.set(0, 0.57, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
-    controls.minDistance = 2.1;
-    controls.maxDistance = 5.2;
-    controls.minPolarAngle = Math.PI * 0.2;
-    controls.maxPolarAngle = Math.PI * 0.46;
-    controls.minAzimuthAngle = -Math.PI * 0.35;
-    controls.maxAzimuthAngle = Math.PI * 0.35;
+    controls.minDistance = 2.0;
+    controls.maxDistance = 6.5;
+    controls.minPolarAngle = Math.PI * 0.18;
+    controls.maxPolarAngle = Math.PI * 0.48;
+    controls.minAzimuthAngle = -Math.PI * 0.48;
+    controls.maxAzimuthAngle = Math.PI * 0.48;
     controls.enablePan = false;
     controls.update();
 
@@ -3515,10 +3901,10 @@
     rimLight.position.set(-2.5, 3.0, -2.0);
     scene.add(rimLight);
 
-    // Luz focalizada sobre la Estación STEAM
-    const bookSpotLight = new THREE.SpotLight(0xfef3c7, 6.0, 7, Math.PI / 4, 0.5);
-    bookSpotLight.position.set(4.3, 2.4, 1.2);
-    bookSpotLight.target.position.set(4.3, 0.2, 0.2);
+    // Luz focalizada sobre el Salón 3 STEAM (x = +12.0)
+    const bookSpotLight = new THREE.SpotLight(0xfef3c7, 6.0, 9, Math.PI / 4, 0.5);
+    bookSpotLight.position.set(12.0, 2.5, 1.2);
+    bookSpotLight.target.position.set(12.0, 0.2, 0.2);
     scene.add(bookSpotLight);
     scene.add(bookSpotLight.target);
 
@@ -3570,35 +3956,36 @@
     scene.add(chemBench);
 
     // =========================================================================
-    // 2. MESA LATERAL IZQUIERDA: BIOLOGÍA Y MICROSCOPÍA ÓPTICA (x = -4.3)
-    // Dimensiones ampliadas: 3.5m ancho × 2.4m profundidad
+    // 2. MESA CENTRAL DEL SALÓN 2: BIOLOGÍA Y MICROSCOPÍA ÓPTICA (x = -12.0)
+    // Dimensiones ampliadas: 4.0m ancho × 2.5m profundidad
     // =========================================================================
     const bioBench = buildProfessionalLabBench({
       stationId: 'biologia',
-      width: 3.5,
-      depth: 2.4,
-      position: new THREE.Vector3(-4.3, 0, 0.15),
+      width: 4.0,
+      depth: 2.5,
+      position: new THREE.Vector3(-12.0, 0, 0.15),
       label: '2. Biología Celular & Microscopía',
       labelAccentColor: '#4ade80',
       hasReagentOverheadRack: false, // Área diáfana para el microscopio
-      hasPlumbingAndSink: false,
+      hasPlumbingAndSink: true,
       hasElectricalStrip: true,
       hasWashBottle: true
     });
     scene.add(bioBench);
 
     // =========================================================================
-    // 3. MESA LATERAL DERECHA: CIENCIAS STEAM Y FÍSICA (x = 4.3)
-    // Dimensiones ampliadas: 3.5m ancho × 2.4m profundidad
+    // 3. MESA CENTRAL DEL SALÓN 3: CIENCIAS STEAM Y FÍSICA (x = +12.0)
+    // Dimensiones ampliadas: 4.0m ancho × 2.5m profundidad
     // =========================================================================
     const steamBench = buildProfessionalLabBench({
       stationId: 'steam',
-      width: 3.5,
-      depth: 2.4,
-      position: new THREE.Vector3(4.3, 0, 0.15),
+      width: 4.0,
+      depth: 2.5,
+      position: new THREE.Vector3(12.0, 0, 0.15),
       label: '3. Ciencias STEAM & Física Cotidiana',
       labelAccentColor: '#facc15',
       hasReagentOverheadRack: true,
+      hasPlumbingAndSink: true,
       hasElectricalStrip: true,
       hasTestTubeRack: true
     });
@@ -3877,6 +4264,8 @@
             ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
             ...(fumeHoodRig ? [fumeHoodRig.group] : []),
             ...(smartBoardMesh ? [smartBoardMesh] : []),
+            ...(bioSmartBoardMesh ? [bioSmartBoardMesh] : []),
+            ...(steamSmartBoardMesh ? [steamSmartBoardMesh] : []),
             ...interactiveToolGroups,
             ...cabinetItemGroups
           ];
@@ -3967,7 +4356,9 @@
           labStore.applyMicroscopeImmersionOil();
           return;
         }
-        labStore.setStation('quimica');
+        if ((hit.toolId as string) !== 'smart_board') {
+          labStore.setStation('quimica');
+        }
         handleToolInteraction(hit.toolId);
         return;
       }
@@ -4655,6 +5046,10 @@
           flasks.naoh.group,
           bookGroup,
           ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
+          ...(fumeHoodRig ? [fumeHoodRig.group] : []),
+          ...(smartBoardMesh ? [smartBoardMesh] : []),
+          ...(bioSmartBoardMesh ? [bioSmartBoardMesh] : []),
+          ...(steamSmartBoardMesh ? [steamSmartBoardMesh] : []),
           ...interactiveToolGroups.map((g) => (g === microscopeGroup && microscopeProxyMesh ? microscopeProxyMesh : g)),
           ...cabinetItemGroups
         ]);
@@ -4669,7 +5064,19 @@
           : null;
         labStore.firstPersonPointerLocked = fpController.isPointerLocked;
       } else {
-        if (fpController?.enabled) fpController.disable();
+        if (fpController?.enabled) {
+          const exitX = fpController.position.x;
+          fpController.disable();
+          controls.enabled = true;
+          if (exitX < -6.0) {
+            labStore.activeStation = 'biologia';
+          } else if (exitX > 6.0) {
+            labStore.activeStation = 'steam';
+          } else {
+            labStore.activeStation = 'quimica';
+          }
+          isTransitioningStation = true;
+        }
         fpController?.setAvatarBodyVisible(false);
 
         if (isTransitioningStation) {

@@ -163,22 +163,36 @@ export class FirstPersonController {
   mouseSensitivity = 1.0;
   invertY = false;
 
-  // Cajas de colisión AABB para impedir atravesar mesas, muros y cámara SAS
+  // Cajas de colisión AABB para impedir atravesar mesas, muros divisorios de los 3 salones y cámara SAS
   colliders: FirstPersonColliderBox[] = [
-    // Perímetro General del Complejo (Gran Nave de Laboratorio + Esclusa SAS al Fondo)
-    { minX: -9.8, maxX: 9.8, minZ: -1.2, maxZ: 14.3, name: 'bounds' },
-    // Mesa Central Química (4.4m x 2.6m ampliada)
+    // Perímetro General del Complejo de 3 Grandes Salones (36m x 16.5m total)
+    { minX: -17.8, maxX: 17.8, minZ: -1.8, maxZ: 14.3, name: 'bounds' },
+    // Salón 1: Mesa Central Química (4.4m x 2.6m en x = 0)
     { minX: -2.25, maxX: 2.25, minZ: -1.35, maxZ: 1.35, name: 'chem_table' },
-    // Mesa Biología (3.5m x 2.4m en x = -4.3)
-    { minX: -6.1, maxX: -2.5, minZ: -1.1, maxZ: 1.4, name: 'bio_table' },
-    // Mesa STEAM (3.5m x 2.4m en x = 4.3)
-    { minX: 2.5, maxX: 6.1, minZ: -1.1, maxZ: 1.4, name: 'steam_table' },
-    // Campana Extractora de Gases Fume Hood en esquina Noroeste (x = -7.8, z = -1.2)
-    { minX: -9.0, maxX: -6.6, minZ: -1.75, maxZ: -0.65, name: 'fume_hood' },
-    // Pared Sur del Laboratorio (Ala Oeste: x de -9.8 a -1.25, en z = 10.0)
-    { minX: -9.8, maxX: -1.25, minZ: 9.85, maxZ: 10.15, name: 'south_wall_left' },
-    // Pared Sur del Laboratorio (Ala Este: x de 1.25 a 9.8, en z = 10.0)
-    { minX: 1.25, maxX: 9.8, minZ: 9.85, maxZ: 10.15, name: 'south_wall_right' },
+    // Salón 2: Mesa Isla Biología & Microscopía (4.0m x 2.5m en x = -12.0)
+    { minX: -14.05, maxX: -9.95, minZ: -1.15, maxZ: 1.45, name: 'bio_table' },
+    // Salón 3: Mesa Isla Taller STEAM (4.0m x 2.5m en x = +12.0)
+    { minX: 9.95, maxX: 14.05, minZ: -1.15, maxZ: 1.45, name: 'steam_table' },
+    // Campana Extractora de Gases Fume Hood en Salón de Química (x = -4.2, z = -1.65)
+    { minX: -5.35, maxX: -3.05, minZ: -2.25, maxZ: -1.05, name: 'fume_hood' },
+    // Armario Ignífugo en Salón de Química (x = +4.2, z = -1.75)
+    { minX: 3.45, maxX: 4.95, minZ: -2.20, maxZ: -1.30, name: 'chem_safety_cabinet' },
+    // Cabina BSL-2 e Incubadora CO2 en Salón de Biología
+    { minX: -16.85, maxX: -14.75, minZ: -2.20, maxZ: -1.10, name: 'bio_bsl_cabinet' },
+    { minX: -8.85, maxX: -7.55, minZ: -2.20, maxZ: -1.30, name: 'bio_incubator' },
+    // Banco Auxiliar y Estantería en Salón STEAM
+    { minX: 7.15, maxX: 9.25, minZ: -2.20, maxZ: -1.25, name: 'steam_aux_bench' },
+    { minX: 14.45, maxX: 15.95, minZ: -1.05, maxZ: 0.35, name: 'steam_cabinet' },
+    // Muro Divisorio Oeste Completo (x = -6.0, con portal de puertas correderas en z = 1.6 a 4.0)
+    { minX: -6.15, maxX: -5.85, minZ: -2.4, maxZ: 1.55, name: 'west_partition_north' },
+    { minX: -6.15, maxX: -5.85, minZ: 4.05, maxZ: 10.0, name: 'west_partition_south' },
+    // Muro Divisorio Este Completo (x = +6.0, con portal de puertas correderas en z = 1.6 a 4.0)
+    { minX: 5.85, maxX: 6.15, minZ: -2.4, maxZ: 1.55, name: 'east_partition_north' },
+    { minX: 5.85, maxX: 6.15, minZ: 4.05, maxZ: 10.0, name: 'east_partition_south' },
+    // Pared Sur del Complejo (Ala Oeste: x de -17.8 a -1.25, en z = 10.0)
+    { minX: -17.8, maxX: -1.25, minZ: 9.85, maxZ: 10.15, name: 'south_wall_left' },
+    // Pared Sur del Complejo (Ala Este: x de 1.25 a 17.8, en z = 10.0)
+    { minX: 1.25, maxX: 17.8, minZ: 9.85, maxZ: 10.15, name: 'south_wall_right' },
     // Pared Lateral Oeste de la Esclusa SAS (x = -4.0, z de 10.0 a 14.3)
     { minX: -4.15, maxX: -3.85, minZ: 10.0, maxZ: 14.3, name: 'sas_west_wall' },
     // Pared Lateral Este de la Esclusa SAS (x = +4.0, z de 10.0 a 14.3)
@@ -662,7 +676,8 @@ export class FirstPersonController {
       this.savedPreInspectYaw = this.yaw;
       this.savedPreInspectPitch = this.pitch;
     } else {
-      this.savedPreInspectPos.set(-3.5, this.baseEyeHeight, 1.75);
+      const safeBioX = this.position.x < -6.0 ? -12.0 : -3.5;
+      this.savedPreInspectPos.set(safeBioX, this.baseEyeHeight, 1.75);
       this.savedPreInspectYaw = 0;
       this.savedPreInspectPitch = -0.08;
     }
@@ -672,7 +687,7 @@ export class FirstPersonController {
 
   enable(startPos?: THREE.Vector3) {
     this.enabled = true;
-    let targetX = -3.5;
+    let targetX = -12.0;
     let targetZ = 1.75;
     let targetYaw = 0;
     let targetPitch = -0.08;
@@ -686,15 +701,22 @@ export class FirstPersonController {
     } else if (startPos) {
       targetX = startPos.x;
       targetZ = startPos.z;
-      const toCenter = new THREE.Vector2(-targetX, -targetZ);
+      const benchCenterX = targetX < -6.0 ? -12.0 : targetX > 6.0 ? 12.0 : 0;
+      const toCenter = new THREE.Vector2(benchCenterX - targetX, -targetZ);
       targetYaw = Math.atan2(toCenter.x, -toCenter.y);
       targetPitch = -0.08;
     }
 
-    // Si la posición de origen intentaba aparecer dentro o detrás de las mesas (Z < 1.25 en X: -5 a 5),
-    // o al salir del microscopio con coordenadas de la platina/lente, recolocar en zona frontal segura frente al microscopio
-    if (targetZ < 1.25 && targetX >= -5.0 && targetX <= 5.0) {
-      targetX = -3.5;
+    // Si la posición de origen intentaba aparecer dentro o detrás de las mesas (Z < 1.25),
+    // o al salir del microscopio con coordenadas de la platina/lente, recolocar en zona frontal segura
+    if (targetZ < 1.25) {
+      if (targetX < -6.0) {
+        targetX = -12.0;
+      } else if (targetX > 6.0) {
+        targetX = 12.0;
+      } else if (targetX >= -5.0 && targetX <= 5.0) {
+        targetX = -3.5;
+      }
       targetZ = 1.75;
       targetYaw = 0;
       targetPitch = -0.08;
@@ -1533,8 +1555,10 @@ export class FirstPersonController {
     this.position.x = allowedX;
     this.position.z = allowedZ;
 
-    // Trigger de Proximidad (< 0.60m del borde frontal del microscopio / < 1.55m del eje óptico)
+    // Trigger de Proximidad (< 0.60m del borde frontal del microscopio en el Salón de Biología x = -12.0)
     const distToMicroscopeFront = Math.min(
+      Math.hypot(this.position.x - -12.0, this.position.z - 1.55),
+      Math.hypot(this.position.x - -12.0, this.position.z - 1.77),
       Math.hypot(this.position.x - -3.5, this.position.z - 1.55),
       Math.hypot(this.position.x - -3.5, this.position.z - 1.77),
       Math.hypot(this.position.x - -4.3, this.position.z - 1.77)
@@ -1797,13 +1821,13 @@ export class FirstPersonController {
   }
 
   /**
-   * Detecta si el jugador está a corta distancia de alguna de las 3 estaciones
+   * Detecta si el jugador está a corta distancia de alguna de las 3 estaciones de los salones
    */
   getNearbyStation(): LabStationId | null {
-    if (Math.abs(this.position.z - 1.8) > 1.25) return null;
-    if (Math.abs(this.position.x - 0) < 1.8) return 'quimica';
-    if (this.position.x <= -2.2 && this.position.x >= -6.0) return 'biologia';
-    if (this.position.x >= 2.2 && this.position.x <= 6.0) return 'steam';
+    if (Math.abs(this.position.z - 1.8) > 1.35) return null;
+    if (Math.abs(this.position.x - 0) < 2.2) return 'quimica';
+    if (Math.abs(this.position.x - -12.0) < 2.5 || (this.position.x <= -2.2 && this.position.x >= -6.0)) return 'biologia';
+    if (Math.abs(this.position.x - 12.0) < 2.5 || (this.position.x >= 2.2 && this.position.x <= 6.0)) return 'steam';
 
     return null;
   }

@@ -218,12 +218,12 @@ export function buildLaboratoryCeilingAndLighting(): THREE.Group {
     roughness: 0.88,
     metalness: 0.05
   });
-  const ceilingMesh = new THREE.Mesh(new THREE.PlaneGeometry(42, 28), ceilingMat);
+  const ceilingMesh = new THREE.Mesh(new THREE.PlaneGeometry(44, 28), ceilingMat);
   ceilingMesh.rotation.x = Math.PI / 2;
   ceilingMesh.position.set(0, ceilingY, 1.5);
   ceilingGroup.add(ceilingMesh);
 
-  // 2. Luminarias Cleanroom LED Troffers (120x60 cm empotradas en falso techo)
+  // 2. Luminarias Cleanroom LED Troffers (120x60 cm empotradas en los 3 grandes salones de 12x12.4m)
   const trofferMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     toneMapped: false
@@ -235,29 +235,33 @@ export function buildLaboratoryCeilingAndLighting(): THREE.Group {
   });
 
   const lightPositions: [number, number][] = [
-    // 4 paneles sobre Química Central
-    [-1.2, -0.6],
-    [1.2, -0.6],
-    [-1.2, 0.7],
-    [1.2, 0.7],
-    // 2 paneles sobre Biología
-    [-4.3, -0.5],
-    [-4.3, 0.7],
-    // 2 paneles sobre STEAM
-    [4.3, -0.5],
-    [4.3, 0.7],
-    // Paneles sobre pasillos laterales
-    [-6.5, 0.3],
-    [-6.5, 2.5],
-    [6.5, 0.3],
-    [6.5, 2.5],
-    // Paneles en la nave central diáfana y amplia extendida (z = 3.5 a 8.5)
-    [-3.0, 4.5],
-    [3.0, 4.5],
+    // Salón 1: Química Analítica Central (x = -6.0 a +6.0)
+    [-2.2, -0.6],
+    [2.2, -0.6],
+    [-2.2, 1.2],
+    [2.2, 1.2],
+    [-2.2, 4.5],
+    [2.2, 4.5],
     [0.0, 4.5],
-    [-3.0, 7.8],
-    [3.0, 7.8],
-    [0.0, 7.8]
+    [-2.2, 7.6],
+    [2.2, 7.6],
+    [0.0, 7.6],
+    // Salón 2: Biología Celular & Microscopía (x = -18.0 a -6.0, centro en -12.0)
+    [-14.2, -0.6],
+    [-9.8, -0.6],
+    [-14.2, 1.5],
+    [-9.8, 1.5],
+    [-14.2, 4.5],
+    [-9.8, 4.5],
+    [-12.0, 7.6],
+    // Salón 3: Taller STEAM & Física Cotidiana (x = +6.0 a +18.0, centro en +12.0)
+    [9.8, -0.6],
+    [14.2, -0.6],
+    [9.8, 1.5],
+    [14.2, 1.5],
+    [9.8, 4.5],
+    [14.2, 4.5],
+    [12.0, 7.6]
   ];
 
   lightPositions.forEach(([lx, lz]) => {
@@ -273,32 +277,34 @@ export function buildLaboratoryCeilingAndLighting(): THREE.Group {
     ceilingGroup.add(diffuser);
   });
 
-  // 3. Luces cenitales de laboratorio (proyectan luz pura 5000K sobre las mesas)
+  // 3. Luces cenitales de laboratorio (proyectan luz pura 5000K sobre cada uno de los 3 salones)
   const chemOverheadLight = new THREE.DirectionalLight(0xf8fbff, 1.8);
   chemOverheadLight.position.set(0, ceilingY - 0.2, 0.5);
   chemOverheadLight.target.position.set(0, 0, 0.2);
   ceilingGroup.add(chemOverheadLight);
   ceilingGroup.add(chemOverheadLight.target);
 
-  const bioOverheadLight = new THREE.SpotLight(0xf0fdf4, 3.2, 7, Math.PI / 3, 0.6);
-  bioOverheadLight.position.set(-4.3, ceilingY - 0.2, 0.5);
-  bioOverheadLight.target.position.set(-4.3, 0, 0.2);
+  const bioOverheadLight = new THREE.SpotLight(0xf0fdf4, 4.2, 14, Math.PI / 2.6, 0.55);
+  bioOverheadLight.position.set(-12.0, ceilingY - 0.2, 0.5);
+  bioOverheadLight.target.position.set(-12.0, 0, 0.2);
   ceilingGroup.add(bioOverheadLight);
   ceilingGroup.add(bioOverheadLight.target);
 
-  const steamOverheadLight = new THREE.SpotLight(0xfefce8, 3.2, 7, Math.PI / 3, 0.6);
-  steamOverheadLight.position.set(4.3, ceilingY - 0.2, 0.5);
-  steamOverheadLight.target.position.set(4.3, 0, 0.2);
+  const steamOverheadLight = new THREE.SpotLight(0xfefce8, 4.2, 14, Math.PI / 2.6, 0.55);
+  steamOverheadLight.position.set(12.0, ceilingY - 0.2, 0.5);
+  steamOverheadLight.target.position.set(12.0, 0, 0.2);
   ceilingGroup.add(steamOverheadLight);
   ceilingGroup.add(steamOverheadLight.target);
 
-  // 4. Difusores de aire acondicionado HVAC (impulsión de aire filtrado)
+  // 4. Difusores de aire acondicionado HVAC (impulsión de aire filtrado en los 3 salones)
   const hvacMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35 });
   const hvacPositions: [number, number][] = [
     [0, -1.5],
-    [-4.3, -1.5],
-    [4.3, -1.5],
-    [0, 2.2]
+    [0, 2.8],
+    [-12.0, -1.5],
+    [-12.0, 2.8],
+    [12.0, -1.5],
+    [12.0, 2.8]
   ];
   hvacPositions.forEach(([hx, hz]) => {
     const vent = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.02, 0.6), hvacMat);
@@ -318,11 +324,13 @@ export function buildLaboratoryCeilingAndLighting(): THREE.Group {
   const chromeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.15, metalness: 0.9 });
   const redBulbMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2, metalness: 0.1 });
   const sprinklerPositions: [number, number][] = [
-    [-2.2, 0],
-    [2.2, 0],
-    [-4.3, 1.8],
-    [4.3, 1.8],
-    [0, 1.8]
+    [-2.5, 0],
+    [2.5, 0],
+    [0, 2.2],
+    [-12.0, 1.8],
+    [-14.5, 0],
+    [12.0, 1.8],
+    [14.5, 0]
   ];
   sprinklerPositions.forEach(([sx, sz]) => {
     const escutcheon = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.008, 14), chromeMat);
@@ -338,10 +346,12 @@ export function buildLaboratoryCeilingAndLighting(): THREE.Group {
     ceilingGroup.add(bulb);
   });
 
-  // 6. Detectores ópticos de humo
+  // 6. Detectores ópticos de humo en los 3 salones
   const smokeDetectorPositions: [number, number][] = [
-    [-1.2, 1.5],
-    [1.2, 1.5]
+    [-1.5, 1.5],
+    [1.5, 1.5],
+    [-12.0, 1.5],
+    [12.0, 1.5]
   ];
   smokeDetectorPositions.forEach(([dx, dz]) => {
     const detector = new THREE.Mesh(
@@ -405,74 +415,66 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   const wallY = 1.05; // desde -1.55 hasta 3.75
 
   // =========================================================================
-  // 1. PARED POSTERIOR DEL LABORATORIO (Norte, z = -2.4)
+  // 1. PARED POSTERIOR DEL COMPLEJO CIENTÍFICO (Norte, z = -2.4, ancho 36.2m)
   // =========================================================================
-  const backWall = new THREE.Mesh(new THREE.BoxGeometry(42, wallHeight, 0.15), wallMat);
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(36.4, wallHeight, 0.15), wallMat);
   backWall.position.set(0, wallY, -2.4);
   wallsGroup.add(backWall);
 
-  const backBaseboard = new THREE.Mesh(new THREE.BoxGeometry(42, 0.16, 0.18), baseboardMat);
+  const backBaseboard = new THREE.Mesh(new THREE.BoxGeometry(36.4, 0.16, 0.18), baseboardMat);
   backBaseboard.position.set(0, -1.47, -2.4);
   wallsGroup.add(backBaseboard);
 
   // =========================================================================
-  // 2. PARED DERECHA DEL LABORATORIO (Este, x = 10.0, z de -2.4 a 10.0 -> long 12.4m)
+  // 2. PARED DERECHA DEL SALÓN STEAM (Este, x = 18.0, z de -2.4 a 10.0 -> long 12.4m)
   // Incorpora el Gran Ventanal Panorámico Técnico con luz natural y vistas al exterior (z = 0.5 a 6.5)
   // =========================================================================
-  // Tramo sólido Norte de la pared Este (z = -2.4 a 0.5, largo 2.9m)
   const rightWallNorth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 2.9), wallMat);
-  rightWallNorth.position.set(10.0, wallY, -0.95);
+  rightWallNorth.position.set(18.0, wallY, -0.95);
   wallsGroup.add(rightWallNorth);
 
   const rightBaseboardNorth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 2.9), baseboardMat);
-  rightBaseboardNorth.position.set(10.0, -1.47, -0.95);
+  rightBaseboardNorth.position.set(18.0, -1.47, -0.95);
   wallsGroup.add(rightBaseboardNorth);
 
-  // Tramo sólido Sur de la pared Este (z = 6.5 a 10.0, largo 3.5m)
   const rightWallSouth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 3.5), wallMat);
-  rightWallSouth.position.set(10.0, wallY, 8.25);
+  rightWallSouth.position.set(18.0, wallY, 8.25);
   wallsGroup.add(rightWallSouth);
 
   const rightBaseboardSouth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 3.5), baseboardMat);
-  rightBaseboardSouth.position.set(10.0, -1.47, 8.25);
+  rightBaseboardSouth.position.set(18.0, -1.47, 8.25);
   wallsGroup.add(rightBaseboardSouth);
 
-  // Antepecho inferior bajo el ventanal (z = 0.5 a 6.5, largo 6.0m, y = -1.55 a 0.05, alto 1.60m)
   const windowSillWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.60, 6.0), wallMat);
-  windowSillWall.position.set(10.0, -0.75, 3.5);
+  windowSillWall.position.set(18.0, -0.75, 3.5);
   wallsGroup.add(windowSillWall);
 
   const windowSillBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 6.0), baseboardMat);
-  windowSillBaseboard.position.set(10.0, -1.47, 3.5);
+  windowSillBaseboard.position.set(18.0, -1.47, 3.5);
   wallsGroup.add(windowSillBaseboard);
 
-  // Dintel superior sobre el ventanal (z = 0.5 a 6.5, largo 6.0m, y = 2.65 a 3.75, alto 1.10m)
   const windowLintelWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.10, 6.0), wallMat);
-  windowLintelWall.position.set(10.0, 3.20, 3.5);
+  windowLintelWall.position.set(18.0, 3.20, 3.5);
   wallsGroup.add(windowLintelWall);
 
-  // MARCO TÉCNICO Y VIDRIO DEL GRAN VENTANAL PANORÁMICO (x = 10.0, z = 0.5 a 6.5, y = 0.05 a 2.65)
+  // MARCO TÉCNICO Y VIDRIO DEL GRAN VENTANAL PANORÁMICO ESTE (x = 18.0, z = 0.5 a 6.5, y = 0.05 a 2.65)
   const windowGroup = new THREE.Group();
   windowGroup.name = 'TechnicalPanoramicWindow';
 
-  // Perfil perimetral exterior de aluminio anodizado / acero inoxidable cepillado
   const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(0.20, 2.64, 6.04), stainlessMat);
-  outerFrame.position.set(10.0, 1.35, 3.5);
+  outerFrame.position.set(18.0, 1.35, 3.5);
   windowGroup.add(outerFrame);
 
-  // Montantes verticales divisores (crean 4 grandes paños de luz natural)
   [1.95, 3.5, 5.05].forEach((mz) => {
     const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.58, 0.07), stainlessMat);
-    mullion.position.set(10.0, 1.35, mz);
+    mullion.position.set(18.0, 1.35, mz);
     windowGroup.add(mullion);
   });
 
-  // Travesaño horizontal medio
   const transom = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 5.96), stainlessMat);
-  transom.position.set(10.0, 1.35, 3.5);
+  transom.position.set(18.0, 1.35, 3.5);
   windowGroup.add(transom);
 
-  // Vidrio doble templado con sutil transmisión y tinte azul cielo
   const windowGlassMat = new THREE.MeshPhysicalMaterial({
     color: 0xcde8f5,
     transmission: 0.92,
@@ -485,11 +487,10 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
     side: THREE.DoubleSide
   });
   const windowGlassPane = new THREE.Mesh(new THREE.PlaneGeometry(5.95, 2.55), windowGlassMat);
-  windowGlassPane.rotation.y = -Math.PI / 2; // Cara hacia el interior del laboratorio
-  windowGlassPane.position.set(9.98, 1.35, 3.5);
+  windowGlassPane.rotation.y = -Math.PI / 2;
+  windowGlassPane.position.set(17.98, 1.35, 3.5);
   windowGroup.add(windowGlassPane);
 
-  // Panel exterior panorámico de alta definición con vistas al campus universitario verde
   const landscapeTex = createCampusLandscapeTexture();
   const landscapeMat = new THREE.MeshBasicMaterial({
     map: landscapeTex,
@@ -497,50 +498,88 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   });
   const landscapePanel = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.8), landscapeMat);
   landscapePanel.rotation.y = -Math.PI / 2;
-  landscapePanel.position.set(10.55, 1.35, 3.5);
+  landscapePanel.position.set(18.55, 1.35, 3.5);
   windowGroup.add(landscapePanel);
 
-  // Luz solar suave en ángulo rasante entrando por el ventanal hacia el interior
   const naturalSunlight = new THREE.DirectionalLight(0xfff5e6, 1.35);
-  naturalSunlight.position.set(11.5, 3.2, 3.5);
-  naturalSunlight.target.position.set(0, 0, 3.5);
+  naturalSunlight.position.set(19.5, 3.2, 3.5);
+  naturalSunlight.target.position.set(8.0, 0, 3.5);
   windowGroup.add(naturalSunlight);
   windowGroup.add(naturalSunlight.target);
 
   wallsGroup.add(windowGroup);
 
   // =========================================================================
-  // 3. PARED IZQUIERDA DEL LABORATORIO (Oeste, x = -10.0, z de -2.4 a 10.0 -> long 12.4m)
-  // Nave amplia y diáfana de 20m de ancho total
+  // 3. PARED IZQUIERDA DEL SALÓN DE BIOLOGÍA (Oeste, x = -18.0, z de -2.4 a 10.0 -> long 12.4m)
+  // Con Ventanal Panorámico Bio-Clínico Oeste para iluminación natural
   // =========================================================================
-  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 12.4), wallMat);
-  leftWall.position.set(-10.0, wallY, 3.8);
-  wallsGroup.add(leftWall);
+  const leftWallNorth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 2.9), wallMat);
+  leftWallNorth.position.set(-18.0, wallY, -0.95);
+  wallsGroup.add(leftWallNorth);
 
-  const leftBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 12.4), baseboardMat);
-  leftBaseboard.position.set(-10.0, -1.47, 3.8);
-  wallsGroup.add(leftBaseboard);
+  const leftBaseboardNorth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 2.9), baseboardMat);
+  leftBaseboardNorth.position.set(-18.0, -1.47, -0.95);
+  wallsGroup.add(leftBaseboardNorth);
+
+  const leftWallSouth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 3.5), wallMat);
+  leftWallSouth.position.set(-18.0, wallY, 8.25);
+  wallsGroup.add(leftWallSouth);
+
+  const leftBaseboardSouth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 3.5), baseboardMat);
+  leftBaseboardSouth.position.set(-18.0, -1.47, 8.25);
+  wallsGroup.add(leftBaseboardSouth);
+
+  const westSillWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.60, 6.0), wallMat);
+  westSillWall.position.set(-18.0, -0.75, 3.5);
+  wallsGroup.add(westSillWall);
+
+  const westSillBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 6.0), baseboardMat);
+  westSillBaseboard.position.set(-18.0, -1.47, 3.5);
+  wallsGroup.add(westSillBaseboard);
+
+  const westLintelWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.10, 6.0), wallMat);
+  westLintelWall.position.set(-18.0, 3.20, 3.5);
+  wallsGroup.add(westLintelWall);
+
+  const westWindowFrame = new THREE.Mesh(new THREE.BoxGeometry(0.20, 2.64, 6.04), stainlessMat);
+  westWindowFrame.position.set(-18.0, 1.35, 3.5);
+  wallsGroup.add(westWindowFrame);
+
+  [1.95, 3.5, 5.05].forEach((mz) => {
+    const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.58, 0.07), stainlessMat);
+    mullion.position.set(-18.0, 1.35, mz);
+    wallsGroup.add(mullion);
+  });
+
+  const westWindowPane = new THREE.Mesh(new THREE.PlaneGeometry(5.95, 2.55), windowGlassMat);
+  westWindowPane.rotation.y = Math.PI / 2;
+  westWindowPane.position.set(-17.98, 1.35, 3.5);
+  wallsGroup.add(westWindowPane);
+
+  const westLandscapePanel = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.8), landscapeMat);
+  westLandscapePanel.rotation.y = Math.PI / 2;
+  westLandscapePanel.position.set(-18.55, 1.35, 3.5);
+  wallsGroup.add(westLandscapePanel);
 
   // =========================================================================
-  // 4. PARED SUR DEL LABORATORIO (z = 10.0) CON VANO MONUMENTAL PARA PUERTAS DOBLES
-  // Situada al fondo para dejar una gran nave libre y espaciosa de casi 9m frente a las mesas
+  // 4. PARED SUR DEL COMPLEJO (z = 10.0, de x = -18.0 a +18.0) CON VANO MONUMENTAL CENTRAL
   // =========================================================================
-  // Tramo sólido Oeste (desde x = -10.0 hasta x = -1.3, ancho 8.7m)
-  const southWallWest = new THREE.Mesh(new THREE.BoxGeometry(8.7, wallHeight, 0.15), wallMat);
-  southWallWest.position.set(-5.65, wallY, 10.0);
+  // Tramo sólido Oeste (desde x = -18.0 hasta x = -1.3, ancho 16.7m)
+  const southWallWest = new THREE.Mesh(new THREE.BoxGeometry(16.7, wallHeight, 0.15), wallMat);
+  southWallWest.position.set(-9.65, wallY, 10.0);
   wallsGroup.add(southWallWest);
 
-  const southBaseboardWest = new THREE.Mesh(new THREE.BoxGeometry(8.7, 0.16, 0.18), baseboardMat);
-  southBaseboardWest.position.set(-5.65, -1.47, 10.0);
+  const southBaseboardWest = new THREE.Mesh(new THREE.BoxGeometry(16.7, 0.16, 0.18), baseboardMat);
+  southBaseboardWest.position.set(-9.65, -1.47, 10.0);
   wallsGroup.add(southBaseboardWest);
 
-  // Tramo sólido Este (desde x = 1.3 hasta x = 10.0, ancho 8.7m)
-  const southWallEast = new THREE.Mesh(new THREE.BoxGeometry(8.7, wallHeight, 0.15), wallMat);
-  southWallEast.position.set(5.65, wallY, 10.0);
+  // Tramo sólido Este (desde x = 1.3 hasta x = 18.0, ancho 16.7m)
+  const southWallEast = new THREE.Mesh(new THREE.BoxGeometry(16.7, wallHeight, 0.15), wallMat);
+  southWallEast.position.set(9.65, wallY, 10.0);
   wallsGroup.add(southWallEast);
 
-  const southBaseboardEast = new THREE.Mesh(new THREE.BoxGeometry(8.7, 0.16, 0.18), baseboardMat);
-  southBaseboardEast.position.set(5.65, -1.47, 10.0);
+  const southBaseboardEast = new THREE.Mesh(new THREE.BoxGeometry(16.7, 0.16, 0.18), baseboardMat);
+  southBaseboardEast.position.set(9.65, -1.47, 10.0);
   wallsGroup.add(southBaseboardEast);
 
   // Dintel superior sobre el vano alto de las puertas automáticas (x = -1.3 a 1.3, y = 2.25 a 3.75)
@@ -846,10 +885,11 @@ export interface FumeHoodRig {
  * Equipada con guillotina de policarbonato móvil, flujo laminar de 0.52 m/s,
  * luz LED fría interior y armario inferior de seguridad para reactivos volátiles.
  */
-export function buildFumeHoodWorkstation(position = new THREE.Vector3(-7.8, -1.55, -1.2)): FumeHoodRig {
+export function buildFumeHoodWorkstation(position = new THREE.Vector3(-4.2, -1.55, -1.65)): FumeHoodRig {
   const hoodGroup = new THREE.Group();
   hoodGroup.name = 'IndustrialFumeHoodRig';
   hoodGroup.position.copy(position);
+  hoodGroup.userData = { toolId: 'fume_hood' };
 
   const stainlessMat = new THREE.MeshStandardMaterial({
     color: 0x94a3b8,
@@ -945,19 +985,24 @@ export function buildFumeHoodWorkstation(position = new THREE.Vector3(-7.8, -1.5
   hoodGroup.add(headerSign);
 
   // Display digital Magnehelic (LED verde luminoso con lectura de 0.52 m/s)
-  const displayCanvas = document.createElement('canvas');
-  displayCanvas.width = 256;
-  displayCanvas.height = 128;
-  const dCtx = displayCanvas.getContext('2d')!;
-  dCtx.fillStyle = '#0f172a';
-  dCtx.fillRect(0, 0, 256, 128);
-  dCtx.fillStyle = '#22c55e';
-  dCtx.font = 'bold 36px monospace';
-  dCtx.fillText('0.52 m/s', 24, 52);
-  dCtx.fillStyle = '#94a3b8';
-  dCtx.font = 'bold 18px sans-serif';
-  dCtx.fillText('AIRFLOW NORMAL', 24, 92);
-  const displayTex = new THREE.CanvasTexture(displayCanvas);
+  let displayTex: THREE.CanvasTexture;
+  if (typeof document !== 'undefined') {
+    const displayCanvas = document.createElement('canvas');
+    displayCanvas.width = 256;
+    displayCanvas.height = 128;
+    const dCtx = displayCanvas.getContext('2d')!;
+    dCtx.fillStyle = '#0f172a';
+    dCtx.fillRect(0, 0, 256, 128);
+    dCtx.fillStyle = '#22c55e';
+    dCtx.font = 'bold 36px monospace';
+    dCtx.fillText('0.52 m/s', 24, 52);
+    dCtx.fillStyle = '#94a3b8';
+    dCtx.font = 'bold 18px sans-serif';
+    dCtx.fillText('AIRFLOW NORMAL', 24, 92);
+    displayTex = new THREE.CanvasTexture(displayCanvas);
+  } else {
+    displayTex = new THREE.CanvasTexture({} as HTMLCanvasElement);
+  }
 
   const digitalDisplay = new THREE.Mesh(
     new THREE.PlaneGeometry(0.42, 0.22),
@@ -980,6 +1025,8 @@ export function buildFumeHoodWorkstation(position = new THREE.Vector3(-7.8, -1.5
 
   const sashMesh = new THREE.Mesh(new THREE.BoxGeometry(2.08, 0.95, 0.024), sashGlassMat);
   sashMesh.position.set(0, 1.40, 0.51); // Posición inicial cerrada
+  sashMesh.userData = { toolId: 'fume_hood' };
+  baseCabinet.userData = { toolId: 'fume_hood' };
   hoodGroup.add(sashMesh);
 
   // Tirador inferior de aluminio de la guillotina
@@ -1045,11 +1092,12 @@ function createPortalSignTexture(text: string, bgColor: string, textColor: strin
 }
 
 /**
- * Construye los cerramientos arquitectónicos divisorios y puertas correderas
- * que separan los 3 Pabellones Científicos Especializados:
- * 1. Pabellón de Química Analítica (Centro, x = -2.25 a +2.25)
- * 2. Pabellón de Biología Celular y Microscopía (Oeste, x = -10.0 a -2.25)
- * 3. Pabellón Taller STEAM & Fenómenos Cotidianos (Este, x = +2.25 a +10.0)
+ * Construye los cerramientos arquitectónicos completos de extremo a extremo (z = -2.4 a 10.0),
+ * ventanales acústicos de observación, puertas correderas automáticas y equipamiento ambiental
+ * que conforman los 3 Grandes Salones Científicos Independientes (12.0m × 12.4m cada uno):
+ * 1. Salón Central: Química Analítica & Reacciones (x = -6.0 a +6.0, centro en 0.0)
+ * 2. Salón Oeste: Biología Celular & Microscopía Óptica (x = -18.0 a -6.0, centro en -12.0)
+ * 3. Salón Este: Taller STEAM & Física Cotidiana (x = +6.0 a +18.0, centro en +12.0)
  */
 export function buildPavilionDividers(): PavilionDividersRig {
   const group = new THREE.Group();
@@ -1078,125 +1126,308 @@ export function buildPavilionDividers(): PavilionDividersRig {
     metalness: 0.05
   });
 
-  const wallHeight = 5.2;
-  const wallY = 1.05;
+  const baseboardMat = new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    roughness: 0.75,
+    metalness: 0.1
+  });
+
+  const wallHeight = 5.3;
+  const wallY = 1.05; // desde Y = -1.55 hasta Y = 3.75
+
+  // Función auxiliar para construir un Muro Divisorio Completo de Sala Limpia (largo total 12.4m, de z = -2.4 a z = 10.0)
+  // con ventanales acústicos de observación Norte y Sur y Portal Monumental de Puertas Correderas en z = [1.6, 4.0]
+  const buildFullPartitionWall = (wallX: number): { leftDoor: THREE.Mesh; rightDoor: THREE.Mesh; radarLed: THREE.Mesh } => {
+    // --- A. TRAMO NORTE (z = -2.4 a 1.6, largo 4.0m, centro z = -0.4) CON VENTANAL DE OBSERVACIÓN ---
+    // Antepecho inferior (y = -1.55 a -0.15, alto 1.40m)
+    const northSill = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.40, 4.0), wallMat);
+    northSill.position.set(wallX, -0.85, -0.4);
+    group.add(northSill);
+
+    const northBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.16, 4.0), baseboardMat);
+    northBaseboard.position.set(wallX, -1.47, -0.4);
+    group.add(northBaseboard);
+
+    // Dintel superior (y = 2.25 a 3.75, alto 1.50m)
+    const northLintel = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.50, 4.0), wallMat);
+    northLintel.position.set(wallX, 3.00, -0.4);
+    group.add(northLintel);
+
+    // Pilares macizos Norte (z = -2.4 a -1.7, largo 0.7m; y z = 0.9 a 1.6, largo 0.7m)
+    const northPillarA = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.40, 0.7), wallMat);
+    northPillarA.position.set(wallX, 1.05, -2.05);
+    group.add(northPillarA);
+
+    const northPillarB = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.40, 0.7), wallMat);
+    northPillarB.position.set(wallX, 1.05, 1.25);
+    group.add(northPillarB);
+
+    // Ventanal acústico Norte (z = -1.7 a 0.9, ancho 2.6m, alto 2.4m)
+    const northWinFrame = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.42, 2.62), frameMat);
+    northWinFrame.position.set(wallX, 1.05, -0.4);
+    group.add(northWinFrame);
+
+    const northGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.54, 2.32), dividerGlassMat);
+    northGlass.rotation.y = Math.PI / 2;
+    northGlass.position.set(wallX, 1.05, -0.4);
+    group.add(northGlass);
+
+    const northMullion = new THREE.Mesh(new THREE.BoxGeometry(0.19, 2.36, 0.05), frameMat);
+    northMullion.position.set(wallX, 1.05, -0.4);
+    group.add(northMullion);
+
+    // --- B. PORTAL MONUMENTAL DE PASO ENTRE SALONES (z = 1.6 a 4.0, ancho libre 2.4m, centro z = 2.8) ---
+    // Dintel mural sobre el portal (y = 2.25 a 3.75, alto 1.50m)
+    const portalWallLintel = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.50, 2.4), wallMat);
+    portalWallLintel.position.set(wallX, 3.00, 2.8);
+    group.add(portalWallLintel);
+
+    // Carcasa motorizada del operador telescópico de puertas correderas
+    const portalOperator = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 3.6), frameMat);
+    portalOperator.position.set(wallX, 2.30, 2.8);
+    group.add(portalOperator);
+
+    // Jambas verticales de acero inoxidable del portal
+    const jambNorth = new THREE.Mesh(new THREE.BoxGeometry(0.20, 3.85, 0.08), frameMat);
+    jambNorth.position.set(wallX, 0.375, 1.6);
+    group.add(jambNorth);
+
+    const jambSouth = new THREE.Mesh(new THREE.BoxGeometry(0.20, 3.85, 0.08), frameMat);
+    jambSouth.position.set(wallX, 0.375, 4.0);
+    group.add(jambSouth);
+
+    // Guía de suelo empotrada
+    const portalTrack = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.008, 3.6), frameMat);
+    portalTrack.position.set(wallX, -1.546, 2.8);
+    group.add(portalTrack);
+
+    // LED del sensor radar Doppler
+    const radarLed = new THREE.Mesh(
+      new THREE.SphereGeometry(0.022, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+    );
+    radarLed.position.set(wallX, 2.38, 2.8);
+    group.add(radarLed);
+
+    // Hojas correderas dobles de vidrio templado con perfilería técnica (Alto 3.80m, desde Y = -1.55 a Y = 2.25)
+    const leafHeight = 3.80;
+    const leafY = -1.55 + leafHeight / 2; // = 0.35
+    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(0.045, leafHeight, 1.22), dividerGlassMat);
+    leftDoor.position.set(wallX, leafY, 2.20);
+    group.add(leftDoor);
+
+    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(0.045, leafHeight, 1.22), dividerGlassMat);
+    rightDoor.position.set(wallX, leafY, 3.40);
+    group.add(rightDoor);
+
+    // --- C. TRAMO SUR (z = 4.0 a 10.0, largo 6.0m, centro z = 7.0) CON VENTANAL PANORÁMICO INTERIOR ---
+    // Antepecho inferior (y = -1.55 a -0.15, alto 1.40m)
+    const southSill = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.40, 6.0), wallMat);
+    southSill.position.set(wallX, -0.85, 7.0);
+    group.add(southSill);
+
+    const southBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.16, 6.0), baseboardMat);
+    southBaseboard.position.set(wallX, -1.47, 7.0);
+    group.add(southBaseboard);
+
+    // Dintel superior (y = 2.25 a 3.75, alto 1.50m)
+    const southLintel = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.50, 6.0), wallMat);
+    southLintel.position.set(wallX, 3.00, 7.0);
+    group.add(southLintel);
+
+    // Pilares macizos Sur (z = 4.0 a 5.1, largo 1.1m; y z = 8.9 a 10.0, largo 1.1m)
+    const southPillarA = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.40, 1.1), wallMat);
+    southPillarA.position.set(wallX, 1.05, 4.55);
+    group.add(southPillarA);
+
+    const southPillarB = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.40, 1.1), wallMat);
+    southPillarB.position.set(wallX, 1.05, 9.45);
+    group.add(southPillarB);
+
+    // Ventanal acústico Sur (z = 5.1 a 8.9, ancho 3.8m, alto 2.4m)
+    const southWinFrame = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.42, 3.82), frameMat);
+    southWinFrame.position.set(wallX, 1.05, 7.0);
+    group.add(southWinFrame);
+
+    const southGlass = new THREE.Mesh(new THREE.PlaneGeometry(3.74, 2.32), dividerGlassMat);
+    southGlass.rotation.y = Math.PI / 2;
+    southGlass.position.set(wallX, 1.05, 7.0);
+    group.add(southGlass);
+
+    [6.35, 7.65].forEach((mz) => {
+      const southMullion = new THREE.Mesh(new THREE.BoxGeometry(0.19, 2.36, 0.05), frameMat);
+      southMullion.position.set(wallX, 1.05, mz);
+      group.add(southMullion);
+    });
+
+    return { leftDoor, rightDoor, radarLed };
+  };
 
   // =========================================================================
-  // 1. DIVISORIA OESTE: SEPARA QUÍMICA DE BIOLOGÍA (x = -2.25)
+  // 1. MURO DIVISORIO OESTE COMPLETO: QUÍMICA <-> BIOLOGÍA (x = -6.0)
   // =========================================================================
-  // Tramo sólido/vidrio Norte (z = -2.4 a 0.5, largo 2.9m)
-  const westNorthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.9), wallMat);
-  westNorthWall.position.set(-2.25, wallY, -0.95);
-  group.add(westNorthWall);
+  const westPartition = buildFullPartitionWall(-6.0);
+  const bioDoorLeft = westPartition.leftDoor;
+  const bioDoorRight = westPartition.rightDoor;
 
-  // Tramo sólido/vidrio Sur (z = 2.5 a 4.8, largo 2.3m)
-  const westSouthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.3), wallMat);
-  westSouthWall.position.set(-2.25, wallY, 3.65);
-  group.add(westSouthWall);
-
-  // Dintel superior sobre el portal de paso (z = 0.5 a 2.5, alto 2.6m cota libre, dintel alto 2.6m a 3.65m)
-  const westLintel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 2.0), frameMat);
-  westLintel.position.set(-2.25, 3.125, 1.5);
-  group.add(westLintel);
-
-  // Rótulos luminosos de acceso al Pabellón de Biología / Regreso a Química
-  const bioSignTexIn = createPortalSignTexture('➔ 2. BIOLOGÍA & MICROSCOPÍA', '#0f172a', '#4ade80');
+  const bioSignTexIn = createPortalSignTexture('➔ SALÓN 2: BIOLOGÍA & MICROSCOPÍA', '#0f172a', '#4ade80');
   const bioSignMeshIn = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.PlaneGeometry(2.2, 0.38),
     new THREE.MeshBasicMaterial({ map: bioSignTexIn })
   );
-  bioSignMeshIn.rotation.y = Math.PI / 2; // Cara hacia Química (+X)
-  bioSignMeshIn.position.set(-2.16, 2.45, 1.5);
+  bioSignMeshIn.rotation.y = Math.PI / 2;
+  bioSignMeshIn.position.set(-5.89, 2.62, 2.8);
   group.add(bioSignMeshIn);
 
-  const bioSignTexOut = createPortalSignTexture('➔ 1. QUÍMICA ANALÍTICA', '#0f172a', '#38bdf8');
+  const bioSignTexOut = createPortalSignTexture('➔ SALÓN 1: QUÍMICA ANALÍTICA', '#0f172a', '#38bdf8');
   const bioSignMeshOut = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.PlaneGeometry(2.2, 0.38),
     new THREE.MeshBasicMaterial({ map: bioSignTexOut })
   );
-  bioSignMeshOut.rotation.y = -Math.PI / 2; // Cara hacia Biología (-X)
-  bioSignMeshOut.position.set(-2.34, 2.45, 1.5);
+  bioSignMeshOut.rotation.y = -Math.PI / 2;
+  bioSignMeshOut.position.set(-6.11, 2.62, 2.8);
   group.add(bioSignMeshOut);
 
-  // Puertas correderas dobles de vidrio de acceso a Biología (z = 0.5 a 2.5)
-  const bioDoorLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
-  bioDoorLeft.position.set(-2.25, -0.30, 1.02);
-  group.add(bioDoorLeft);
-
-  const bioDoorRight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
-  bioDoorRight.position.set(-2.25, -0.30, 1.98);
-  group.add(bioDoorRight);
-
   // =========================================================================
-  // 2. DIVISORIA ESTE: SEPARA QUÍMICA DE STEAM (x = +2.25)
+  // 2. MURO DIVISORIO ESTE COMPLETO: QUÍMICA <-> STEAM (x = +6.0)
   // =========================================================================
-  // Tramo sólido/vidrio Norte (z = -2.4 a 0.5, largo 2.9m)
-  const eastNorthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.9), wallMat);
-  eastNorthWall.position.set(2.25, wallY, -0.95);
-  group.add(eastNorthWall);
+  const eastPartition = buildFullPartitionWall(6.0);
+  const steamDoorLeft = eastPartition.leftDoor;
+  const steamDoorRight = eastPartition.rightDoor;
 
-  // Tramo sólido/vidrio Sur (z = 2.5 a 4.8, largo 2.3m)
-  const eastSouthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.3), wallMat);
-  eastSouthWall.position.set(2.25, wallY, 3.65);
-  group.add(eastSouthWall);
-
-  // Dintel superior sobre el portal de paso
-  const eastLintel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 2.0), frameMat);
-  eastLintel.position.set(2.25, 3.125, 1.5);
-  group.add(eastLintel);
-
-  // Rótulos luminosos de acceso al Pabellón STEAM / Regreso a Química
-  const steamSignTexIn = createPortalSignTexture('➔ 3. CIENCIAS STEAM', '#0f172a', '#facc15');
+  const steamSignTexIn = createPortalSignTexture('➔ SALÓN 3: TALLER STEAM & FÍSICA', '#0f172a', '#facc15');
   const steamSignMeshIn = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.PlaneGeometry(2.2, 0.38),
     new THREE.MeshBasicMaterial({ map: steamSignTexIn })
   );
-  steamSignMeshIn.rotation.y = -Math.PI / 2; // Cara hacia Química (-X)
-  steamSignMeshIn.position.set(2.16, 2.45, 1.5);
+  steamSignMeshIn.rotation.y = -Math.PI / 2;
+  steamSignMeshIn.position.set(5.89, 2.62, 2.8);
   group.add(steamSignMeshIn);
 
-  const steamSignTexOut = createPortalSignTexture('➔ 1. QUÍMICA ANALÍTICA', '#0f172a', '#38bdf8');
+  const steamSignTexOut = createPortalSignTexture('➔ SALÓN 1: QUÍMICA ANALÍTICA', '#0f172a', '#38bdf8');
   const steamSignMeshOut = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.PlaneGeometry(2.2, 0.38),
     new THREE.MeshBasicMaterial({ map: steamSignTexOut })
   );
-  steamSignMeshOut.rotation.y = Math.PI / 2; // Cara hacia STEAM (+X)
-  steamSignMeshOut.position.set(2.34, 2.45, 1.5);
+  steamSignMeshOut.rotation.y = Math.PI / 2;
+  steamSignMeshOut.position.set(6.11, 2.62, 2.8);
   group.add(steamSignMeshOut);
 
-  // Puertas correderas dobles de vidrio de acceso a STEAM
-  const steamDoorLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
-  steamDoorLeft.position.set(2.25, -0.30, 1.02);
-  group.add(steamDoorLeft);
-
-  const steamDoorRight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
-  steamDoorRight.position.set(2.25, -0.30, 1.98);
-  group.add(steamDoorRight);
-
   // =========================================================================
-  // 3. PAVIMENTOS TÉCNICOS DIFERENCIADOS POR PABELLÓN (Cota Y = -1.547)
+  // 3. PAVIMENTOS TÉCNICOS CONTINUOS DE SALÓN COMPLETO (12.0m × 12.4m cada uno)
   // =========================================================================
-  // Pabellón de Biología: Suelo continuo antiestático azul cobalto sala limpia
+  // Salón 2 (Biología, x = -18.0 a -6.0, z = -2.4 a 10.0): Suelo antiestático azul cobalto sala limpia
   const bioFloorMat = new THREE.MeshStandardMaterial({
     color: 0x0f2744,
     roughness: 0.35,
     metalness: 0.15
   });
-  const bioFloor = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 7.2), bioFloorMat);
+  const bioFloor = new THREE.Mesh(new THREE.PlaneGeometry(11.95, 12.35), bioFloorMat);
   bioFloor.rotation.x = -Math.PI / 2;
-  bioFloor.position.set(-6.12, -1.547, 1.2);
+  bioFloor.position.set(-12.0, -1.547, 3.8);
+  bioFloor.receiveShadow = true;
   group.add(bioFloor);
 
-  // Pabellón STEAM: Suelo cálido de terrazo y madera técnica
+  // Salón 3 (STEAM, x = +6.0 a +18.0, z = -2.4 a 10.0): Suelo cálido de terrazo y madera técnica
   const steamFloorMat = new THREE.MeshStandardMaterial({
     color: 0x3d2817,
     roughness: 0.45,
     metalness: 0.08
   });
-  const steamFloor = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 7.2), steamFloorMat);
+  const steamFloor = new THREE.Mesh(new THREE.PlaneGeometry(11.95, 12.35), steamFloorMat);
   steamFloor.rotation.x = -Math.PI / 2;
-  steamFloor.position.set(6.12, -1.547, 1.2);
+  steamFloor.position.set(12.0, -1.547, 3.8);
+  steamFloor.receiveShadow = true;
   group.add(steamFloor);
+
+  // =========================================================================
+  // 4. EQUIPAMIENTO CIENTÍFICO AMBIENTAL PROPIO DE CADA SALÓN
+  // =========================================================================
+  // 4.1 Salón 1 (Química, x = +4.2, z = -1.75): Armario Ignífugo Amarillo EN 14470-1 para Inflamables/Ácidos
+  const safetyCabinetGroup = new THREE.Group();
+  safetyCabinetGroup.position.set(4.2, -1.55, -1.75);
+  const yellowFireMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.35, metalness: 0.25 });
+  const darkPlinthMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+  const cabBody = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.1, 0.65), yellowFireMat);
+  cabBody.position.set(0, 1.05, 0);
+  safetyCabinetGroup.add(cabBody);
+  const cabDoorL = new THREE.Mesh(new THREE.BoxGeometry(0.66, 1.96, 0.03), yellowFireMat);
+  cabDoorL.position.set(-0.34, 1.05, 0.33);
+  safetyCabinetGroup.add(cabDoorL);
+  const cabDoorR = new THREE.Mesh(new THREE.BoxGeometry(0.66, 1.96, 0.03), yellowFireMat);
+  cabDoorR.position.set(0.34, 1.05, 0.33);
+  safetyCabinetGroup.add(cabDoorR);
+  const cabWarningSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.32, 0.32),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_flammable'), transparent: true })
+  );
+  cabWarningSign.position.set(-0.34, 1.35, 0.35);
+  safetyCabinetGroup.add(cabWarningSign);
+  const cabCorrosiveSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.32, 0.32),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_corrosive'), transparent: true })
+  );
+  cabCorrosiveSign.position.set(0.34, 1.35, 0.35);
+  safetyCabinetGroup.add(cabCorrosiveSign);
+  group.add(safetyCabinetGroup);
+
+  // 4.2 Salón 2 (Biología, x = -15.8, z = -1.65): Cabina de Bioseguridad BSL-2 & Incubadora CO2 (37.0°C)
+  const bioBslCabinet = new THREE.Group();
+  bioBslCabinet.position.set(-15.8, -1.55, -1.65);
+  const cleanWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.35, metalness: 0.15 });
+  const bslBase = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.85, 0.95), darkPlinthMat);
+  bslBase.position.set(0, 0.425, 0);
+  bioBslCabinet.add(bslBase);
+  const bslTop = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.65, 0.95), cleanWhiteMat);
+  bslTop.position.set(0, 1.675, 0);
+  bioBslCabinet.add(bslTop);
+  const bslGlass = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.85, 0.02), dividerGlassMat);
+  bslGlass.position.set(0, 1.45, 0.48);
+  bioBslCabinet.add(bslGlass);
+  const bslSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 0.25),
+    new THREE.MeshBasicMaterial({ map: createPortalSignTexture('CABINA BIOSEGURIDAD BSL-2 · HEPA', '#064e3b', '#4ade80') })
+  );
+  bslSign.position.set(0, 2.22, 0.485);
+  bioBslCabinet.add(bslSign);
+  group.add(bioBslCabinet);
+
+  // Incubadora de Cultivos Celulares CO2 en Salón de Biología (x = -8.2, z = -1.75)
+  const bioIncubator = new THREE.Group();
+  bioIncubator.position.set(-8.2, -1.55, -1.75);
+  const incBody = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.0, 0.75), cleanWhiteMat);
+  incBody.position.set(0, 1.0, 0);
+  bioIncubator.add(incBody);
+  const incWindow = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.35, 0.03), dividerGlassMat);
+  incWindow.position.set(0, 0.95, 0.38);
+  bioIncubator.add(incWindow);
+  const incDisplay = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.22),
+    new THREE.MeshBasicMaterial({ map: createPortalSignTexture('INCUBADORA CO₂ · 37.0°C · 5.0%', '#0f172a', '#38bdf8') })
+  );
+  incDisplay.position.set(0, 1.82, 0.385);
+  bioIncubator.add(incDisplay);
+  group.add(bioIncubator);
+
+  // 4.3 Salón 3 (STEAM, x = +8.2, z = -1.75): Banco Auxiliar de Metrología Física & Termodinámica
+  const steamAuxBench = new THREE.Group();
+  steamAuxBench.position.set(8.2, -1.55, -1.75);
+  const auxTable = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.92, 0.85), cleanWhiteMat);
+  auxTable.position.set(0, 0.46, 0);
+  steamAuxBench.add(auxTable);
+  const auxTop = new THREE.Mesh(
+    new THREE.BoxGeometry(2.08, 0.05, 0.90),
+    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3 })
+  );
+  auxTop.position.set(0, 0.945, 0);
+  steamAuxBench.add(auxTop);
+  const auxSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.6, 0.24),
+    new THREE.MeshBasicMaterial({ map: createPortalSignTexture('METROLOGÍA FÍSICA & TERMODINÁMICA', '#451a03', '#facc15') })
+  );
+  auxSign.position.set(0, 1.35, -0.40);
+  steamAuxBench.add(auxSign);
+  group.add(steamAuxBench);
 
   const rig: PavilionDividersRig = {
     group,
@@ -1207,23 +1438,29 @@ export function buildPavilionDividers(): PavilionDividersRig {
     bioDoorOpen: 0,
     steamDoorOpen: 0,
     update(playerPos: THREE.Vector3, dt: number) {
-      // 1. Puertas de Biología (Portal en x = -2.25, z = 1.5)
-      const dxBio = playerPos.x - (-2.25);
-      const dzBio = playerPos.z - 1.5;
+      // 1. Puertas Automáticas del Salón de Biología (Portal en x = -6.0, z = 2.8)
+      const dxBio = playerPos.x - (-6.0);
+      const dzBio = playerPos.z - 2.8;
       const distBio = Math.sqrt(dxBio * dxBio + dzBio * dzBio);
-      const targetBio = distBio < 2.2 ? 1.0 : 0.0;
+      const targetBio = distBio < 2.8 ? 1.0 : 0.0;
       this.bioDoorOpen = THREE.MathUtils.damp(this.bioDoorOpen, targetBio, 4.0, dt);
-      this.bioDoorLeft.position.z = THREE.MathUtils.lerp(1.02, 0.58, this.bioDoorOpen);
-      this.bioDoorRight.position.z = THREE.MathUtils.lerp(1.98, 2.42, this.bioDoorOpen);
+      this.bioDoorLeft.position.z = THREE.MathUtils.lerp(2.20, 1.05, this.bioDoorOpen);
+      this.bioDoorRight.position.z = THREE.MathUtils.lerp(3.40, 4.55, this.bioDoorOpen);
+      (westPartition.radarLed.material as THREE.MeshBasicMaterial).color.setHex(
+        this.bioDoorOpen > 0.05 ? 0x22c55e : 0x38bdf8
+      );
 
-      // 2. Puertas de STEAM (Portal en x = +2.25, z = 1.5)
-      const dxSteam = playerPos.x - 2.25;
-      const dzSteam = playerPos.z - 1.5;
+      // 2. Puertas Automáticas del Salón STEAM (Portal en x = +6.0, z = 2.8)
+      const dxSteam = playerPos.x - 6.0;
+      const dzSteam = playerPos.z - 2.8;
       const distSteam = Math.sqrt(dxSteam * dxSteam + dzSteam * dzSteam);
-      const targetSteam = distSteam < 2.2 ? 1.0 : 0.0;
+      const targetSteam = distSteam < 2.8 ? 1.0 : 0.0;
       this.steamDoorOpen = THREE.MathUtils.damp(this.steamDoorOpen, targetSteam, 4.0, dt);
-      this.steamDoorLeft.position.z = THREE.MathUtils.lerp(1.02, 0.58, this.steamDoorOpen);
-      this.steamDoorRight.position.z = THREE.MathUtils.lerp(1.98, 2.42, this.steamDoorOpen);
+      this.steamDoorLeft.position.z = THREE.MathUtils.lerp(2.20, 1.05, this.steamDoorOpen);
+      this.steamDoorRight.position.z = THREE.MathUtils.lerp(3.40, 4.55, this.steamDoorOpen);
+      (eastPartition.radarLed.material as THREE.MeshBasicMaterial).color.setHex(
+        this.steamDoorOpen > 0.05 ? 0x22c55e : 0x38bdf8
+      );
     }
   };
 

@@ -91,8 +91,10 @@ export class MultiplayerAvatarsRig {
 
   private buildAvatarMesh(peer: PeerAvatarState): Avatar3DMeshRig {
     const avatarGroup = new THREE.Group();
-    avatarGroup.position.set(peer.position.x, peer.position.y - 1.55, peer.position.z);
+    // Escala antropométrica real de laboratorio: suelo Y = -1.55, encimera Y = 0.0, altura de ojos Y = +1.62
+    avatarGroup.position.set(peer.position.x, -1.55, peer.position.z);
     avatarGroup.rotation.y = peer.rotationY;
+    avatarGroup.scale.setScalar(1.85);
 
     // 1. Torso y Bata Blanca (Bata de laboratorio UNE-EN 340)
     const coatMat = new THREE.MeshStandardMaterial({
@@ -249,16 +251,16 @@ export class MultiplayerAvatarsRig {
         rig.leftArm.rotation.x = -swing * 0.7;
         rig.rightArm.rotation.x = swing * 0.7;
       } else {
-        // En reposo: sutil respiración y brazos relajados
-        const breathe = Math.sin(peer.animTimer * 2.2) * 0.05;
+        // En postura de trabajo en mesa: sutil respiración y brazos semi-extendidos manipulando instrumental
+        const breathe = Math.sin(peer.animTimer * 2.2) * 0.06;
         rig.leftLeg.rotation.x = 0;
         rig.rightLeg.rotation.x = 0;
-        rig.leftArm.rotation.x = THREE.MathUtils.damp(rig.leftArm.rotation.x, breathe, 4, dt);
-        rig.rightArm.rotation.x = THREE.MathUtils.damp(rig.rightArm.rotation.x, -breathe, 4, dt);
+        rig.leftArm.rotation.x = THREE.MathUtils.damp(rig.leftArm.rotation.x, -0.38 + breathe, 4, dt);
+        rig.rightArm.rotation.x = THREE.MathUtils.damp(rig.rightArm.rotation.x, -0.52 - breathe, 4, dt);
       }
 
-      // 3. Orientar la etiqueta 3D siempre hacia la cámara (Billboard)
-      rig.tagMesh.quaternion.copy(camera.quaternion);
+      // 3. Orientar la etiqueta 3D siempre hacia la cámara en espacio mundial (Billboard sin inversión por rotación del padre)
+      rig.tagMesh.lookAt(camera.position);
 
       // 4. Actualizar indumentaria EPP si cambió
       if (

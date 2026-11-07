@@ -5,7 +5,9 @@ import {
   createLabFloorTexture,
   createLabCeilingTexture,
   buildLaboratoryCeilingAndLighting,
-  buildLaboratoryPerimeterWalls
+  buildLaboratoryPerimeterWalls,
+  buildPavilionDividers,
+  buildFumeHoodWorkstation
 } from '$lib/lab3d/lab_furniture';
 
 describe('Mobiliario Profesional de Laboratorio (lab_furniture.ts)', () => {
@@ -125,5 +127,34 @@ describe('Mobiliario Profesional de Laboratorio (lab_furniture.ts)', () => {
     expect(bench).toBeInstanceOf(THREE.Group);
     expect(bench.name).toBe('LabBench_steam');
     expect(bench.position.x).toBeCloseTo(4.3);
+  });
+
+  it('construye los 3 salones independientes con muros divisorios completos en x = ±6.0 y puertas automáticas', () => {
+    const dividers = buildPavilionDividers();
+    expect(dividers.group).toBeInstanceOf(THREE.Group);
+    expect(dividers.group.name).toBe('PavilionDividersRig');
+    expect(dividers.group.children.length).toBeGreaterThan(20);
+
+    // Al acercarse al portal oeste (x = -6.0, z = 2.8)
+    const nearWestDoor = new THREE.Vector3(-5.8, 1.68, 2.8);
+    for (let i = 0; i < 20; i++) {
+      dividers.update(nearWestDoor, 0.1);
+    }
+    expect(dividers.bioDoorOpen).toBeGreaterThan(0.8);
+    expect(dividers.steamDoorOpen).toBeLessThan(0.1);
+
+    // Al acercarse al portal este (x = +6.0, z = 2.8)
+    const nearEastDoor = new THREE.Vector3(5.8, 1.68, 2.8);
+    for (let i = 0; i < 25; i++) {
+      dividers.update(nearEastDoor, 0.1);
+    }
+    expect(dividers.steamDoorOpen).toBeGreaterThan(0.8);
+    expect(dividers.bioDoorOpen).toBeLessThan(0.1);
+
+    // Campana extractora de gases interactiva en el Salón de Química
+    const hood = buildFumeHoodWorkstation();
+    expect(hood.group.position.x).toBeCloseTo(-4.2);
+    hood.update(true, 0.2);
+    expect(hood.currentOpen).toBeGreaterThan(0.1);
   });
 });

@@ -2042,20 +2042,20 @@ export function buildSafetyEnvironmentSignage(): THREE.Group {
   ghsToxic.position.set(1.80, 2.74, -2.296);
   signageGroup.add(ghsToxic);
 
-  // 2. Pictograma de Riesgo Biológico en la esquina superior izquierda del pizarrón de Biología
+  // 2. Pictograma de Riesgo Biológico en la esquina superior izquierda del pizarrón del Salón de Biología (x = -12.0)
   const biohazardSign = new THREE.Mesh(
     new THREE.PlaneGeometry(0.38, 0.38),
     new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_biohazard'), transparent: true, depthWrite: false })
   );
-  biohazardSign.position.set(-5.50, 2.74, -2.296);
+  biohazardSign.position.set(-13.80, 2.74, -2.296);
   signageGroup.add(biohazardSign);
 
-  // 3. Pictograma Inflamable en la esquina superior derecha del pizarrón de STEAM
+  // 3. Pictograma Inflamable en la esquina superior derecha del pizarrón del Salón STEAM (x = +12.0)
   const flammableSign = new THREE.Mesh(
     new THREE.PlaneGeometry(0.36, 0.36),
     new THREE.MeshBasicMaterial({ map: createSafetyTexture('ghs_flammable'), transparent: true, depthWrite: false })
   );
-  flammableSign.position.set(5.50, 2.74, -2.296);
+  flammableSign.position.set(13.80, 2.74, -2.296);
   signageGroup.add(flammableSign);
 
   // 4. Salida de Emergencia superior (ISO 7010) sobre las puertas automáticas principales (Pared Sur Z = 9.92)
@@ -2075,10 +2075,10 @@ export function buildSafetyEnvironmentSignage(): THREE.Group {
   doorFrame.position.set(0, 2.50, 9.94);
   signageGroup.add(doorFrame);
 
-  // 5. Franjas de suelo perimetrales amarillas y negras
+  // 5. Franjas de suelo perimetrales amarillas y negras en cada uno de los 3 salones
   const stripeTex = createSafetyTexture('safety_stripes');
 
-  // Franja perímetro Mesa Central Química (4.4m x 2.6m ampliada) en el suelo
+  // Franja perímetro Mesa Central Química (4.4m x 2.6m en Salón 1: x = 0)
   const chemBorder = new THREE.Mesh(
     new THREE.RingGeometry(2.3, 2.45, 4),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
@@ -2088,24 +2088,24 @@ export function buildSafetyEnvironmentSignage(): THREE.Group {
   chemBorder.position.set(0, -1.545, 0.15);
   signageGroup.add(chemBorder);
 
-  // Franja perímetro Mesa Biología (3.5m x 2.4m) en el suelo
+  // Franja perímetro Mesa Biología (4.0m x 2.5m en Salón 2: x = -12.0)
   const bioBorder = new THREE.Mesh(
-    new THREE.RingGeometry(1.85, 2.0, 4),
+    new THREE.RingGeometry(2.05, 2.2, 4),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
   );
   bioBorder.rotation.x = -Math.PI / 2;
   bioBorder.rotation.z = Math.PI / 4;
-  bioBorder.position.set(-4.3, -1.545, 0.15);
+  bioBorder.position.set(-12.0, -1.545, 0.15);
   signageGroup.add(bioBorder);
 
-  // Franja perímetro Mesa STEAM (3.5m x 2.4m) en el suelo
+  // Franja perímetro Mesa STEAM (4.0m x 2.5m en Salón 3: x = +12.0)
   const steamBorder = new THREE.Mesh(
-    new THREE.RingGeometry(1.85, 2.0, 4),
+    new THREE.RingGeometry(2.05, 2.2, 4),
     new THREE.MeshBasicMaterial({ map: stripeTex, side: THREE.DoubleSide })
   );
   steamBorder.rotation.x = -Math.PI / 2;
   steamBorder.rotation.z = Math.PI / 4;
-  steamBorder.position.set(4.3, -1.545, 0.15);
+  steamBorder.position.set(12.0, -1.545, 0.15);
   signageGroup.add(steamBorder);
 
   return signageGroup;

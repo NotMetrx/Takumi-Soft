@@ -82,8 +82,8 @@ class MultiplayerStore {
         name: 'María López',
         role: 'estudiante',
         station: 'quimica',
-        position: { x: -1.4, y: 0, z: 1.8 },
-        targetPosition: { x: -1.4, y: 0, z: 1.8 },
+        position: { x: -1.5, y: 0, z: 1.85 },
+        targetPosition: { x: -1.5, y: 0, z: 1.85 },
         rotationY: Math.PI,
         targetRotationY: Math.PI,
         activityLabel: '🧪 Titulando con Bureta',
@@ -98,10 +98,10 @@ class MultiplayerStore {
         name: 'Carlos Méndez',
         role: 'estudiante',
         station: 'biologia',
-        position: { x: -5.5, y: 0, z: 1.8 },
-        targetPosition: { x: -5.5, y: 0, z: 1.8 },
-        rotationY: Math.PI * 0.85,
-        targetRotationY: Math.PI * 0.85,
+        position: { x: -13.1, y: 0, z: 1.85 },
+        targetPosition: { x: -13.1, y: 0, z: 1.85 },
+        rotationY: Math.PI * 0.92,
+        targetRotationY: Math.PI * 0.92,
         activityLabel: '🔬 Muestra en Microscopio 40x',
         safetyCoat: true,
         safetyGoggles: true,
@@ -114,10 +114,10 @@ class MultiplayerStore {
         name: 'Sofía Ramírez',
         role: 'estudiante',
         station: 'steam',
-        position: { x: 5.5, y: 0, z: 1.8 },
-        targetPosition: { x: 5.5, y: 0, z: 1.8 },
-        rotationY: -Math.PI * 0.85,
-        targetRotationY: -Math.PI * 0.85,
+        position: { x: 10.9, y: 0, z: 1.85 },
+        targetPosition: { x: 10.9, y: 0, z: 1.85 },
+        rotationY: -Math.PI * 0.92,
+        targetRotationY: -Math.PI * 0.92,
         activityLabel: '📚 Leyendo Manual STEAM',
         safetyCoat: true,
         safetyGoggles: false,
@@ -139,19 +139,19 @@ class MultiplayerStore {
   private updateSimulatedBehaviors() {
     this.peers.forEach((peer) => {
       if (!peer.isSimulated) return;
-      // Pequeño desplazamiento sutil en su estación para dar sensación viva
+      // Pequeño desplazamiento sutil en su salón para dar sensación viva
       const offset = (Math.random() - 0.5) * 0.35;
       if (peer.id === 'peer_maria') {
-        peer.targetPosition.x = -1.4 + offset;
+        peer.targetPosition.x = -1.5 + offset;
         peer.activityLabel =
           labStore.beaker.acidVolumeMl + labStore.beaker.baseVolumeMl > 5
             ? '🧪 Análisis de pH en tiempo real'
             : '🧪 Titulación volumétrica';
       } else if (peer.id === 'peer_carlos') {
-        peer.targetPosition.x = -5.5 + offset;
+        peer.targetPosition.x = -13.1 + offset;
         peer.activityLabel = '🔬 Ajuste fino tornillo micrométrico';
       } else if (peer.id === 'peer_sofia') {
-        peer.targetPosition.x = 5.5 + offset;
+        peer.targetPosition.x = 10.9 + offset;
         peer.activityLabel = '📚 Ensayo de Convección y Botijo';
       }
     });
