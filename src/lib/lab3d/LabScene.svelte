@@ -25,6 +25,14 @@
     type FumeHoodRig,
     type PavilionDividersRig
   } from './lab_furniture';
+  import { disposeOwnedResources } from './render_resources';
+  import { LAB_INFRA_URL, LAB_PROPS_URL, extractLabPropColliders, prepareLabPropsAsset } from './lab_props';
+  import { ASSISTANT_ROBOT_URL, AssistantRobot } from './assistant_robot';
+  import { adviceForDanger, adviceForSafetyAlert, adviceForWarnings, speak, type Advice } from './assistant_coach';
+  import { APPROACH, JobQueue, type Step } from './assistant_jobs';
+  import { assistantStore } from './assistant_store.svelte';
+  import AssistantChat from './AssistantChat.svelte';
+  import type { FirstPersonColliderBox } from './first_person_controller';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
     labStore,
@@ -42,6 +50,7 @@
   let { resetViewRevision = 0 }: { resetViewRevision?: number } = $props();
   let container: HTMLDivElement;
   let renderer: THREE.WebGLRenderer | null = null;
+  let sceneDisposed = false;
   let scene: THREE.Scene;
   let camera: THREE.PerspectiveCamera;
   let controls: OrbitControls;
@@ -105,6 +114,11 @@
   let safetyInfrastructureGroup: THREE.Group | null = null;
   let fpController: FirstPersonController | null = null;
   let arHandRig: ARHandMeshRig | null = null;
+  let assistantRobot: AssistantRobot | null = null;
+  let assistantJobs: JobQueue | null = null;
+  const assistantGrabbables = new Map<string, THREE.Object3D>();
+  let assistantLastActivity = typeof performance === 'undefined' ? 0 : performance.now();
+  const markAssistantActivity = () => (assistantLastActivity = performance.now());
   let safetyFx: LabSafetyFXSystem | null = null;
   let doubleDoorsRig: DoubleDoorsRig | null = null;
   let fumeHoodRig: FumeHoodRig | null = null;
@@ -1058,6 +1072,11 @@
    * Convierte objetos de suelo en cajas AABB (planta XZ) para el controlador de primera persona.
    * Descarta decoraciones planas (carteles, marcas de suelo) y elementos enormes (muros/suelo).
    */
+  function addSceneColliders(boxes: FirstPersonColliderBox[]) {
+    if (!fpController) return;
+    fpController.setSceneColliders([...fpController.colliders.filter((c) => c.name.startsWith('scene:')), ...boxes]);
+  }
+
   function registerFirstPersonSceneColliders(objects: THREE.Object3D[]) {
     if (!fpController) return;
     const boxes: { minX: number; maxX: number; minZ: number; maxZ: number; name: string }[] = [];
@@ -1166,6 +1185,61 @@
     camera.updateProjectionMatrix();
   }
   $effect(() => fitCamera(labStore.isCameraActive && !labStore.isMicroscopeActive));
+
+  // Asistente: destinos con nombre para la cola de trabajos (coordenadas de la nave; y = altura de la raíz del robot).
+  const ASSISTANT_STATIONS: Record<string, { pos: [number, number, number]; look: [number, number, number] }> = {
+    quimica: { pos: [2.6, -0.6, 2.0], look: [0, 0, 0] },
+    biologia: { pos: [-2.0, -0.6, 2.0], look: [-4.3, 0, 0.15] },
+    steam: { pos: [6.8, -0.6, 2.0], look: [4.3, 0, 0.15] },
+    sas: { pos: [0, -0.6, 8.8], look: [0, 0, 10] },
+    vestidor: { pos: [0.8, -0.6, 11.4], look: [3.4, 0, 12.2] }
+  };
+  function resolveAssistantTarget(to: string) {
+    if (to === 'alumno') {
+      // A la derecha de la vista del alumno, con la cabeza un poco bajo sus ojos
+      const forward = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
+      const right = new THREE.Vector3(-forward.z, 0, forward.x);
+      const pos = camera.position.clone().addScaledVector(forward, 2.6).addScaledVector(right, 1.5);
+      pos.y = Math.max(-1.55, camera.position.y - 2.2);
+      return { pos, lookAt: camera.position.clone() };
+    }
+    if (to.startsWith('objeto:')) {
+      const obj = assistantGrabbables.get(to.slice('objeto:'.length));
+      if (!obj) return null;
+      const at = obj.getWorldPosition(new THREE.Vector3());
+      return { pos: at.clone().add(APPROACH), lookAt: at };
+    }
+    const station = ASSISTANT_STATIONS[to];
+    return station ? { pos: new THREE.Vector3(...station.pos), lookAt: new THREE.Vector3(...station.look) } : null;
+  }
+  function runAssistantJob(steps: Step[]) {
+    if (assistantJobs) assistantJobs.run(steps);
+    else for (const s of steps) if (s.type === 'hablar') speak(s.text); // robot aún sin cargar: al menos habla
+  }
+
+  // Alertas y recomendaciones automáticas: habla mientras vuela junto al alumno y gesticula al llegar.
+  const assistantWarningsSeen = new Set<string>();
+  function assist(advice: Advice | null) {
+    if (!advice) return;
+    assistantStore.push('robot', advice.text);
+    runAssistantJob([
+      { type: 'hablar', text: advice.text },
+      { type: 'volar', to: 'alumno' },
+      { type: 'gesto', clip: advice.gesture },
+      { type: 'esperar', s: Math.max(2, advice.text.length / 14 - 2) }, // ~14 caracteres/s de voz
+      { type: 'volver' }
+    ]);
+  }
+  $effect(() => {
+    const request = assistantStore.request;
+    if (request) runAssistantJob(request.steps);
+  });
+  $effect(() => {
+    const pending = explorationStore.pendingSafety;
+    if (pending) assist(adviceForDanger(pending.hazards));
+  });
+  $effect(() => assist(adviceForWarnings(explorationStore.result.hazards, assistantWarningsSeen)));
+  $effect(() => assist(adviceForSafetyAlert(labStore.safetyAlert)));
   $effect(() => {
     const revision = resetViewRevision;
     if (revision > 0 && camera && controls) homeCamera();
@@ -2520,6 +2594,10 @@
 
   function loadMicroscopeModel(group: THREE.Group, proxy: THREE.Object3D) {
     new GLTFLoader().load('/models/instruments/microscope.glb', ({ scene: asset }) => {
+      if (sceneDisposed) {
+        disposeOwnedResources(asset);
+        return;
+      }
       // GLTFLoader preserves Blender's original names in userData after sanitizing node names.
       const modelObjects = new Map<string, THREE.Object3D>();
       asset.traverse((object) => modelObjects.set(object.userData.name ?? object.name, object));
@@ -2645,14 +2723,17 @@
         }
 
         group.scale.setScalar(3);
-        group.traverse((object) => {
-          if (object instanceof THREE.Mesh && movingParts.getObjectById(object.id)) {
+        movingParts.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
             object.castShadow = true;
             object.receiveShadow = true;
-          } else if (object !== proxy && object instanceof THREE.Mesh) {
-            object.visible = false;
           }
         });
+        const discarded = new THREE.Group();
+        for (const child of [...group.children]) {
+          if (child !== proxy && child !== movingParts) discarded.add(child);
+        }
+        disposeOwnedResources(discarded);
         proxy.scale.set(0.4, 0.31, 0.45);
         proxy.position.y = 0.205;
       } catch (error) {
@@ -3879,6 +3960,8 @@
       }
     }
     window.addEventListener('keydown', onGlobalShortcuts);
+    window.addEventListener('pointerdown', markAssistantActivity);
+    window.addEventListener('keydown', markAssistantActivity);
 
     // Iluminación diáfana de laboratorio profesional (Luz blanca pura de alto rendimiento)
     ambientLight = new THREE.HemisphereLight(0xffffff, 0xc8dce5, 1.65);
@@ -4050,6 +4133,12 @@
     interactiveToolGroups.push(dropperBottle);
     scene.add(dropperBottle);
 
+    // Objetos que el asistente puede traer al alumno con su anillo de agarre
+    assistantGrabbables.set('termometro', digitalThermo);
+    assistantGrabbables.set('gotero', dropperBottle);
+    assistantGrabbables.set('tiras', phStripsBox);
+    assistantGrabbables.set('phmetro', phMeter);
+
     const microscope = buildSchoolMicroscope();
     interactiveToolGroups.push(microscope);
     scene.add(microscope);
@@ -4121,6 +4210,72 @@
     const safetyInteractiveItems: { mesh: THREE.Object3D; hit: SafetyInteractiveHit }[] = [];
     safetyInfrastructureGroup = buildCompleteLabSafetyInfrastructure(safetyInteractiveItems);
     scene.add(safetyInfrastructureGroup);
+
+    // Mobiliario perimetral modelado en Blender: campana, cabina de bioseguridad, armarios de seguridad,
+    // equipos de frío, mesada instrumental, perchero de batas, dispensadores de EPP, lavamanos y residuos.
+    new GLTFLoader().load(
+      LAB_PROPS_URL,
+      ({ scene: asset }) => {
+        if (sceneDisposed) {
+          disposeOwnedResources(asset);
+          return;
+        }
+        asset.name = 'LabPerimeterProps';
+        const colliders = extractLabPropColliders(asset);
+        prepareLabPropsAsset(asset, { basicGraphics, shadows: !lowTier && !basicGraphics });
+        scene.add(asset);
+        addSceneColliders(colliders);
+      },
+      undefined,
+      (error) => console.warn('No se pudo cargar el mobiliario del laboratorio', error)
+    );
+
+    // Infraestructura de la nave modelada en Blender: paneles, ventanas altas, conductos, bandeja portacables,
+    // luminarias lineales y señalización de evacuación. Piezas finas sobre muros y techo: sin sombras propias.
+    new GLTFLoader().load(
+      LAB_INFRA_URL,
+      ({ scene: asset }) => {
+        if (sceneDisposed) {
+          disposeOwnedResources(asset);
+          return;
+        }
+        asset.name = 'LabBuildingInfrastructure';
+        prepareLabPropsAsset(asset, { basicGraphics, shadows: false });
+        scene.add(asset);
+      },
+      undefined,
+      (error) => console.warn('No se pudo cargar la infraestructura del laboratorio', error)
+    );
+
+    // Asistente robot (avatar del futuro asistente IA): flota junto a Biología mirando hacia la zona de aparición.
+    new GLTFLoader().load(
+      ASSISTANT_ROBOT_URL,
+      ({ scene: asset, animations }) => {
+        if (sceneDisposed) {
+          disposeOwnedResources(asset);
+          return;
+        }
+        asset.name = 'AssistantRobot';
+        asset.position.set(-7.0, -1.55, 2.3);
+        asset.rotation.y = Math.atan2(3.5, -0.55);
+        asset.scale.setScalar(1.72); // misma escala que el mobiliario de piso
+        asset.traverse((object) => {
+          if ((object as THREE.Mesh).isMesh) object.castShadow = !lowTier && !basicGraphics;
+        });
+        scene.add(asset);
+        assistantRobot = new AssistantRobot(asset, animations);
+        assistantJobs = new JobQueue({
+          robot: assistantRobot,
+          resolve: resolveAssistantTarget,
+          object: (id) => assistantGrabbables.get(id) ?? null,
+          say: speak
+        });
+        assistantRobot.play('saludar');
+        addSceneColliders([{ minX: -7.5, maxX: -6.5, minZ: 1.8, maxZ: 2.8, name: 'scene:assistant_robot' }]);
+      },
+      undefined,
+      (error) => console.warn('No se pudo cargar el asistente robot', error)
+    );
 
     // Manos 3D Articuladas con MediaPipe y Filtro 1-Euro (Opción 1)
     arHandRig = new ARHandMeshRig();
@@ -4514,15 +4669,32 @@
     const onMotionChange = (ev: MediaQueryListEvent) => (isReducedMotion = ev.matches);
     mediaQuery.addEventListener('change', onMotionChange);
 
-    // Monitor Adaptativo de Rendimiento (Garantiza 60 FPS en PCs de bajos recursos / Chromebooks)
+    // Ajuste adaptativo de carga gráfica según el intervalo entre cuadros.
     let smoothedFps = 60;
     let lowFpsStreak = 0;
     let adaptiveOptimizationActive = lowTier;
+    const unitScale = new THREE.Vector3(1, 1, 1);
+    const scaleTarget = new THREE.Vector3();
+    const flaskTarget = new THREE.Vector3();
+    const nozzle = new THREE.Vector3();
+    const gestureDragPlane = new THREE.Plane();
 
     function animate(timestamp?: number) {
       timer.update(timestamp);
       const dt = Math.min(timer.getDelta(), 0.1);
       const elapsed = timer.getElapsed();
+      assistantJobs?.update(dt);
+      // Ayuda automática: tras 75 s sin actividad da la pista del paso actual o hace una ronda por una estación
+      if (assistantJobs && assistantStore.autoHelp && !assistantJobs.busy && performance.now() - assistantLastActivity > 75_000) {
+        assistantLastActivity = performance.now();
+        const hint = explorationStore.recommendation;
+        if (hint) assist({ kind: 'recomendacion', text: `${hint.title}. ${hint.detail}`, gesture: 'asentir' });
+        else {
+          const stations = ['quimica', 'biologia', 'steam'];
+          const to = stations[Math.floor(Math.random() * stations.length)];
+          assistantJobs.run([{ type: 'volar', to }, { type: 'esperar', s: 4 }, { type: 'volver' }]);
+        }
+      }
 
       // Escalado dinámico de carga gráfica si la tasa de cuadros desciende
       if (dt > 0 && dt < 0.2) {
@@ -4637,7 +4809,7 @@
         dropperAnimTimer -= dt;
         dropperBulbMesh.scale.set(0.75, 0.85, 0.75);
       } else if (dropperBulbMesh) {
-        dropperBulbMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 8);
+        dropperBulbMesh.scale.lerp(unitScale, dt * 8);
       }
 
       // Animación de la tira de papel pH
@@ -4662,7 +4834,7 @@
         const cid = grp.userData?.cabinetComponentId;
         const isHot = cid === hoveredCabinetId || cid === labStore.selectedCabinetComponentId;
         const targetScale = isHot ? 1.16 : 1.0;
-        grp.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), dt * 10);
+        grp.scale.lerp(scaleTarget.setScalar(targetScale), dt * 10);
       });
 
       // Animación 3D en vivo de los Efectos STEAM en el Vaso Central (Prolongo & Pinto)
@@ -4774,7 +4946,8 @@
         pointer.set(hand.x * 2 - 1, 1 - hand.y * 2);
         raycaster.setFromCamera(pointer, camera);
         if (!gestureFlaskId) {
-          scene.updateMatrixWorld(true);
+          flasks.hcl.group.updateWorldMatrix(true, true);
+          flasks.naoh.group.updateWorldMatrix(true, true);
           const hits = raycaster.intersectObjects([flasks.hcl.group, flasks.naoh.group], true);
           let object: THREE.Object3D | null = hits[0]?.object ?? null;
           while (object && !object.userData.flaskId) object = object.parent;
@@ -4794,7 +4967,7 @@
         }
         if (!hand.pinched) releaseGesture();
         if (gestureFlaskId) {
-          const plane = gesturePlane.clone();
+          const plane = gestureDragPlane.copy(gesturePlane);
           plane.constant -= handDepthOffset(hand.palmSize, grabbedPalmSize);
           if (raycaster.ray.intersectPlane(plane, intersectPt)) {
             const rig = flasks[gestureFlaskId];
@@ -4869,7 +5042,7 @@
         const returning = !heldByHand && rig.targetPos.y < 0.5;
         rig.group.rotation.z = THREE.MathUtils.lerp(rig.group.rotation.z,
           !heldByHand && !returning && rig.group.position.y < 1.4 ? 0 : rig.targetRotZ, smoothing);
-        const safeTarget = rig.targetPos.clone();
+        const safeTarget = flaskTarget.copy(rig.targetPos);
         if (returning && Math.abs(rig.group.rotation.z) > 0.15) safeTarget.y = 1.65;
         if (returning && Math.hypot(rig.group.position.x, rig.group.position.z) < 0.76 && rig.group.position.y > 0.9) {
           safeTarget.y = Math.max(safeTarget.y, rig.group.position.y, 1.04);
@@ -4899,11 +5072,10 @@
         rig.ringMesh.scale.setScalar(isSel ? 1.08 : 1.0);
       });
 
-      const nozzle = flowingRig
-        ? new THREE.Vector3(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
-            .applyEuler(flowingRig.group.rotation)
-            .add(flowingRig.group.position)
-        : new THREE.Vector3();
+      if (flowingRig) {
+        nozzle.set(-Math.sign(flowingRig.group.rotation.z) * 0.09, 0.81, 0)
+          .applyEuler(flowingRig.group.rotation).add(flowingRig.group.position);
+      } else nozzle.set(0, 0, 0);
       if (flowingRig && streamHitsBeaker(nozzle)) {
         requestedFlow = pourRate(flowingRig.group.rotation.z, flowingRig.fluidHeight) * dt;
       }
@@ -5223,6 +5395,8 @@
       window.removeEventListener('blur', cancelInteraction);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('keydown', onGlobalShortcuts);
+      window.removeEventListener('pointerdown', markAssistantActivity);
+      window.removeEventListener('keydown', markAssistantActivity);
       fpController?.detach();
       labStore.activePourAnim = null;
       resizeObserver.disconnect();
@@ -5230,28 +5404,17 @@
   });
 
   onDestroy(() => {
+    sceneDisposed = true;
+    renderer?.setAnimationLoop(null);
     timer?.dispose();
     controls?.dispose();
+    assistantJobs?.cancel();
+    assistantRobot?.dispose();
     if (scene) {
-      const geometries = new Set<THREE.BufferGeometry>();
-      const materials = new Set<THREE.Material>();
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        if (mesh.geometry) geometries.add(mesh.geometry);
-        if (mesh.material)
-          (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) =>
-            materials.add(m)
-          );
-      });
-      geometries.forEach((g) => g.dispose());
-      materials.forEach((m) => {
-        for (const v of Object.values(m)) if (v instanceof THREE.Texture) v.dispose();
-        m.dispose();
-      });
+      disposeOwnedResources(scene);
       if (scene.environment instanceof THREE.Texture) scene.environment.dispose();
     }
     if (renderer) {
-      renderer.setAnimationLoop(null);
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
@@ -5475,4 +5638,5 @@
       </div>
     </div>
   {/if}
+  <AssistantChat />
 </div>

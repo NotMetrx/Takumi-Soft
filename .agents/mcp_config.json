@@ -7,6 +7,14 @@
         "--root",
         "/home/metrx/Agentes/Mente_general"
       ]
+    },
+    "blender": {
+      "command": "/home/metrx/.local/bin/blender-mcp",
+      "args": [],
+      "env": {
+        "BLENDER_MCP_HOST": "localhost",
+        "BLENDER_MCP_PORT": "9876"
+      }
     }
   }
 }
