@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { extractLabPropColliders, prepareLabPropsAsset } from '../../src/lib/lab3d/lab_props';
 
-function loadLabPropsGlb(): Promise<THREE.Group> {
-  const bytes = readFileSync(new URL('../../static/models/lab/lab_props.glb', import.meta.url));
+function loadLabPropsGlb(file = 'lab_props.glb'): Promise<THREE.Group> {
+  const bytes = readFileSync(new URL(`../../static/models/lab/${file}`, import.meta.url));
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   return new Promise((resolve, reject) => new GLTFLoader().parse(buffer, '', gltf => resolve(gltf.scene), reject));
 }
@@ -109,4 +109,56 @@ describe('Mobiliario de laboratorio modelado en Blender', () => {
       }
     }
   });
+
+  it('la infraestructura respeta el presupuesto y no tapa pizarrones, puerta, luminarias ni paso de la SAS', async () => {
+    const asset = await loadLabPropsGlb('lab_infra.glb');
+    expect(extractLabPropColliders(asset)).toHaveLength(0);
+    asset.updateMatrixWorld(true);
+
+    let triangles = 0;
+    let drawCalls = 0;
+    const box = new THREE.Box3();
+    const blocked = [
+      // Pizarrones de la pared norte (x -6.05..6.05, y 0.875..3.025)
+      new THREE.Box3(new THREE.Vector3(-6.05, 0.875, -2.33), new THREE.Vector3(6.05, 3.025, -2.2)),
+      // Vano de las puertas automáticas de la SAS
+      new THREE.Box3(new THREE.Vector3(-1.3, -1.5, 9.6), new THREE.Vector3(1.3, 2.3, 10.4)),
+      // Luminarias del techo sobre el pasillo central (x 0 y ±3, z 4.5 y 7.8)
+      ...[-3, 0, 3].flatMap(x => [4.5, 7.8].map(z =>
+        new THREE.Box3(new THREE.Vector3(x - 0.64, 3.45, z - 0.34), new THREE.Vector3(x + 0.64, 3.66, z + 0.34))))
+    ];
+    asset.traverse(object => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      drawCalls++;
+      const index = mesh.geometry.index;
+      triangles += (index ? index.count : mesh.geometry.attributes.position.count) / 3;
+      box.setFromObject(mesh);
+      expect(box.min.x, mesh.name).toBeGreaterThanOrEqual(-10.0);
+      expect(box.max.x, mesh.name).toBeLessThanOrEqual(10.0);
+      expect(box.min.y, mesh.name).toBeGreaterThanOrEqual(-1.551);
+      expect(box.max.y, mesh.name).toBeLessThanOrEqual(3.651);
+      expect(box.min.z, mesh.name).toBeGreaterThanOrEqual(-2.4);
+      expect(box.max.z, mesh.name).toBeLessThanOrEqual(10.0);
+    });
+    expect(triangles).toBeLessThan(15000);
+    expect(drawCalls).toBeLessThanOrEqual(30);
+
+    // Ninguna pieza individual (antes de unir) invade zonas protegidas: se comprueba por vértice.
+    const vertex = new THREE.Vector3();
+    asset.traverse(object => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const position = mesh.geometry.attributes.position;
+      for (let i = 0; i < position.count; i++) {
+        vertex.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
+        for (const zone of blocked) {
+          if (zone.containsPoint(vertex)) {
+            throw new Error(`${mesh.name} invade una zona protegida en ${vertex.toArray().map(v => v.toFixed(2))}`);
+          }
+        }
+      }
+    });
+  });
 });
+

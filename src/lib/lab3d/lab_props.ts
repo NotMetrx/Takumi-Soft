@@ -7,6 +7,13 @@ import type { FirstPersonColliderBox } from './first_person_controller';
  */
 export const LAB_PROPS_URL = '/models/lab/lab_props.glb';
 
+/**
+ * Infraestructura de la nave (mismo `.blend`, colección `LabInfra`): despiece de paneles, ventanas altas,
+ * conductos de ventilación vistos, bandeja portacables, luminarias lineales, detector de gases y
+ * señalización de evacuación en el suelo. Va sobre paredes, techo y suelo, así que no lleva colisiones.
+ */
+export const LAB_INFRA_URL = '/models/lab/lab_infra.glb';
+
 const COLLIDER_PREFIX = 'COL_';
 
 /**
