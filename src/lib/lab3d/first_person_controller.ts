@@ -173,6 +173,8 @@ export class FirstPersonController {
     { minX: -6.1, maxX: -2.5, minZ: -1.1, maxZ: 1.4, name: 'bio_table' },
     // Mesa STEAM (3.5m x 2.4m en x = 4.3)
     { minX: 2.5, maxX: 6.1, minZ: -1.1, maxZ: 1.4, name: 'steam_table' },
+    // Campana Extractora de Gases Fume Hood en esquina Noroeste (x = -7.8, z = -1.2)
+    { minX: -9.0, maxX: -6.6, minZ: -1.75, maxZ: -0.65, name: 'fume_hood' },
     // Pared Sur del Laboratorio (Ala Oeste: x de -9.8 a -1.25, en z = 10.0)
     { minX: -9.8, maxX: -1.25, minZ: 9.85, maxZ: 10.15, name: 'south_wall_left' },
     // Pared Sur del Laboratorio (Ala Este: x de 1.25 a 9.8, en z = 10.0)
@@ -1183,6 +1185,36 @@ export class FirstPersonController {
               labSound.playInstrumentClick();
               labStore.setStation('biologia');
               labStore.applyMicroscopeImmersionOil();
+            }
+          };
+          return;
+        }
+
+        if (curr.userData?.toolId === 'smart_board') {
+          this.focusedTarget = {
+            id: 'smart_board',
+            title: 'Pizarra SmartBoard Interactiva (Aula Virtual)',
+            actionHint: '[E/Clic] Alternar Vista de Pizarra y Gráfica',
+            icon: '📋',
+            distanceM: Number(hit.distance.toFixed(1)),
+            onInteract: () => {
+              this.triggerHandGesture('TWO_HAND_EQUIP', 0.4);
+              labStore.cycleSmartBoardMode();
+            }
+          };
+          return;
+        }
+
+        if (curr.userData?.toolId === 'fume_hood') {
+          this.focusedTarget = {
+            id: 'fume_hood',
+            title: 'Campana Extractora de Gases (ISO 14644 / SGA)',
+            actionHint: labStore.fumeHoodSashOpen ? '[E/Clic] Bajar Guillotina de Seguridad' : '[E/Clic] Subir Guillotina de Extracción (0.52 m/s)',
+            icon: '💨',
+            distanceM: Number(hit.distance.toFixed(1)),
+            onInteract: () => {
+              this.triggerHandGesture('PULL_LEVER', 0.55);
+              labStore.toggleFumeHoodSash();
             }
           };
           return;

@@ -23,8 +23,10 @@
     X,
     Layers,
     SlidersHorizontal,
-    Plus
+    Plus,
+    Users
   } from '@lucide/svelte';
+  import { multiplayerStore } from '$lib/multiplayer/multiplayer_store.svelte';
   import { fly } from 'svelte/transition';
 
   const result = $derived(labStore.beaker.currentResult);
@@ -136,6 +138,54 @@
         <span>🚶</span>
         <span class="hidden sm:inline">Primera Persona</span>
         <kbd class="px-1 py-0.2 rounded text-[9px] font-mono {labStore.isFirstPersonWalking ? 'bg-black/20 text-black' : 'bg-white/15 text-white/70'}">V</kbd>
+      </button>
+
+      <!-- Control de Iluminación Ambiental (Día Clínico / UV Germicida 365nm / Foco Escenario) [L] -->
+      <button
+        type="button"
+        onclick={() => labStore.cycleLightingMode()}
+        class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer border transition-all shrink-0 {labStore.lightingMode === 'uv_germicidal'
+          ? 'bg-indigo-600 text-white border-indigo-400 font-bold shadow-[0_0_14px_rgba(99,102,241,0.6)]'
+          : labStore.lightingMode === 'stage_spotlight'
+            ? 'bg-amber-400 text-black border-amber-300 font-bold shadow-[0_0_12px_rgba(251,191,36,0.4)]'
+            : 'bg-white/[0.06] hover:bg-white/[0.12] text-white/80 border-white/[0.1]'}"
+        title="Modo de Iluminación (Tecla L): Día Clínico (5000K), Luz Negra UV (365nm Fluorescente) o Foco Escenario"
+      >
+        <span>
+          {labStore.lightingMode === 'uv_germicidal' ? '🟣' : labStore.lightingMode === 'stage_spotlight' ? '🔦' : '☀️'}
+        </span>
+        <span class="hidden md:inline">
+          {labStore.lightingMode === 'uv_germicidal' ? 'Luz UV' : labStore.lightingMode === 'stage_spotlight' ? 'Foco Escenario' : 'Luz Diurna'}
+        </span>
+        <kbd class="px-1 py-0.2 rounded text-[9px] font-mono {labStore.lightingMode === 'cleanroom_day' ? 'bg-white/15 text-white/70' : 'bg-black/20'}">L</kbd>
+      </button>
+
+      <!-- Campana Extractora de Gases (Fume Hood ISO 14644 / SGA) [H] -->
+      <button
+        type="button"
+        onclick={() => labStore.toggleFumeHoodSash()}
+        class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer border transition-all shrink-0 {labStore.fumeHoodSashOpen
+          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+          : 'bg-white/[0.06] hover:bg-white/[0.12] text-white/70 border-white/[0.1]'}"
+        title="Campana Extractora de Gases (Tecla H): Subir o bajar guillotina de extracción (0.52 m/s)"
+      >
+        <span>💨</span>
+        <span class="hidden lg:inline">{labStore.fumeHoodSashOpen ? 'Campana ON' : 'Campana OFF'}</span>
+        <kbd class="px-1 py-0.2 rounded text-[9px] font-mono bg-white/15 text-white/70">H</kbd>
+      </button>
+
+      <!-- Aula Virtual Multiusuario 3D (Fase Beta P2P) -->
+      <button
+        type="button"
+        onclick={() => multiplayerStore.toggleModal(true)}
+        class="lab-btn px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-medium tracking-[-0.01em] flex items-center gap-1.5 cursor-pointer border transition-all shrink-0 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border-cyan-400/30"
+        title="Aula Virtual Multiusuario 3D (Fase Beta): Colaboración síncrona en red local"
+      >
+        <span>👥</span>
+        <span class="hidden sm:inline">Aula 3D</span>
+        <span class="px-1.5 py-0.2 rounded-full text-[9px] bg-cyan-400/30 text-white font-mono-numbers">
+          {multiplayerStore.peers.length + 1}
+        </span>
       </button>
 
       <!-- Control Segmentado de Estaciones de Laboratorio 3D -->
@@ -968,6 +1018,23 @@
     >
       <Video class="w-4 h-4 shrink-0" />
       <span class="hidden md:inline">{labStore.isCameraActive ? 'AR Activo' : 'Manos AR'}</span>
+    </button>
+
+    <!-- 8. Aula Virtual Multiusuario 3D (Fase Beta P2P) -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        multiplayerStore.toggleModal(true);
+      }}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium text-white/85 hover:bg-white/[0.09] hover:text-white flex items-center gap-1.5 cursor-pointer"
+      title="Aula Virtual Multiusuario 3D (Fase Beta)"
+    >
+      <Users class="w-4 h-4 shrink-0 text-cyan-300" />
+      <span class="hidden md:inline">Aula 3D</span>
+      <span class="font-mono-numbers text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/25 text-cyan-200 border border-cyan-400/30">
+        {multiplayerStore.peers.length + 1}
+      </span>
     </button>
 
     <div class="w-px h-5 bg-white/12 mx-0.5"></div>

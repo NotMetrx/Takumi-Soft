@@ -7,6 +7,8 @@ import type { Reagent, BeakerState, TrialRecord, InputMode, LabSession } from '$
 
 export type EducationLevel = 'primaria' | 'secundaria';
 export type LabStationId = 'quimica' | 'biologia' | 'steam';
+export type LabLightingMode = 'cleanroom_day' | 'uv_germicidal' | 'stage_spotlight';
+export type SmartBoardMode = 'reaction_and_curve' | 'classroom_multiplayer' | 'safety_protocol';
 
 export interface LabStationInfo {
   id: LabStationId;
@@ -1800,6 +1802,78 @@ export class LabStore {
   safetyStrictMode = $state<boolean>(false);
   safetyAlert = $state<SafetyProtocolAlert | null>(null);
   private safetyAlertTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Modos de Iluminación Ambiental y Visual del Entorno (Ideas Entorno 1 y 2)
+  lightingMode = $state<LabLightingMode>('cleanroom_day');
+  lightingRevision = $state<number>(0);
+
+  cycleLightingMode() {
+    labSound.playInstrumentClick();
+    if (this.lightingMode === 'cleanroom_day') {
+      this.lightingMode = 'uv_germicidal';
+      this.setSafetyAlert(
+        '🟣 ILUMINACIÓN UV GERMICIDA (365 nm)',
+        'Lámparas UV activadas · Reactivos e indicadores químicos emiten fluorescencia visible.',
+        'info'
+      );
+    } else if (this.lightingMode === 'uv_germicidal') {
+      this.lightingMode = 'stage_spotlight';
+      this.setSafetyAlert(
+        '🔦 MODO ESCENARIO / FOCO CLÍNICO',
+        'Iluminación teatral concentrada en la estación activa de laboratorio.',
+        'info'
+      );
+    } else {
+      this.lightingMode = 'cleanroom_day';
+      this.setSafetyAlert(
+        '☀️ LUZ DIURNA CLEANROOM (5000K)',
+        'Iluminación blanca estandarizada ISO para análisis químico y colorimétrico.',
+        'info'
+      );
+    }
+    this.lightingRevision++;
+  }
+
+  // Campana Extractora de Gases (Fume Hood - Idea Entorno 4)
+  fumeHoodSashOpen = $state<boolean>(false);
+  fumeHoodSashProgress = $state<number>(0);
+  fumeHoodAirVelocity = $state<number>(0.52);
+  fumeHoodRevision = $state<number>(0);
+
+  toggleFumeHoodSash() {
+    labSound.playInstrumentClick();
+    this.fumeHoodSashOpen = !this.fumeHoodSashOpen;
+    this.fumeHoodRevision++;
+    if (this.fumeHoodSashOpen) {
+      this.setSafetyAlert(
+        '💨 CAMPANA EXTRACTORA: GUILLOTINA ELEVADA',
+        'Flujo de extracción laminar activo (0.52 m/s). Apta para reactivos volátiles o peligrosos.',
+        'info'
+      );
+    } else {
+      this.setSafetyAlert(
+        '🔒 CAMPANA EXTRACTORA HERMÉTICA',
+        'Guillotina bajada a cota de seguridad hermética.',
+        'info'
+      );
+    }
+  }
+
+  // Pizarra SmartBoard Interactiva Reactiva (Idea Entorno 3)
+  smartBoardMode = $state<SmartBoardMode>('reaction_and_curve');
+  smartBoardRevision = $state<number>(0);
+
+  cycleSmartBoardMode() {
+    labSound.playInstrumentClick();
+    if (this.smartBoardMode === 'reaction_and_curve') {
+      this.smartBoardMode = 'classroom_multiplayer';
+    } else if (this.smartBoardMode === 'classroom_multiplayer') {
+      this.smartBoardMode = 'safety_protocol';
+    } else {
+      this.smartBoardMode = 'reaction_and_curve';
+    }
+    this.smartBoardRevision++;
+  }
 
   // Efectos de partículas de seguridad (Ducha, Lavaojos, Extintor)
   showerFxRevision = $state<number>(0);

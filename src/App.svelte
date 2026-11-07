@@ -13,6 +13,7 @@
   import HomeExperimentsBookModal from '$lib/ui/HomeExperimentsBookModal.svelte';
   import MicroscopeWorkstation from '$lib/ui/MicroscopeWorkstation.svelte';
   import SettingsModal from '$lib/ui/SettingsModal.svelte';
+  import MultiplayerModal from '$lib/ui/MultiplayerModal.svelte';
   let sessionReady = $state(false);
   let storageEnabled = $state(false);
   let revision = 0;
@@ -92,3 +93,4 @@
 <HomeExperimentsBookModal />
 <CameraCalibrationModal />
 <SettingsModal />
+<MultiplayerModal />

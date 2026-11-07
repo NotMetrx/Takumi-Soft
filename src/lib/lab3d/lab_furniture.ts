@@ -17,6 +17,73 @@ export interface LabBenchConfig {
 }
 
 /**
+ * Textura procedural de paisaje exterior de campus universitario / parque científico
+ * para el Gran Ventanal Panorámico Técnico.
+ */
+export function createCampusLandscapeTexture(): THREE.CanvasTexture {
+  if (typeof document === 'undefined') {
+    const fallbackTex = new THREE.CanvasTexture({} as HTMLCanvasElement);
+    return fallbackTex;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+
+  // Gradiente de cielo diurno luminoso de campus
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, 360);
+  skyGrad.addColorStop(0, '#38bdf8');   // Azul cielo brillante
+  skyGrad.addColorStop(0.55, '#bae6fd'); // Azul suave
+  skyGrad.addColorStop(0.85, '#fef08a'); // Calidez solar cerca del horizonte
+  skyGrad.addColorStop(1.0, '#fed7aa');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, 1024, 360);
+
+  // Nubes suaves algodonadas
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+  for (let i = 0; i < 6; i++) {
+    const cx = 80 + i * 170;
+    const cy = 70 + (i % 3) * 35;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 45, 0, Math.PI * 2);
+    ctx.arc(cx + 40, cy - 10, 55, 0, Math.PI * 2);
+    ctx.arc(cx + 80, cy, 40, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Colinas verdes lejanas del campus
+  ctx.fillStyle = '#15803d'; // Verde bosque lejano
+  ctx.beginPath();
+  ctx.moveTo(0, 360);
+  ctx.bezierCurveTo(250, 300, 500, 330, 750, 290);
+  ctx.bezierCurveTo(900, 270, 1000, 310, 1024, 330);
+  ctx.lineTo(1024, 512);
+  ctx.lineTo(0, 512);
+  ctx.closePath();
+  ctx.fill();
+
+  // Arboleda y parque científico universitario en primer plano
+  ctx.fillStyle = '#166534';
+  ctx.beginPath();
+  ctx.moveTo(0, 380);
+  for (let x = 0; x <= 1024; x += 32) {
+    const h = 330 + Math.sin(x * 0.04) * 25 + Math.cos(x * 0.08) * 15;
+    ctx.lineTo(x, h);
+  }
+  ctx.lineTo(1024, 512);
+  ctx.lineTo(0, 512);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sendero peatonal y césped iluminado
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(0, 430, 1024, 82);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
+/**
  * Textura procedural de suelo técnico de laboratorio (Losas continuas de vinilo/linóleo con juntas termosoldadas)
  */
 export function createLabFloorTexture(): THREE.CanvasTexture {
@@ -350,14 +417,97 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
 
   // =========================================================================
   // 2. PARED DERECHA DEL LABORATORIO (Este, x = 10.0, z de -2.4 a 10.0 -> long 12.4m)
+  // Incorpora el Gran Ventanal Panorámico Técnico con luz natural y vistas al exterior (z = 0.5 a 6.5)
   // =========================================================================
-  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 12.4), wallMat);
-  rightWall.position.set(10.0, wallY, 3.8);
-  wallsGroup.add(rightWall);
+  // Tramo sólido Norte de la pared Este (z = -2.4 a 0.5, largo 2.9m)
+  const rightWallNorth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 2.9), wallMat);
+  rightWallNorth.position.set(10.0, wallY, -0.95);
+  wallsGroup.add(rightWallNorth);
 
-  const rightBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 12.4), baseboardMat);
-  rightBaseboard.position.set(10.0, -1.47, 3.8);
-  wallsGroup.add(rightBaseboard);
+  const rightBaseboardNorth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 2.9), baseboardMat);
+  rightBaseboardNorth.position.set(10.0, -1.47, -0.95);
+  wallsGroup.add(rightBaseboardNorth);
+
+  // Tramo sólido Sur de la pared Este (z = 6.5 a 10.0, largo 3.5m)
+  const rightWallSouth = new THREE.Mesh(new THREE.BoxGeometry(0.15, wallHeight, 3.5), wallMat);
+  rightWallSouth.position.set(10.0, wallY, 8.25);
+  wallsGroup.add(rightWallSouth);
+
+  const rightBaseboardSouth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 3.5), baseboardMat);
+  rightBaseboardSouth.position.set(10.0, -1.47, 8.25);
+  wallsGroup.add(rightBaseboardSouth);
+
+  // Antepecho inferior bajo el ventanal (z = 0.5 a 6.5, largo 6.0m, y = -1.55 a 0.05, alto 1.60m)
+  const windowSillWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.60, 6.0), wallMat);
+  windowSillWall.position.set(10.0, -0.75, 3.5);
+  wallsGroup.add(windowSillWall);
+
+  const windowSillBaseboard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 6.0), baseboardMat);
+  windowSillBaseboard.position.set(10.0, -1.47, 3.5);
+  wallsGroup.add(windowSillBaseboard);
+
+  // Dintel superior sobre el ventanal (z = 0.5 a 6.5, largo 6.0m, y = 2.65 a 3.75, alto 1.10m)
+  const windowLintelWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.10, 6.0), wallMat);
+  windowLintelWall.position.set(10.0, 3.20, 3.5);
+  wallsGroup.add(windowLintelWall);
+
+  // MARCO TÉCNICO Y VIDRIO DEL GRAN VENTANAL PANORÁMICO (x = 10.0, z = 0.5 a 6.5, y = 0.05 a 2.65)
+  const windowGroup = new THREE.Group();
+  windowGroup.name = 'TechnicalPanoramicWindow';
+
+  // Perfil perimetral exterior de aluminio anodizado / acero inoxidable cepillado
+  const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(0.20, 2.64, 6.04), stainlessMat);
+  outerFrame.position.set(10.0, 1.35, 3.5);
+  windowGroup.add(outerFrame);
+
+  // Montantes verticales divisores (crean 4 grandes paños de luz natural)
+  [1.95, 3.5, 5.05].forEach((mz) => {
+    const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.58, 0.07), stainlessMat);
+    mullion.position.set(10.0, 1.35, mz);
+    windowGroup.add(mullion);
+  });
+
+  // Travesaño horizontal medio
+  const transom = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 5.96), stainlessMat);
+  transom.position.set(10.0, 1.35, 3.5);
+  windowGroup.add(transom);
+
+  // Vidrio doble templado con sutil transmisión y tinte azul cielo
+  const windowGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xcde8f5,
+    transmission: 0.92,
+    opacity: 0.88,
+    transparent: true,
+    roughness: 0.04,
+    ior: 1.52,
+    reflectivity: 0.95,
+    thickness: 0.04,
+    side: THREE.DoubleSide
+  });
+  const windowGlassPane = new THREE.Mesh(new THREE.PlaneGeometry(5.95, 2.55), windowGlassMat);
+  windowGlassPane.rotation.y = -Math.PI / 2; // Cara hacia el interior del laboratorio
+  windowGlassPane.position.set(9.98, 1.35, 3.5);
+  windowGroup.add(windowGlassPane);
+
+  // Panel exterior panorámico de alta definición con vistas al campus universitario verde
+  const landscapeTex = createCampusLandscapeTexture();
+  const landscapeMat = new THREE.MeshBasicMaterial({
+    map: landscapeTex,
+    side: THREE.FrontSide
+  });
+  const landscapePanel = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.8), landscapeMat);
+  landscapePanel.rotation.y = -Math.PI / 2;
+  landscapePanel.position.set(10.55, 1.35, 3.5);
+  windowGroup.add(landscapePanel);
+
+  // Luz solar suave en ángulo rasante entrando por el ventanal hacia el interior
+  const naturalSunlight = new THREE.DirectionalLight(0xfff5e6, 1.35);
+  naturalSunlight.position.set(11.5, 3.2, 3.5);
+  naturalSunlight.target.position.set(0, 0, 3.5);
+  windowGroup.add(naturalSunlight);
+  windowGroup.add(naturalSunlight.target);
+
+  wallsGroup.add(windowGroup);
 
   // =========================================================================
   // 3. PARED IZQUIERDA DEL LABORATORIO (Oeste, x = -10.0, z de -2.4 a 10.0 -> long 12.4m)
@@ -680,6 +830,404 @@ export function buildLaboratoryPerimeterWalls(): THREE.Group {
   wallsGroup.add(airlockGroup);
 
   return wallsGroup;
+}
+
+export interface FumeHoodRig {
+  group: THREE.Group;
+  sashMesh: THREE.Mesh;
+  digitalDisplay: THREE.Mesh;
+  interiorLight: THREE.PointLight;
+  currentOpen: number;
+  update: (targetOpen: boolean, dt: number) => void;
+}
+
+/**
+ * Construye la Campana Extractora de Gases (Industrial Fume Hood - ISO 14644 / SGA)
+ * Equipada con guillotina de policarbonato móvil, flujo laminar de 0.52 m/s,
+ * luz LED fría interior y armario inferior de seguridad para reactivos volátiles.
+ */
+export function buildFumeHoodWorkstation(position = new THREE.Vector3(-7.8, -1.55, -1.2)): FumeHoodRig {
+  const hoodGroup = new THREE.Group();
+  hoodGroup.name = 'IndustrialFumeHoodRig';
+  hoodGroup.position.copy(position);
+
+  const stainlessMat = new THREE.MeshStandardMaterial({
+    color: 0x94a3b8,
+    metalness: 0.85,
+    roughness: 0.25
+  });
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    metalness: 0.15,
+    roughness: 0.45
+  });
+
+  const ceramicTopMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    metalness: 0.05,
+    roughness: 0.18
+  });
+
+  const darkInteriorMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    metalness: 0.2,
+    roughness: 0.75
+  });
+
+  // 1. Armario inferior de seguridad para solventes y corrosivos (Alto 0.85m, Ancho 2.2m, Fondo 1.05m)
+  const baseCabinet = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.85, 1.05), bodyMat);
+  baseCabinet.position.set(0, 0.425, 0);
+  hoodGroup.add(baseCabinet);
+
+  // Puertas dobles del armario inferior con rejillas de ventilación
+  const doorL = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.80, 0.03), stainlessMat);
+  doorL.position.set(-0.54, 0.425, 0.54);
+  hoodGroup.add(doorL);
+
+  const doorR = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.80, 0.03), stainlessMat);
+  doorR.position.set(0.54, 0.425, 0.54);
+  hoodGroup.add(doorR);
+
+  // 2. Encimera interior de cerámica técnica vitrificada resistente a ácidos (Y = 0.85)
+  const worktop = new THREE.Mesh(new THREE.BoxGeometry(2.24, 0.06, 1.1), ceramicTopMat);
+  worktop.position.set(0, 0.88, 0.02);
+  hoodGroup.add(worktop);
+
+  // Perfil alféizar aerodinámico (Airfoil sill) para evitar reflujo de vapores
+  const airfoil = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.2, 12), stainlessMat);
+  airfoil.rotation.z = Math.PI / 2;
+  airfoil.position.set(0, 0.92, 0.55);
+  hoodGroup.add(airfoil);
+
+  // 3. Estructura superior de la cabina de extracción (Alto 1.85m, desde Y = 0.88 hasta Y = 2.73)
+  // Pared trasera
+  const backPanel = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.85, 0.05), darkInteriorMat);
+  backPanel.position.set(0, 1.805, -0.50);
+  hoodGroup.add(backPanel);
+
+  // Deflector aerodinámico interior de aspiración (Baffle)
+  const baffle = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.6, 0.02), stainlessMat);
+  baffle.position.set(0, 1.80, -0.42);
+  hoodGroup.add(baffle);
+
+  // Pared lateral izquierda
+  const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.85, 1.05), bodyMat);
+  sideL.position.set(-1.07, 1.805, 0);
+  hoodGroup.add(sideL);
+
+  // Pared lateral derecha
+  const sideR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.85, 1.05), bodyMat);
+  sideR.position.set(1.07, 1.805, 0);
+  hoodGroup.add(sideR);
+
+  // Techo de la cabina con orificio de extracción
+  const hoodRoof = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 1.05), bodyMat);
+  hoodRoof.position.set(0, 2.73, 0);
+  hoodGroup.add(hoodRoof);
+
+  // Conducto cilíndrico de extracción que sube hacia el falso techo (Y = 2.73 a Y = 5.20)
+  const exhaustDuct = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.5, 20), stainlessMat);
+  exhaustDuct.position.set(0, 3.98, -0.15);
+  hoodGroup.add(exhaustDuct);
+
+  // 4. Dintel frontal con Pantalla Digital de Velocidad de Flujo (Y = 2.35 a 2.73)
+  const headerFront = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.38, 0.08), bodyMat);
+  headerFront.position.set(0, 2.54, 0.52);
+  hoodGroup.add(headerFront);
+
+  // Placa frontal con texto técnico
+  const headerSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.6, 0.18),
+    new THREE.MeshBasicMaterial({ map: createSafetyTexture('air_shower_sign') })
+  );
+  headerSign.position.set(-0.2, 2.58, 0.565);
+  hoodGroup.add(headerSign);
+
+  // Display digital Magnehelic (LED verde luminoso con lectura de 0.52 m/s)
+  const displayCanvas = document.createElement('canvas');
+  displayCanvas.width = 256;
+  displayCanvas.height = 128;
+  const dCtx = displayCanvas.getContext('2d')!;
+  dCtx.fillStyle = '#0f172a';
+  dCtx.fillRect(0, 0, 256, 128);
+  dCtx.fillStyle = '#22c55e';
+  dCtx.font = 'bold 36px monospace';
+  dCtx.fillText('0.52 m/s', 24, 52);
+  dCtx.fillStyle = '#94a3b8';
+  dCtx.font = 'bold 18px sans-serif';
+  dCtx.fillText('AIRFLOW NORMAL', 24, 92);
+  const displayTex = new THREE.CanvasTexture(displayCanvas);
+
+  const digitalDisplay = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.42, 0.22),
+    new THREE.MeshBasicMaterial({ map: displayTex })
+  );
+  digitalDisplay.position.set(0.75, 2.54, 0.565);
+  hoodGroup.add(digitalDisplay);
+
+  // 5. Guillotina Móvil de Vidrio / Policarbonato Templado (Sash)
+  // Se desliza verticalmente: cerrada = Y 1.40, abierta = Y 2.05
+  const sashGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xcfe8f3,
+    transmission: 0.9,
+    opacity: 0.85,
+    transparent: true,
+    roughness: 0.05,
+    ior: 1.5,
+    side: THREE.DoubleSide
+  });
+
+  const sashMesh = new THREE.Mesh(new THREE.BoxGeometry(2.08, 0.95, 0.024), sashGlassMat);
+  sashMesh.position.set(0, 1.40, 0.51); // Posición inicial cerrada
+  hoodGroup.add(sashMesh);
+
+  // Tirador inferior de aluminio de la guillotina
+  const sashHandle = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.04, 0.05), stainlessMat);
+  sashHandle.position.set(0, -0.455, 0.02);
+  sashMesh.add(sashHandle);
+
+  // 6. Luz LED fría interior (proyecta haz limpio dentro de la zona de trabajo)
+  const interiorLight = new THREE.PointLight(0xf0fdf4, 1.8, 4.0);
+  interiorLight.position.set(0, 2.65, 0.1);
+  hoodGroup.add(interiorLight);
+
+  // Rig cinemático con actualización suave lerp
+  const fumeHoodRig: FumeHoodRig = {
+    group: hoodGroup,
+    sashMesh,
+    digitalDisplay,
+    interiorLight,
+    currentOpen: 0,
+    update(targetOpen: boolean, dt: number) {
+      const targetVal = targetOpen ? 1.0 : 0.0;
+      this.currentOpen = THREE.MathUtils.damp(this.currentOpen, targetVal, 4.0, dt);
+      // Recorrido vertical de la guillotina: cerrada Y = 1.40, abierta Y = 2.05
+      this.sashMesh.position.y = THREE.MathUtils.lerp(1.40, 2.05, this.currentOpen);
+    }
+  };
+
+  return fumeHoodRig;
+}
+
+export interface PavilionDividersRig {
+  group: THREE.Group;
+  bioDoorLeft: THREE.Mesh;
+  bioDoorRight: THREE.Mesh;
+  steamDoorLeft: THREE.Mesh;
+  steamDoorRight: THREE.Mesh;
+  bioDoorOpen: number;
+  steamDoorOpen: number;
+  update: (playerPos: THREE.Vector3, dt: number) => void;
+}
+
+function createPortalSignTexture(text: string, bgColor: string, textColor: string): THREE.CanvasTexture {
+  if (typeof document === 'undefined') {
+    const fallbackTex = new THREE.CanvasTexture({} as HTMLCanvasElement);
+    return fallbackTex;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, 512, 96);
+  ctx.strokeStyle = textColor;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, 504, 88);
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 24px "JetBrains Mono", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 48);
+  const tex = new THREE.CanvasTexture(canvas);
+  return tex;
+}
+
+/**
+ * Construye los cerramientos arquitectónicos divisorios y puertas correderas
+ * que separan los 3 Pabellones Científicos Especializados:
+ * 1. Pabellón de Química Analítica (Centro, x = -2.25 a +2.25)
+ * 2. Pabellón de Biología Celular y Microscopía (Oeste, x = -10.0 a -2.25)
+ * 3. Pabellón Taller STEAM & Fenómenos Cotidianos (Este, x = +2.25 a +10.0)
+ */
+export function buildPavilionDividers(): PavilionDividersRig {
+  const group = new THREE.Group();
+  group.name = 'PavilionDividersRig';
+
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0x94a3b8,
+    metalness: 0.85,
+    roughness: 0.25
+  });
+
+  const dividerGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xdbeef5,
+    transmission: 0.88,
+    opacity: 0.82,
+    transparent: true,
+    roughness: 0.08,
+    ior: 1.5,
+    thickness: 0.03,
+    side: THREE.DoubleSide
+  });
+
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: 0xedf3f6,
+    roughness: 0.65,
+    metalness: 0.05
+  });
+
+  const wallHeight = 5.2;
+  const wallY = 1.05;
+
+  // =========================================================================
+  // 1. DIVISORIA OESTE: SEPARA QUÍMICA DE BIOLOGÍA (x = -2.25)
+  // =========================================================================
+  // Tramo sólido/vidrio Norte (z = -2.4 a 0.5, largo 2.9m)
+  const westNorthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.9), wallMat);
+  westNorthWall.position.set(-2.25, wallY, -0.95);
+  group.add(westNorthWall);
+
+  // Tramo sólido/vidrio Sur (z = 2.5 a 4.8, largo 2.3m)
+  const westSouthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.3), wallMat);
+  westSouthWall.position.set(-2.25, wallY, 3.65);
+  group.add(westSouthWall);
+
+  // Dintel superior sobre el portal de paso (z = 0.5 a 2.5, alto 2.6m cota libre, dintel alto 2.6m a 3.65m)
+  const westLintel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 2.0), frameMat);
+  westLintel.position.set(-2.25, 3.125, 1.5);
+  group.add(westLintel);
+
+  // Rótulos luminosos de acceso al Pabellón de Biología / Regreso a Química
+  const bioSignTexIn = createPortalSignTexture('➔ 2. BIOLOGÍA & MICROSCOPÍA', '#0f172a', '#4ade80');
+  const bioSignMeshIn = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.MeshBasicMaterial({ map: bioSignTexIn })
+  );
+  bioSignMeshIn.rotation.y = Math.PI / 2; // Cara hacia Química (+X)
+  bioSignMeshIn.position.set(-2.16, 2.45, 1.5);
+  group.add(bioSignMeshIn);
+
+  const bioSignTexOut = createPortalSignTexture('➔ 1. QUÍMICA ANALÍTICA', '#0f172a', '#38bdf8');
+  const bioSignMeshOut = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.MeshBasicMaterial({ map: bioSignTexOut })
+  );
+  bioSignMeshOut.rotation.y = -Math.PI / 2; // Cara hacia Biología (-X)
+  bioSignMeshOut.position.set(-2.34, 2.45, 1.5);
+  group.add(bioSignMeshOut);
+
+  // Puertas correderas dobles de vidrio de acceso a Biología (z = 0.5 a 2.5)
+  const bioDoorLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
+  bioDoorLeft.position.set(-2.25, -0.30, 1.02);
+  group.add(bioDoorLeft);
+
+  const bioDoorRight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
+  bioDoorRight.position.set(-2.25, -0.30, 1.98);
+  group.add(bioDoorRight);
+
+  // =========================================================================
+  // 2. DIVISORIA ESTE: SEPARA QUÍMICA DE STEAM (x = +2.25)
+  // =========================================================================
+  // Tramo sólido/vidrio Norte (z = -2.4 a 0.5, largo 2.9m)
+  const eastNorthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.9), wallMat);
+  eastNorthWall.position.set(2.25, wallY, -0.95);
+  group.add(eastNorthWall);
+
+  // Tramo sólido/vidrio Sur (z = 2.5 a 4.8, largo 2.3m)
+  const eastSouthWall = new THREE.Mesh(new THREE.BoxGeometry(0.12, wallHeight, 2.3), wallMat);
+  eastSouthWall.position.set(2.25, wallY, 3.65);
+  group.add(eastSouthWall);
+
+  // Dintel superior sobre el portal de paso
+  const eastLintel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 2.0), frameMat);
+  eastLintel.position.set(2.25, 3.125, 1.5);
+  group.add(eastLintel);
+
+  // Rótulos luminosos de acceso al Pabellón STEAM / Regreso a Química
+  const steamSignTexIn = createPortalSignTexture('➔ 3. CIENCIAS STEAM', '#0f172a', '#facc15');
+  const steamSignMeshIn = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.MeshBasicMaterial({ map: steamSignTexIn })
+  );
+  steamSignMeshIn.rotation.y = -Math.PI / 2; // Cara hacia Química (-X)
+  steamSignMeshIn.position.set(2.16, 2.45, 1.5);
+  group.add(steamSignMeshIn);
+
+  const steamSignTexOut = createPortalSignTexture('➔ 1. QUÍMICA ANALÍTICA', '#0f172a', '#38bdf8');
+  const steamSignMeshOut = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.9, 0.35),
+    new THREE.MeshBasicMaterial({ map: steamSignTexOut })
+  );
+  steamSignMeshOut.rotation.y = Math.PI / 2; // Cara hacia STEAM (+X)
+  steamSignMeshOut.position.set(2.34, 2.45, 1.5);
+  group.add(steamSignMeshOut);
+
+  // Puertas correderas dobles de vidrio de acceso a STEAM
+  const steamDoorLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
+  steamDoorLeft.position.set(2.25, -0.30, 1.02);
+  group.add(steamDoorLeft);
+
+  const steamDoorRight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.5, 0.96), dividerGlassMat);
+  steamDoorRight.position.set(2.25, -0.30, 1.98);
+  group.add(steamDoorRight);
+
+  // =========================================================================
+  // 3. PAVIMENTOS TÉCNICOS DIFERENCIADOS POR PABELLÓN (Cota Y = -1.547)
+  // =========================================================================
+  // Pabellón de Biología: Suelo continuo antiestático azul cobalto sala limpia
+  const bioFloorMat = new THREE.MeshStandardMaterial({
+    color: 0x0f2744,
+    roughness: 0.35,
+    metalness: 0.15
+  });
+  const bioFloor = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 7.2), bioFloorMat);
+  bioFloor.rotation.x = -Math.PI / 2;
+  bioFloor.position.set(-6.12, -1.547, 1.2);
+  group.add(bioFloor);
+
+  // Pabellón STEAM: Suelo cálido de terrazo y madera técnica
+  const steamFloorMat = new THREE.MeshStandardMaterial({
+    color: 0x3d2817,
+    roughness: 0.45,
+    metalness: 0.08
+  });
+  const steamFloor = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 7.2), steamFloorMat);
+  steamFloor.rotation.x = -Math.PI / 2;
+  steamFloor.position.set(6.12, -1.547, 1.2);
+  group.add(steamFloor);
+
+  const rig: PavilionDividersRig = {
+    group,
+    bioDoorLeft,
+    bioDoorRight,
+    steamDoorLeft,
+    steamDoorRight,
+    bioDoorOpen: 0,
+    steamDoorOpen: 0,
+    update(playerPos: THREE.Vector3, dt: number) {
+      // 1. Puertas de Biología (Portal en x = -2.25, z = 1.5)
+      const dxBio = playerPos.x - (-2.25);
+      const dzBio = playerPos.z - 1.5;
+      const distBio = Math.sqrt(dxBio * dxBio + dzBio * dzBio);
+      const targetBio = distBio < 2.2 ? 1.0 : 0.0;
+      this.bioDoorOpen = THREE.MathUtils.damp(this.bioDoorOpen, targetBio, 4.0, dt);
+      this.bioDoorLeft.position.z = THREE.MathUtils.lerp(1.02, 0.58, this.bioDoorOpen);
+      this.bioDoorRight.position.z = THREE.MathUtils.lerp(1.98, 2.42, this.bioDoorOpen);
+
+      // 2. Puertas de STEAM (Portal en x = +2.25, z = 1.5)
+      const dxSteam = playerPos.x - 2.25;
+      const dzSteam = playerPos.z - 1.5;
+      const distSteam = Math.sqrt(dxSteam * dxSteam + dzSteam * dzSteam);
+      const targetSteam = distSteam < 2.2 ? 1.0 : 0.0;
+      this.steamDoorOpen = THREE.MathUtils.damp(this.steamDoorOpen, targetSteam, 4.0, dt);
+      this.steamDoorLeft.position.z = THREE.MathUtils.lerp(1.02, 0.58, this.steamDoorOpen);
+      this.steamDoorRight.position.z = THREE.MathUtils.lerp(1.98, 2.42, this.steamDoorOpen);
+    }
+  };
+
+  return rig;
 }
 
 /**

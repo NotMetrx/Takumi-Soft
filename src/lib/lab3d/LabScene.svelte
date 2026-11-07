@@ -12,12 +12,18 @@
   import { FirstPersonController } from './first_person_controller';
   import { ARHandMeshRig } from './ar_hand_mesh';
   import { LabSafetyFXSystem } from './safety_fx_particles';
+  import { MultiplayerAvatarsRig } from './multiplayer_avatars';
+  import { multiplayerStore } from '$lib/multiplayer/multiplayer_store.svelte';
   import {
     buildProfessionalLabBench,
     createLabFloorTexture,
     buildLaboratoryCeilingAndLighting,
     buildLaboratoryPerimeterWalls,
-    type DoubleDoorsRig
+    buildFumeHoodWorkstation,
+    buildPavilionDividers,
+    type DoubleDoorsRig,
+    type FumeHoodRig,
+    type PavilionDividersRig
   } from './lab_furniture';
   import { explorationStore } from '$lib/exploration/exploration_store.svelte';
   import {
@@ -101,10 +107,21 @@
   let arHandRig: ARHandMeshRig | null = null;
   let safetyFx: LabSafetyFXSystem | null = null;
   let doubleDoorsRig: DoubleDoorsRig | null = null;
+  let fumeHoodRig: FumeHoodRig | null = null;
+  let pavilionDividersRig: PavilionDividersRig | null = null;
+  let multiplayerAvatarsRig: MultiplayerAvatarsRig | null = null;
+  let ambientLight: THREE.HemisphereLight | null = null;
   let keyLight: THREE.DirectionalLight | null = null;
+  let rimLight: THREE.SpotLight | null = null;
   let lastShowerRev = 0;
   let lastEyewashRev = 0;
   let lastExtinguisherRev = 0;
+
+  // Pizarra SmartBoard Interactiva Reactiva (Pared Norte)
+  let smartBoardCanvas: HTMLCanvasElement;
+  let smartBoardCtx: CanvasRenderingContext2D | null = null;
+  let smartBoardTexture: THREE.CanvasTexture;
+  let smartBoardMesh: THREE.Mesh;
 
   // Referencias 3D articuladas del Microscopio Compuesto Binocular
   let microscopeGroup: THREE.Group;
@@ -321,6 +338,158 @@
     }
   }
 
+  function drawSmartBoard(
+    pH: number,
+    bandName: string,
+    hexColor: string,
+    volMl: number,
+    tempC: number
+  ) {
+    if (!smartBoardCtx || !smartBoardCanvas) return;
+    const ctx = smartBoardCtx;
+    const w = smartBoardCanvas.width;
+    const h = smartBoardCanvas.height;
+
+    // Fondo pizarra verde grafito técnico de alto contraste
+    ctx.fillStyle = '#0f1d24';
+    ctx.fillRect(0, 0, w, h);
+
+    // Borde de tiza técnico
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(12, 12, w - 24, h - 24);
+
+    // Encabezado institucional de la sesión colaborativa
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 22px "JetBrains Mono", monospace';
+    ctx.fillText('SYMBIOLAB 2.0  /  AULA CIENTÍFICA VIRTUAL Y MULTIUSUARIO', 32, 46);
+
+    // Subtítulo con badge de aula colaborativa
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 15px "Outfit", sans-serif';
+    ctx.fillText('● SALA VIRTUAL EN VIVO: 1 DOCENTE · 28 ALUMNOS CONECTADOS  (RETO 17 & 02 HACK4EDU)', 32, 74);
+
+    // Línea divisoria
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(32, 90);
+    ctx.lineTo(w - 32, 90);
+    ctx.stroke();
+
+    // Columna Izquierda: Ecuación Química viva y balance iónico
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px "JetBrains Mono", monospace';
+    ctx.fillText('HCl (ac)  +  NaOH (ac)  ⟶  NaCl (ac)  +  H₂O (l)', 32, 138);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '500 16px "JetBrains Mono", monospace';
+    ctx.fillText('Balance de electroneutralidad determinista:', 32, 172);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('[H⁺]²  -  (Ca - Cb)·[H⁺]  -  Kw = 0    (Kw = 1.0 × 10⁻¹⁴)', 32, 198);
+
+    // Tarjeta de telemetría en tiempo real
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.fillRect(32, 222, 470, 140);
+    ctx.strokeStyle = hexColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(32, 222, 470, 140);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 15px "Outfit", sans-serif';
+    ctx.fillText('ESTADO DE LA DISOLUCIÓN EN VASO', 48, 252);
+
+    ctx.fillStyle = hexColor;
+    ctx.font = 'bold 54px "JetBrains Mono", monospace';
+    ctx.fillText(`pH ${pH.toFixed(2)}`, 48, 312);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px "Outfit", sans-serif';
+    ctx.fillText(bandName.toUpperCase(), 290, 288);
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '15px "JetBrains Mono", monospace';
+    ctx.fillText(`Vol: ${volMl.toFixed(0)} mL / 250 mL   T: ${tempC.toFixed(1)}°C`, 48, 345);
+
+    // Columna Derecha: Gráfica de Curva de Titulación en tiza digital (x = 540 a 980)
+    const gx = 540, gy = 115, gw = 450, gh = 250;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillRect(gx, gy, gw, gh);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(gx, gy, gw, gh);
+
+    // Ejes y líneas de pH 14, 7, 0
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(gx + 35, gy + 20); ctx.lineTo(gx + gw - 15, gy + 20); ctx.stroke();
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+    ctx.beginPath(); ctx.moveTo(gx + 35, gy + gh / 2); ctx.lineTo(gx + gw - 15, gy + gh / 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.beginPath(); ctx.moveTo(gx + 35, gy + gh - 20); ctx.lineTo(gx + gw - 15, gy + gh - 20); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText('14', gx + 12, gy + 24);
+    ctx.fillStyle = '#22c55e';
+    ctx.fillText('7', gx + 16, gy + gh / 2 + 4);
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('0', gx + 16, gy + gh - 16);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 13px "Outfit", sans-serif';
+    ctx.fillText('CURVA DE TITULACIÓN EN VIVO (pH vs Volumen)', gx + 45, gy + 32);
+
+    const trials = labStore.session.trials;
+    const pts = [{ vol: 50, ph: 7.0 }];
+    for (const t of trials) {
+      pts.push({ vol: t.accumulatedVolumeMl, ph: t.resultingPh });
+    }
+    if (pts.length >= 2) {
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      pts.forEach((pt, idx) => {
+        const px = gx + 45 + (idx / Math.max(1, pts.length - 1)) * (gw - 70);
+        const py = gy + gh - 20 - (pt.ph / 14) * (gh - 40);
+        if (idx === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+
+      pts.forEach((pt, idx) => {
+        const px = gx + 45 + (idx / Math.max(1, pts.length - 1)) * (gw - 70);
+        const py = gy + gh - 20 - (pt.ph / 14) * (gh - 40);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // Pie de la Pizarra: Pregunta Socrática del Docente
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 15px "Outfit", sans-serif';
+    ctx.fillText(
+      '💡 PREGUNTA DEL TUTOR: "¿Por qué el pH salta bruscamente de 3 a 11 con solo 1 mL en el viraje?"',
+      32,
+      412
+    );
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px "Outfit", sans-serif';
+    ctx.fillText(
+      'Bioseguridad de Sala: EPP Completo (Bata EN 340, Gafas EN 166, Guantes Nitrilo) · [Presiona Tecla B para alternar]',
+      32,
+      455
+    );
+
+    if (smartBoardTexture) {
+      smartBoardTexture.needsUpdate = true;
+    }
+  }
+
   $effect(() => {
     if (labStore.isExplorationMode) {
       const r = explorationStore.result;
@@ -334,6 +503,7 @@
         totalVolume
       );
       drawThermometerScreen(r.temperatureC ?? 25);
+      drawSmartBoard(r.pH ?? 7.0, r.pH === null ? 'SIN MODELO DE pH' : 'pH REF. 25 C', hex, totalVolume, r.temperatureC ?? 25);
     } else if (result) {
       let displayHex = result.indicatorBand.colorHex;
       let displayBand = result.indicatorBand.name;
@@ -373,6 +543,45 @@
       targetLiquidColor.set(displayHex);
       drawPhMeterScreen(result.pH, tempC, displayBand, displayHex, totalVolume);
       drawThermometerScreen(tempC);
+      drawSmartBoard(result.pH, displayBand, displayHex, totalVolume, tempC);
+    }
+  });
+
+  // Reacción dinámica a los modos de iluminación del laboratorio (Día / UV Germicida / Foco Escenario)
+  $effect(() => {
+    const mode = labStore.lightingMode;
+    void labStore.lightingRevision;
+    if (!ambientLight || !keyLight) return;
+    if (mode === 'cleanroom_day') {
+      ambientLight.color.setHex(0xffffff);
+      ambientLight.groundColor.setHex(0xc8dce5);
+      ambientLight.intensity = 1.65;
+      keyLight.color.setHex(0xfffbf5);
+      keyLight.intensity = 2.2;
+      if (rimLight) {
+        rimLight.color.setHex(0xa8d9e0);
+        rimLight.intensity = 6.0;
+      }
+    } else if (mode === 'uv_germicidal') {
+      ambientLight.color.setHex(0x312e81);
+      ambientLight.groundColor.setHex(0x1e1b4b);
+      ambientLight.intensity = 0.55;
+      keyLight.color.setHex(0x6366f1);
+      keyLight.intensity = 0.50;
+      if (rimLight) {
+        rimLight.color.setHex(0xa855f7);
+        rimLight.intensity = 8.5;
+      }
+    } else if (mode === 'stage_spotlight') {
+      ambientLight.color.setHex(0x475569);
+      ambientLight.groundColor.setHex(0x0f172a);
+      ambientLight.intensity = 0.40;
+      keyLight.color.setHex(0xffffff);
+      keyLight.intensity = 3.8;
+      if (rimLight) {
+        rimLight.color.setHex(0x38bdf8);
+        rimLight.intensity = 2.0;
+      }
     }
   });
 
@@ -1124,20 +1333,22 @@
     signBio.position.set(-4.3, 2.76, -2.298);
     group.add(signBio);
 
-    // 2. SECCIÓN DE QUÍMICA ANALÍTICA (CENTRO: x = 0, montado en pizarrón z = -2.298)
-    const posterChem1 = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.15, 0.72),
-      new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('ph_scale') })
-    );
-    posterChem1.position.set(-1.10, 1.82, -2.298);
-    group.add(posterChem1);
+    // 2. SECCIÓN DE QUÍMICA ANALÍTICA / PIZARRA SMARTBOARD MULTIUSUARIO VIVA (CENTRO: x = 0, z = -2.295)
+    smartBoardCanvas = document.createElement('canvas');
+    smartBoardCanvas.width = 1024;
+    smartBoardCanvas.height = 512;
+    smartBoardCtx = smartBoardCanvas.getContext('2d');
+    smartBoardTexture = new THREE.CanvasTexture(smartBoardCanvas);
 
-    const posterChem2 = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.15, 0.72),
-      new THREE.MeshBasicMaterial({ map: createSciencePosterTexture('lab_rules') })
+    smartBoardMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.35, 1.95),
+      new THREE.MeshBasicMaterial({ map: smartBoardTexture })
     );
-    posterChem2.position.set(1.10, 1.82, -2.298);
-    group.add(posterChem2);
+    smartBoardMesh.position.set(0, 1.95, -2.295);
+    smartBoardMesh.userData = { toolId: 'smart_board' };
+    group.add(smartBoardMesh);
+
+    drawSmartBoard(7.0, 'Neutro', '#10b981', 50, 25);
 
     const signChem = textPlate('SYMBIOLAB  /  1. QUÍMICA ANALÍTICA & REACCIONES', 1.95, 0.15, '#93c5fd', '#1e293b');
     signChem.position.set(0, 2.76, -2.298);
@@ -3180,8 +3391,16 @@
     }
   }
 
-  function handleToolInteraction(toolId: LabToolInfo['id']) {
-    labStore.inspectTool(toolId);
+  function handleToolInteraction(toolId: LabToolInfo['id'] | 'smart_board' | 'fume_hood') {
+    if ((toolId as string) === 'smart_board') {
+      labStore.cycleSmartBoardMode();
+      return;
+    }
+    if ((toolId as string) === 'fume_hood') {
+      labStore.toggleFumeHoodSash();
+      return;
+    }
+    labStore.inspectTool(toolId as LabToolInfo['id']);
     if (toolId === 'burette') {
       labStore.doseFromBurette(1.0);
     } else if (toolId === 'thermometer') {
@@ -3263,6 +3482,12 @@
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === 'KeyV') {
         labStore.toggleFirstPersonWalk();
+      } else if (e.code === 'KeyL') {
+        labStore.cycleLightingMode();
+      } else if (e.code === 'KeyH') {
+        labStore.toggleFumeHoodSash();
+      } else if (e.code === 'KeyB') {
+        labStore.cycleSmartBoardMode();
       } else if (e.code === 'KeyE' && labStore.isFirstPersonWalking && labStore.nearbyStationPrompt) {
         labStore.enterStationFromWalk(labStore.nearbyStationPrompt);
       }
@@ -3270,7 +3495,7 @@
     window.addEventListener('keydown', onGlobalShortcuts);
 
     // Iluminación diáfana de laboratorio profesional (Luz blanca pura de alto rendimiento)
-    const ambientLight = new THREE.HemisphereLight(0xffffff, 0xc8dce5, 1.65);
+    ambientLight = new THREE.HemisphereLight(0xffffff, 0xc8dce5, 1.65);
     scene.add(ambientLight);
 
     keyLight = new THREE.DirectionalLight(0xfffbf5, 2.2);
@@ -3286,7 +3511,7 @@
     keyLight.shadow.camera.far = 10;
     scene.add(keyLight);
 
-    const rimLight = new THREE.SpotLight(0xa8d9e0, 6, 10, Math.PI / 3, 0.5);
+    rimLight = new THREE.SpotLight(0xa8d9e0, 6, 10, Math.PI / 3, 0.5);
     rimLight.position.set(-2.5, 3.0, -2.0);
     scene.add(rimLight);
 
@@ -3305,10 +3530,22 @@
     const ceilingAndLighting = buildLaboratoryCeilingAndLighting();
     scene.add(ceilingAndLighting);
 
-    // Paredes Perimetrales Higiénicas con Zócalo Sanitario
+    // Paredes Perimetrales Higiénicas con Zócalo Sanitario y Gran Ventanal Panorámico Técnico
     const perimeterWalls = buildLaboratoryPerimeterWalls();
     doubleDoorsRig = (perimeterWalls.userData.doubleDoors as DoubleDoorsRig) || null;
     scene.add(perimeterWalls);
+
+    // Campana Extractora de Gases (Industrial Fume Hood - ISO 14644 / SGA) en esquina Noroeste (x = -7.8, z = -1.2)
+    fumeHoodRig = buildFumeHoodWorkstation();
+    scene.add(fumeHoodRig.group);
+
+    // Cerramientos Arquitectónicos y Puertas Automáticas Divisorias de los 3 Pabellones Especializados
+    pavilionDividersRig = buildPavilionDividers();
+    scene.add(pavilionDividersRig.group);
+
+    // Sistema de Avatares Multiusuario 3D (Aula Colaborativa P2P)
+    multiplayerAvatarsRig = new MultiplayerAvatarsRig();
+    scene.add(multiplayerAvatarsRig.group);
 
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x334c59, roughness: 0.4, metalness: 0.45 });
 
@@ -3638,6 +3875,8 @@
             flasks.naoh.group,
             bookGroup,
             ...(safetyInfrastructureGroup ? [safetyInfrastructureGroup] : []),
+            ...(fumeHoodRig ? [fumeHoodRig.group] : []),
+            ...(smartBoardMesh ? [smartBoardMesh] : []),
             ...interactiveToolGroups,
             ...cabinetItemGroups
           ];
@@ -4526,6 +4765,22 @@
       if (doubleDoorsRig) {
         const checkPos = fpController && fpController.enabled ? fpController.position : camera.position;
         doubleDoorsRig.update(checkPos, dt);
+      }
+
+      if (fumeHoodRig) {
+        fumeHoodRig.update(labStore.fumeHoodSashOpen, dt);
+      }
+
+      if (pavilionDividersRig) {
+        const checkPos = fpController && fpController.enabled ? fpController.position : camera.position;
+        pavilionDividersRig.update(checkPos, dt);
+      }
+
+      if (multiplayerAvatarsRig) {
+        multiplayerAvatarsRig.update(camera, dt);
+        const checkPos = fpController && fpController.enabled ? fpController.position : camera.position;
+        const checkRot = fpController && fpController.enabled ? fpController.yaw : camera.rotation.y;
+        multiplayerStore.updateMyPose({ x: checkPos.x, y: checkPos.y, z: checkPos.z }, checkRot);
       }
 
       if (

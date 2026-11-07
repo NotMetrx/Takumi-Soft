@@ -31,3 +31,10 @@ yarn-error.log*
 
 # Rust
 crates/*/target/
+
+# Local reference docs & screenshots
+*.pdf
+noti.png
+pizarra.png
+pruebamesa.png
+Captura*.png
