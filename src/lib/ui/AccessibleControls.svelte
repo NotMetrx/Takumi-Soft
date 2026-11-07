@@ -79,7 +79,7 @@
                 labStore.triggerAnimatedPour(selectedReagent.reagentId, ml, 'mouse');
               }
             }}
-            disabled={!!labStore.activePourAnim || ml > (selectedReagent?.remainingMl ?? 0) || ml > labStore.availableCapacityMl}
+            disabled={!!labStore.activePourAnim || labStore.isExperimentDemoRunning || ml > (selectedReagent?.remainingMl ?? 0) || ml > labStore.availableCapacityMl}
             class="lab-btn py-1.5 px-2 bg-slate-800/90 hover:bg-slate-700 border border-slate-700/80 rounded-lg text-[11px] font-mono-numbers font-bold text-slate-200 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
           >
             +{ml} mL
@@ -96,7 +96,7 @@
           labStore.triggerAnimatedPour(selectedReagent.reagentId, customPourMl, 'mouse');
         }
       }}
-      disabled={!!labStore.activePourAnim || !selectedReagent || selectedReagent.remainingMl <= 0 || labStore.availableCapacityMl <= 0}
+      disabled={!!labStore.activePourAnim || labStore.isExperimentDemoRunning || !selectedReagent || selectedReagent.remainingMl <= 0 || labStore.availableCapacityMl <= 0}
       class="lab-btn w-full py-3 px-4 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-2 cursor-pointer min-h-[44px] shadow-lg
       {selectedReagent?.kind === 'strong_acid'
         ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/25'

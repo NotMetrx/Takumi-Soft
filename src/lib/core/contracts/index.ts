@@ -3,7 +3,7 @@
  * Desacopla la interfaz (UI / 3D / Gestos) del motor científico y almacenamiento.
  */
 
-export type InputMode = 'gesture' | 'mouse' | 'touch' | 'keyboard';
+export type InputMode = 'gesture' | 'mouse' | 'touch' | 'keyboard' | 'demo';
 
 export type DiagnosticClass = 
   | 'acid_excess' 

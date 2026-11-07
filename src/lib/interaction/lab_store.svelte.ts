@@ -4,6 +4,7 @@ import { calculateStrongAcidBase } from '$lib/science/chemistry/acid_base_solver
 import { labSound } from '$lib/audio/lab_sound';
 import type { GestureState } from '$lib/input/hand_gestures';
 import type { Reagent, BeakerState, TrialRecord, InputMode, LabSession } from '$lib/core/contracts';
+import { getExperimentDemo } from './experiment_demos';
 
 export type EducationLevel = 'primaria' | 'secundaria';
 export type LabStationId = 'quimica' | 'biologia' | 'steam';
@@ -1862,6 +1863,18 @@ export class LabStore {
   activePourAnim = $state<PourAnimationRequest | null>(null);
   private animCounter = 0;
 
+  // Modo «Ver demostración»: el laboratorio ejecuta el procedimiento con sus propios tiempos.
+  demoStatus = $state<'idle' | 'running' | 'completed'>('idle');
+  demoPresetId = $state<string | null>(null);
+  demoStepIndex = $state(0);
+  demoStepCount = $state(0);
+  demoStepTitle = $state('');
+  demoStepDetail = $state('');
+  demoMessage = $state('');
+  demoPhase = $state<'action' | 'pouring' | 'hold'>('action');
+  private demoTimer: ReturnType<typeof setInterval> | null = null;
+  private demoDeadline = 0;
+
   session = $state<LabSession>({
     sessionId: `session-${Date.now()}`,
     createdAt: new Date().toISOString(),
@@ -1943,6 +1956,19 @@ export class LabStore {
       EXPERIMENT_PRESETS.find((p) => p.id === 'chemistry-p0-acid-base') ??
       EXPERIMENT_PRESETS[0]
     );
+  }
+
+  get isExperimentDemoRunning(): boolean {
+    return this.demoStatus === 'running';
+  }
+
+  get activeExperimentDemo() {
+    return this.demoPresetId ? getExperimentDemo(this.demoPresetId) : undefined;
+  }
+
+  get demoProgressPercent(): number {
+    if (this.demoStepCount <= 0) return 0;
+    return Math.round((Math.min(this.demoStepIndex, this.demoStepCount) / this.demoStepCount) * 100);
   }
 
   get inspectedTool(): LabToolInfo | null {
@@ -2599,6 +2625,8 @@ export class LabStore {
     const preset = EXPERIMENT_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
 
+    if (this.demoStatus !== 'idle') this.clearExperimentDemo();
+
     if (
       preset.requiresLegalConsent &&
       !bypassConsentCheck &&
@@ -2664,6 +2692,7 @@ export class LabStore {
   }
 
   triggerAnimatedPour(reagentId: string, requestedMl: number, source: InputMode = this.inputMode) {
+    if (this.demoStatus === 'running' && source !== 'demo') return false;
     const reagent = this.reagents.find((r) => r.reagentId === reagentId);
     if (!reagent || !Number.isFinite(requestedMl) || requestedMl <= 0) return false;
     if (this.activePourAnim) return false;
@@ -2672,11 +2701,8 @@ export class LabStore {
     const actualMl = Math.floor(Math.min(requestedMl, reagent.remainingMl, this.availableCapacityMl) * 10 + 1e-8) / 10;
     if (actualMl <= 0) return false;
 
-    if (reagentId === 'hcl' || reagentId === 'naoh') {
-      if (!this.verifySafetyEquipmentForChemistry()) return false;
-    }
-
-    if (reagentId === 'hcl' || reagentId === 'naoh') {
+    // La demostración es una simulación del laboratorio: no exige al alumno tener el EPP puesto.
+    if ((reagentId === 'hcl' || reagentId === 'naoh') && source !== 'demo') {
       if (!this.verifySafetyEquipmentForChemistry()) return false;
     }
 
@@ -2693,13 +2719,14 @@ export class LabStore {
   }
 
   pour(reagentId: string, requestedMl: number, source: InputMode = this.inputMode): boolean {
+    if (this.demoStatus === 'running' && source !== 'demo') return false;
     const reagent = this.reagents.find((r) => r.reagentId === reagentId);
     if (!reagent || !Number.isFinite(requestedMl) || requestedMl <= 0) return false;
 
     const actualMl = Math.floor(Math.min(requestedMl, reagent.remainingMl, this.availableCapacityMl) * 10 + 1e-8) / 10;
     if (actualMl <= 0) return false;
 
-    if (reagentId === 'hcl' || reagentId === 'naoh') {
+    if ((reagentId === 'hcl' || reagentId === 'naoh') && source !== 'demo') {
       if (!this.verifySafetyEquipmentForChemistry()) return false;
     }
 
@@ -2739,6 +2766,171 @@ export class LabStore {
     return true;
   }
 
+  /**
+   * Inicia el modo «Ver demostración» para el experimento activo (o el indicado).
+   * El laboratorio ejecuta los vertidos y los tiempos del guion; los controles manuales
+   * quedan bloqueados hasta que la demostración termina o se detiene.
+   */
+  startExperimentDemo(presetId: string = this.activePresetId): boolean {
+    const preset = EXPERIMENT_PRESETS.find((p) => p.id === presetId);
+    const demo = getExperimentDemo(presetId);
+    if (!preset || !demo) return false;
+
+    this.clearExperimentDemo();
+
+    if (preset.requiresLegalConsent && !this.acceptedLegalConsentPresets[preset.id]) {
+      this.requestRiskLevelConsent(preset.id);
+      return false;
+    }
+
+    this.isExplorationMode = false;
+    this.isFirstPersonWalking = false;
+    if (this.activePresetId !== preset.id) this.loadExperimentPreset(preset.id);
+    this.resetExperiment();
+    if (preset.id === 'steam-ice-melting-density') {
+      this.beaker.temperatureC = 15;
+      this.recalculate();
+    } else if (preset.id === 'steam-botijo-condensation') {
+      this.beaker.temperatureC = 18;
+      this.recalculate();
+    }
+
+    this.demoStatus = 'running';
+    this.demoPresetId = preset.id;
+    this.demoStepIndex = 0;
+    this.demoStepCount = demo.steps.length;
+    this.demoStepTitle = demo.title;
+    this.demoStepDetail = demo.summary;
+    this.demoMessage = '';
+    this.demoPhase = 'action';
+    this.isHomeBookOpen = false;
+    this.isCabinetModalOpen = false;
+    this.isSensorCardVisible = false;
+    this.isDosifierCardVisible = false;
+
+    this.runExperimentDemoStep();
+    if (this.demoStatus === 'running') {
+      this.demoTimer = setInterval(() => this.tickExperimentDemo(), 100);
+    }
+    return this.demoStatus === 'running';
+  }
+
+  /** Detiene la demostración sin reiniciar el vaso. */
+  stopExperimentDemo() {
+    this.clearExperimentDemo();
+  }
+
+  /** Cierra el panel de demostración (en curso o completada). */
+  dismissExperimentDemo() {
+    this.clearExperimentDemo();
+  }
+
+  private clearDemoTimer() {
+    if (this.demoTimer !== null) {
+      clearInterval(this.demoTimer);
+      this.demoTimer = null;
+    }
+  }
+
+  private clearExperimentDemo() {
+    this.clearDemoTimer();
+    this.activePourAnim = null;
+    this.demoStatus = 'idle';
+    this.demoPresetId = null;
+    this.demoStepIndex = 0;
+    this.demoStepCount = 0;
+    this.demoStepTitle = '';
+    this.demoStepDetail = '';
+    this.demoMessage = '';
+    this.demoPhase = 'action';
+    this.demoDeadline = 0;
+  }
+
+  private currentDemoHoldMs(): number {
+    const demo = this.activeExperimentDemo;
+    return demo?.steps[this.demoStepIndex]?.holdMs ?? 1500;
+  }
+
+  private runExperimentDemoStep() {
+    const demo = this.activeExperimentDemo;
+    if (!demo) {
+      this.clearExperimentDemo();
+      return;
+    }
+    if (this.demoStepIndex >= demo.steps.length) {
+      this.finishExperimentDemo();
+      return;
+    }
+
+    const step = demo.steps[this.demoStepIndex];
+    this.demoStepTitle = step.title;
+    this.demoStepDetail = step.detail;
+    const now = Date.now();
+
+    if (step.action.kind === 'wait') {
+      this.demoPhase = 'action';
+      this.demoDeadline = now + step.action.durationMs;
+      return;
+    }
+
+    if (step.action.kind === 'temperature') {
+      this.demoPhase = 'action';
+      this.setTemperature(step.action.valueC);
+      this.demoDeadline = now + 700;
+      return;
+    }
+
+    const started = this.triggerAnimatedPour(step.action.reagentId, step.action.amountMl, 'demo');
+    if (!started) {
+      console.warn(`No se pudo iniciar el vertido de ${step.action.amountMl} mL en la demostración ${demo.presetId}`);
+      this.clearExperimentDemo();
+      return;
+    }
+    this.demoPhase = 'pouring';
+  }
+
+  private tickExperimentDemo() {
+    if (this.demoStatus !== 'running') return;
+    const now = Date.now();
+
+    if (this.demoPhase === 'pouring') {
+      if (!this.activePourAnim) {
+        this.demoPhase = 'hold';
+        this.demoDeadline = now + this.currentDemoHoldMs();
+      }
+      return;
+    }
+
+    if (now < this.demoDeadline) return;
+
+    if (this.demoPhase === 'action') {
+      this.demoPhase = 'hold';
+      this.demoDeadline = now + this.currentDemoHoldMs();
+      return;
+    }
+
+    this.demoStepIndex += 1;
+    this.runExperimentDemoStep();
+  }
+
+  private finishExperimentDemo() {
+    this.clearDemoTimer();
+    const presetId = this.demoPresetId;
+    const stepCount = this.demoStepCount;
+    this.resetExperiment();
+
+    if (!presetId) return;
+    this.demoStatus = 'completed';
+    this.demoPresetId = presetId;
+    this.demoStepIndex = stepCount;
+    this.demoStepCount = stepCount;
+    this.demoStepTitle = 'Demostración completada';
+    this.demoStepDetail =
+      'El vaso se ha reiniciado con 50 mL de agua y los matraces están llenos otra vez. Repite el procedimiento por tu cuenta.';
+    this.demoMessage = 'Modo demostración finalizado · estación lista para el alumno.';
+    this.demoPhase = 'hold';
+  }
+
   enterExploration() {
     this.activePourAnim = null;
     this.isExplorationMode = true;
@@ -2773,6 +2965,7 @@ export class LabStore {
 
   resetExperiment() {
     labSound.playInstrumentClick();
+    if (this.demoStatus !== 'idle') this.clearExperimentDemo();
     if (this.isExplorationMode) explorationStore.reset();
     this.reagents.forEach((r) => (r.remainingMl = r.initialMl));
     this.beaker.waterMl = 50;

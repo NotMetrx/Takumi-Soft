@@ -23,13 +23,17 @@
     X,
     Layers,
     SlidersHorizontal,
-    Plus
+    Plus,
+    Play,
+    Square
   } from '@lucide/svelte';
   import { fly } from 'svelte/transition';
 
   const result = $derived(labStore.beaker.currentResult);
   const band = $derived(result?.indicatorBand);
   const activePreset = $derived(labStore.activePreset);
+  const demoStatus = $derived(labStore.demoStatus);
+  const demoProgress = $derived(labStore.demoProgressPercent);
 
   // Estado de la Dynamic Island superior y los popovers del Dock inferior
   let isIslandExpanded = $state<boolean>(false);
@@ -325,7 +329,8 @@
             <button
               type="button"
               onclick={() => labStore.triggerAnimatedPour('hcl', 5)}
-              class="lab-btn shrink-0 px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
+              disabled={demoStatus === 'running'}
+              class="lab-btn shrink-0 px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 disabled:bg-white/30 disabled:cursor-not-allowed text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
             >
               <Plus class="w-3 h-3" /> 5 mL
             </button>
@@ -343,7 +348,8 @@
             <button
               type="button"
               onclick={() => labStore.triggerAnimatedPour('naoh', 5)}
-              class="lab-btn shrink-0 px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
+              disabled={demoStatus === 'running'}
+              class="lab-btn shrink-0 px-2.5 py-1 rounded-full bg-white text-black hover:bg-white/90 disabled:bg-white/30 disabled:cursor-not-allowed text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
             >
               <Plus class="w-3 h-3" /> 5 mL
             </button>
@@ -356,17 +362,35 @@
             <span class="text-[10px] font-medium text-white/45 uppercase tracking-wider">
               Protocolo activo · {activePreset.title}
             </span>
-            <button
-              type="button"
-              onclick={() => {
-                isIslandExpanded = false;
-                labSound.playBookOpen();
-                labStore.isHomeBookOpen = true;
-              }}
-              class="text-[11px] font-medium text-white/75 hover:text-white underline underline-offset-2 cursor-pointer"
-            >
-              Abrir teoría en el Manual 3D
-            </button>
+            <div class="flex items-center gap-2.5">
+              {#if !labStore.isExplorationMode}
+                <button
+                  type="button"
+                  onclick={() => {
+                    isIslandExpanded = false;
+                    labSound.playInstrumentClick();
+                    labStore.startExperimentDemo();
+                  }}
+                  disabled={demoStatus === 'running'}
+                  class="text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 disabled:text-white/35 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+                  title="El laboratorio ejecuta el experimento paso a paso y después reinicia el vaso"
+                >
+                  <Play class="w-3 h-3" />
+                  {demoStatus === 'completed' ? 'Repetir demostración' : 'Ver demostración'}
+                </button>
+              {/if}
+              <button
+                type="button"
+                onclick={() => {
+                  isIslandExpanded = false;
+                  labSound.playBookOpen();
+                  labStore.isHomeBookOpen = true;
+                }}
+                class="text-[11px] font-medium text-white/75 hover:text-white underline underline-offset-2 cursor-pointer"
+              >
+                Abrir teoría en el Manual 3D
+              </button>
+            </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -491,6 +515,82 @@
     {/if}
   </div>
 </header>
+
+<!-- ===========================================================================
+     PANEL DEL MODO «VER DEMOSTRACIÓN» (PROGRESO PASO A PASO)
+     =========================================================================== -->
+{#if demoStatus !== 'idle'}
+  <aside
+    class="fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 z-40 w-[92vw] max-w-xl apple-glass rounded-2xl p-4 border {demoStatus === 'running'
+      ? 'border-emerald-400/30'
+      : 'border-emerald-400/20'}"
+    aria-live="polite"
+    aria-label="Progreso de la demostración del experimento"
+  >
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full {demoStatus === 'running'
+          ? 'bg-emerald-400 animate-pulse'
+          : 'bg-emerald-500'}"></span>
+        <span class="text-[10.5px] font-bold uppercase tracking-wider text-emerald-300">
+          {demoStatus === 'running' ? 'Demostración en curso' : 'Demostración completada'}
+        </span>
+      </div>
+      <span class="font-mono-numbers text-[10.5px] text-white/60">
+        {Math.min(labStore.demoStepIndex + 1, labStore.demoStepCount)} / {labStore.demoStepCount}
+      </span>
+    </div>
+
+    <div class="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+      <div
+        class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300"
+        style="width: {demoProgress}%"
+      ></div>
+    </div>
+
+    <h3 class="mt-2.5 text-[13px] font-semibold tracking-[-0.01em] text-white">
+      {labStore.demoStepTitle}
+    </h3>
+    <p class="mt-1 text-[11px] leading-relaxed text-white/65">
+      {labStore.demoStepDetail}
+    </p>
+
+    {#if demoStatus === 'completed'}
+      <p class="mt-2 text-[11px] font-medium text-emerald-300">
+        {labStore.demoMessage}
+      </p>
+    {/if}
+
+    <div class="mt-3 flex items-center justify-end gap-2">
+      {#if demoStatus === 'running'}
+        <button
+          type="button"
+          onclick={() => labStore.stopExperimentDemo()}
+          class="lab-btn px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 cursor-pointer"
+        >
+          <Square class="w-3 h-3" />
+          Detener
+        </button>
+      {:else}
+        <button
+          type="button"
+          onclick={() => labStore.dismissExperimentDemo()}
+          class="lab-btn px-3 py-1.5 rounded-full text-[11px] font-medium bg-white/10 hover:bg-white/15 text-white cursor-pointer"
+        >
+          Cerrar
+        </button>
+        <button
+          type="button"
+          onclick={() => labStore.startExperimentDemo(labStore.demoPresetId ?? undefined)}
+          class="lab-btn px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white text-black hover:bg-white/90 flex items-center gap-1.5 cursor-pointer"
+        >
+          <RotateCcw class="w-3 h-3" />
+          Repetir
+        </button>
+      {/if}
+    </div>
+  </aside>
+{/if}
 
 <!-- Notificación Flotante de Protocolo de Seguridad (Alertas Didácticas con auto-descarte de 5 segundos) -->
 {#if labStore.safetyAlert}
@@ -902,6 +1002,25 @@
     >
       <BookOpen class="w-4 h-4 shrink-0" />
       <span>Manual</span>
+    </button>
+
+    <!-- 3b. Modo «Ver demostración»: el laboratorio ejecuta el procedimiento paso a paso -->
+    <button
+      type="button"
+      onclick={() => {
+        activeDockSheet = null;
+        isIslandExpanded = false;
+        labSound.playInstrumentClick();
+        labStore.startExperimentDemo();
+      }}
+      disabled={demoStatus === 'running'}
+      class="lab-btn px-3.5 py-2 rounded-full text-xs font-medium flex items-center gap-2 cursor-pointer transition-all {demoStatus === 'running'
+        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/35'
+        : 'text-white/85 hover:bg-white/[0.09] hover:text-white'} disabled:cursor-not-allowed"
+      title="Ver demostración: el laboratorio ejecuta el experimento paso a paso y después reinicia el vaso"
+    >
+      <Play class="w-4 h-4 shrink-0" />
+      <span class="hidden lg:inline">Demo</span>
     </button>
 
     <!-- 4. Tutor Socrático / Hipótesis -->
